@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import { useToast } from '@/components/ui/use-toast';
+import { useAudioInputDevices } from '@/lib/hooks/useAudioInputDevices';
 import { useDictationReadiness } from '@/lib/hooks/useDictationReadiness';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
 import { useProfiles } from '@/lib/hooks/useProfiles';
@@ -138,6 +139,8 @@ export function CapturesPage() {
   const allowAutoPaste = settings?.allow_auto_paste ?? true;
   const defaultVoiceId = settings?.default_playback_voice_id ?? null;
   const hotkeyEnabled = settings?.hotkey_enabled ?? false;
+  const inputDeviceId = settings?.input_device_id ?? null;
+  const { devices: inputDevices } = useAudioInputDevices();
   const keepMicWarm = settings?.keep_mic_warm ?? false;
   const pushToTalkKeys = settings?.chord_push_to_talk_keys ?? defaultChordKeys('push');
   const toggleToTalkKeys = settings?.chord_toggle_to_talk_keys ?? defaultChordKeys('toggle');
@@ -221,6 +224,31 @@ export function CapturesPage() {
           />
           <InputMonitoringNotice enabled={hotkeyEnabled} />
         </div>
+
+          <SettingRow
+            title={t('settings.captures.dictation.inputDevice.title')}
+            description={t('settings.captures.dictation.inputDevice.description')}
+            action={
+              <Select
+                value={inputDeviceId ?? 'default'}
+                onValueChange={(v) => update({ input_device_id: v === 'default' ? null : v })}
+              >
+                <SelectTrigger className="w-[240px]">
+                  <SelectValue placeholder={t('settings.captures.dictation.inputDevice.default')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">
+                    {t('settings.captures.dictation.inputDevice.default')}
+                  </SelectItem>
+                  {inputDevices.map((d) => (
+                    <SelectItem key={d.deviceId} value={d.deviceId}>
+                      {d.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            }
+          />
 
         <SettingRow
           title={t('settings.captures.dictation.keepMicWarm.title')}

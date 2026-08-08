@@ -5,6 +5,8 @@ import { Visualizer } from 'react-sound-visualizer';
 import { Button } from '@/components/ui/button';
 import { FormControl, FormItem, FormMessage } from '@/components/ui/form';
 import { formatAudioDuration } from '@/lib/utils/audio';
+import { openAudioInput } from '@/lib/utils/audioInput';
+import { useCaptureSettings } from '@/lib/hooks/useSettings';
 
 const MemoizedWaveform = memo(function MemoizedWaveform({
   audioStream,
@@ -50,6 +52,7 @@ export function AudioSampleRecording({
   showWaveform = true,
 }: AudioSampleRecordingProps) {
   const { t } = useTranslation();
+  const { settings: captureSettings } = useCaptureSettings();
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
 
   // Request microphone access when component mounts
@@ -59,9 +62,14 @@ export function AudioSampleRecording({
 
     let stream: MediaStream | null = null;
 
-    navigator.mediaDevices
-      .getUserMedia({ audio: true, video: false })
+    const inputDeviceId = captureSettings?.input_device_id;
+    let disposed = false;
+    openAudioInput(inputDeviceId)
       .then((s) => {
+        if (disposed) {
+          s.getTracks().forEach((track) => track.stop());
+          return;
+        }
         stream = s;
         setAudioStream(s);
       })
@@ -70,13 +78,14 @@ export function AudioSampleRecording({
       });
 
     return () => {
+      disposed = true;
       if (stream) {
         stream.getTracks().forEach((track) => {
           track.stop();
         });
       }
     };
-  }, [showWaveform]);
+  }, [showWaveform, captureSettings?.input_device_id]);
 
   return (
     <FormItem>

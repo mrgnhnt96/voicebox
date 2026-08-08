@@ -887,6 +887,12 @@
           "title": "Global shortcut",
           "description": "Hold the shortcut to record from anywhere on your machine. Release to transcribe."
         },
+        "inputDevice": {
+          "title": "Audio input microphone",
+          "description": "Choose which microphone Voicebox records dictation and audio samples from.",
+          "default": "System Default Microphone",
+          "fallbackLabel": "Microphone {{index}}"
+        },
         "keepMicWarm": {
           "title": "Keep microphone ready",
           "description": "Hold the microphone open while dictation is enabled so the first words are never clipped. The macOS microphone indicator stays lit while it's on."

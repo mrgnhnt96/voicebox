@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePlatform } from '@/platform/PlatformContext';
+import { useCaptureSettings } from '@/lib/hooks/useSettings';
+import { openAudioInput } from '@/lib/utils/audioInput';
 import { convertToWav } from '@/lib/utils/audio';
 
 interface UseAudioRecordingOptions {
   maxDurationSeconds?: number;
+  deviceId?: string | null;
   // ``context`` is whatever was handed to ``startRecording`` for this take,
   // threaded back untouched so callers can correlate the result with the
   // recording it came from (the dictate window pairs it with the focus
@@ -41,10 +44,13 @@ const streamHasLiveAudio = (stream: MediaStream | null): stream is MediaStream =
 
 export function useAudioRecording({
   maxDurationSeconds,
+  deviceId,
   onRecordingComplete,
   keepWarm = false,
 }: UseAudioRecordingOptions = {}) {
   const platform = usePlatform();
+  const { settings: captureSettings } = useCaptureSettings();
+  const targetDeviceId = deviceId !== undefined ? deviceId : captureSettings?.input_device_id;
   const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +115,11 @@ export function useAudioRecording({
     warmStreamRef.current = null;
   }, []);
 
+  // Switch devices between takes without interrupting an active recording.
+  useEffect(() => {
+    releaseWarmStream();
+  }, [targetDeviceId, releaseWarmStream]);
+
   // Assert that getUserMedia is reachable, mirroring the previous inline guard
   // (Tauri webviews occasionally expose ``navigator.mediaDevices`` a beat late).
   const assertMediaDevices = useCallback(async () => {
@@ -149,9 +160,7 @@ export function useAudioRecording({
     const gen = acquireGenRef.current;
     const acquisition = (async () => {
       await assertMediaDevices();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: AUDIO_CONSTRAINTS,
-      });
+      const stream = await openAudioInput(targetDeviceId, AUDIO_CONSTRAINTS);
       // Released / disabled / unmounted while acquiring — this stream is stale,
       // so stop it instead of leaving a live mic open, and abort the caller.
       if (gen !== acquireGenRef.current) {
@@ -169,7 +178,7 @@ export function useAudioRecording({
     } finally {
       if (acquiringRef.current === acquisition) acquiringRef.current = null;
     }
-  }, [assertMediaDevices, keepWarm]);
+  }, [assertMediaDevices, keepWarm, targetDeviceId]);
 
   /**
    * Open the microphone ahead of the first recording so the initial dictation
