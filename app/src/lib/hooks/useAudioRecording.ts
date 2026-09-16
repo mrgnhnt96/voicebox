@@ -116,7 +116,10 @@ export function useAudioRecording({
   }, []);
 
   // Switch devices between takes without interrupting an active recording.
+  const previousDeviceRef = useRef(targetDeviceId);
   useEffect(() => {
+    if (previousDeviceRef.current === targetDeviceId) return;
+    previousDeviceRef.current = targetDeviceId;
     releaseWarmStream();
   }, [targetDeviceId, releaseWarmStream]);
 
