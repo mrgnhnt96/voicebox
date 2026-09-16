@@ -47,18 +47,21 @@ export function DictateWindow() {
       // overlapping dictations can't paste into each other's target.
       const focus = context as FocusSnapshot | null;
       if (!allowAutoPaste) return;
-      if (!focus || !text.trim()) return;
+      if (!text.trim()) return;
+      if (!focus) throw new Error('Could not identify the paste target. Check Accessibility permission.');
       try {
-        await invoke('paste_final_text', { text, focus });
+        const pasted = await invoke<boolean>('paste_final_text', { text, focus });
+        if (!pasted) throw new Error('Paste target unavailable. Copy the text from Captures.');
       } catch (err) {
         // Surface accessibility failures to the main window so it can prompt
-        // the user to grant permission. Other errors stay swallowed —
-        // the transcription still landed in the captures list.
+        // the user to grant permission. The session displays delivery errors;
+        // the transcription remains available in the captures list.
         const msg = err instanceof Error ? err.message : String(err);
         if (/accessibility/i.test(msg)) {
           emit('system:accessibility-missing').catch(() => {});
         }
         console.warn('[dictate] paste_final_text failed:', err);
+        throw new Error(msg);
       }
     },
   });

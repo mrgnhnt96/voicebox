@@ -96,6 +96,7 @@
       "shortcutNotArmedDescription_other": "{{names}} still need to download. Open the Captures tab to start."
     },
     "pill": {
+      "preparing": "Opening microphone…",
       "recording": "Recording",
       "transcribing": "Transcribing",
       "refining": "Refining",

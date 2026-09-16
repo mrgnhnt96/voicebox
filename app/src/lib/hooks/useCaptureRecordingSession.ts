@@ -78,7 +78,7 @@ export interface UseCaptureRecordingSessionOptions {
     capture: CaptureResponse,
     allowAutoPaste: boolean,
     context?: unknown,
-  ) => void;
+  ) => void | Promise<void>;
 }
 
 export interface UseCaptureRecordingSessionResult {
@@ -196,24 +196,33 @@ export function useCaptureRecordingSession(
     [clearRestTimer, clearErrorTimer],
   );
 
+  const deliverText = async (
+    text: string | null | undefined,
+    capture: CaptureResponse,
+    allowAutoPaste: boolean,
+    context?: unknown,
+  ) => {
+    try {
+      if (text) await onFinalTextRef.current?.(text, capture, allowAutoPaste, context);
+      if (pillStateRef.current === 'transcribing' || pillStateRef.current === 'refining') {
+        scheduleHidePill();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      showError(`Text saved in Captures. ${message}`);
+    }
+  };
+
   const refineMutation = useMutation({
     // Empty body — backend resolves flags and model from capture_settings.
     mutationFn: async (captureId: string) => apiClient.refineCapture(captureId, {}),
-    onSuccess: (data, captureId) => {
+    onSuccess: async (data, captureId) => {
       queryClient.invalidateQueries({ queryKey: ['captures'] });
       broadcastUpdated(captureId);
-      if (pillStateRef.current === 'refining') scheduleHidePill();
       const delivery = captureDeliveryRef.current.get(captureId);
       captureDeliveryRef.current.delete(captureId);
       const finalText = data.transcript_refined ?? data.transcript_raw;
-      if (finalText) {
-        onFinalTextRef.current?.(
-          finalText,
-          data,
-          delivery?.allowAutoPaste ?? true,
-          delivery?.context,
-        );
-      }
+      await deliverText(finalText, data, delivery?.allowAutoPaste ?? true, delivery?.context);
     },
     onError: (err: Error, captureId) => {
       captureDeliveryRef.current.delete(captureId);
@@ -230,7 +239,7 @@ export function useCaptureRecordingSession(
       source: CaptureSource;
       context?: unknown;
     }) => apiClient.createCapture(file, { source }),
-    onSuccess: (capture, { context }) => {
+    onSuccess: async (capture, { context }) => {
       queryClient.setQueryData<CaptureListResponse>(['captures'], (prev) => {
         if (!prev) return prev;
         if (prev.items.some((c) => c.id === capture.id)) return prev;
@@ -247,15 +256,7 @@ export function useCaptureRecordingSession(
         setPillState('refining');
         refineMutation.mutate(capture.id);
       } else {
-        if (pillStateRef.current === 'transcribing') scheduleHidePill();
-        if (capture.transcript_raw) {
-          onFinalTextRef.current?.(
-            capture.transcript_raw,
-            capture,
-            capture.allow_auto_paste,
-            context,
-          );
-        }
+        await deliverText(capture.transcript_raw, capture, capture.allow_auto_paste, context);
       }
     },
     onError: (err: Error) => {
@@ -305,6 +306,11 @@ export function useCaptureRecordingSession(
   });
 
   useEffect(() => {
+    // MediaRecorder has started only after the browser grants mic access.
+    if (isRecording) setPillState('recording');
+  }, [isRecording]);
+
+  useEffect(() => {
     if (recordError) {
       showError(recordError);
     }
@@ -315,10 +321,12 @@ export function useCaptureRecordingSession(
       if (isRecording) return;
       clearRestTimer();
       setFrozenElapsedMs(0);
-      setPillState('recording');
+      clearErrorTimer();
+      setErrorMessage(null);
+      setPillState('preparing');
       beginAudioRecording(context);
     },
-    [isRecording, beginAudioRecording, clearRestTimer],
+    [isRecording, beginAudioRecording, clearRestTimer, clearErrorTimer],
   );
 
   const toggleRecording = useCallback(() => {

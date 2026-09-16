@@ -216,3 +216,67 @@ test('cancel during permission acquisition never delivers speech', async () => {
   expect(complete).not.toHaveBeenCalled();
   expect(stream.getTracks()[0].readyState).toBe('ended');
 });
+
+test('known denied microphone permission prevents requesting a stream', async () => {
+  Object.assign(navigator, { permissions: { query: mock(async () => ({ state: 'denied' })) } });
+  await expect(openAudioInput()).rejects.toThrow('Microphone permission');
+  expect(getUserMedia).not.toHaveBeenCalled();
+});
+
+const createCapture = mock();
+mock.module('../src/lib/api/client', () => ({ apiClient: { createCapture } }));
+mock.module('@tauri-apps/api/event', () => ({ emit: mock(async () => {}) }));
+const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
+const { useCaptureRecordingSession } = await import('../src/lib/hooks/useCaptureRecordingSession');
+let session: ReturnType<typeof useCaptureRecordingSession>;
+let sessionOptions = {};
+function SessionHarness() {
+  session = useCaptureRecordingSession(sessionOptions);
+  return null;
+}
+async function mountSession(value = {}) {
+  sessionOptions = value;
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  await act(async () => {
+    renderer = create(
+      createElement(QueryClientProvider, { client }, createElement(SessionHarness)),
+    );
+  });
+}
+
+test('pending or denied permission never displays recording', async () => {
+  let reject!: (error: Error) => void;
+  getUserMedia.mockImplementation(
+    () =>
+      new Promise((_, r) => {
+        reject = r;
+      }),
+  );
+  await mountSession();
+  await act(async () => session.startRecording());
+  expect(session.pillState).not.toBe('recording');
+  await act(async () => {
+    reject(new DOMException('Microphone denied', 'NotAllowedError'));
+  });
+  expect(session.pillState).toBe('error');
+  expect(Recorder.instances).toHaveLength(0);
+});
+
+test('paste failures surface as errors instead of silently completing', async () => {
+  createCapture.mockResolvedValue({
+    id: 'take',
+    auto_refine: false,
+    allow_auto_paste: true,
+    transcript_raw: 'Hello.',
+  });
+  await mountSession({
+    onFinalText: async () => {
+      throw new Error('Accessibility permission required');
+    },
+  });
+  await act(async () => {
+    session.uploadFile(new File(['audio'], 'test.wav'), 'file');
+  });
+  expect(session.pillState).toBe('error');
+  expect(session.errorMessage).toContain('Accessibility permission required');
+});

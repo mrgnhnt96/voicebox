@@ -10,6 +10,7 @@ uploaded file). Storage mirrors the generations flow: audio lives under
 import contextlib
 import json
 import logging
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -82,13 +83,21 @@ async def create_capture(
         raw_path.write_bytes(audio_bytes)
         written_files.append(raw_path)
 
+        preparation_started = time.monotonic()
         # Decode once with librosa — its audioread fallback handles webm/opus
         # via ffmpeg, which miniaudio (used inside mlx-audio's whisper) can't.
         # The decoded array gives us an accurate duration and becomes the
         # canonical WAV we hand to whisper.
         try:
-            audio, sr = load_audio(str(raw_path))
-            duration_ms = int((len(audio) / sr) * 1000) if sr else None
+            if suffix == ".wav":
+                # Dictation is already WAV. Read its header rather than invoking
+                # librosa's cold imports/JIT and resampling just for duration.
+                info = sf.info(str(raw_path))
+                duration_ms = round(info.duration * 1000)
+                audio, sr = None, None
+            else:
+                audio, sr = load_audio(str(raw_path))
+                duration_ms = int((len(audio) / sr) * 1000) if sr else None
         except Exception as decode_err:
             logger.warning(
                 "Could not decode capture %s (%s): %r", capture_id, suffix, decode_err
@@ -117,9 +126,12 @@ async def create_capture(
                 raw_path.unlink()
                 written_files.remove(raw_path)
 
+        logger.info("Capture %s audio preparation: %.3fs", capture_id, time.monotonic() - preparation_started)
         whisper = get_whisper_model()
         resolved_stt = stt_model or whisper.model_size
+        transcription_started = time.monotonic()
         transcript = await whisper.transcribe(str(audio_path), language, resolved_stt)
+        logger.info("Capture %s transcription (including model load/queue): %.3fs for %sms audio", capture_id, time.monotonic() - transcription_started, duration_ms)
 
         row = DBCapture(
             id=capture_id,

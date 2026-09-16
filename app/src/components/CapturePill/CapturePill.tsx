@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils/cn';
  * recording pill in the Captures tab.
  */
 export type PillState =
+  | 'preparing'
   | 'recording'
   | 'transcribing'
   | 'refining'
@@ -17,6 +18,7 @@ export type PillState =
   | 'error';
 
 const PILL_LABEL_KEYS: Record<Exclude<PillState, 'rest' | 'error'>, string> = {
+  preparing: 'captures.pill.preparing',
   recording: 'captures.pill.recording',
   transcribing: 'captures.pill.transcribing',
   refining: 'captures.pill.refining',
