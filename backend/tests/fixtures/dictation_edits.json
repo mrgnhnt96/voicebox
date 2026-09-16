@@ -1,0 +1,6 @@
+[
+  {"name":"retracted_list","raw":"Alright, let's see if this is going to work. Add a new line and then create a list of item A, item B, and item C. And actually no, remove that list.","expected":"Alright, let's see if this is going to work."},
+  {"name":"retained_list","raw":"Alright, let's see if this is going to work. Add a new line and then create a list of item A, item B, and item C.","expected":"Alright, let's see if this is going to work.\n- Item A\n- Item B\n- Item C"},
+  {"name":"ordinary_request","raw":"Write an email to my manager saying I need to push the deadline.","expected":"Write an email to my manager saying I need to push the deadline."},
+  {"name":"reported_command","raw":"She said remove that list, but I decided to keep it.","expected":"She said remove that list, but I decided to keep it."}
+]

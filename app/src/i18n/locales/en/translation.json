@@ -983,7 +983,7 @@
         },
         "smartCleanup": {
           "title": "Smart cleanup",
-          "description": "Remove filler words (um, uh, like), restore punctuation, and fix capitalization without rephrasing."
+          "description": "Remove filler words, restore punctuation, and apply spoken formatting such as new lines, paragraphs, and bullet lists without rephrasing."
         },
         "selfCorrection": {
           "title": "Remove self-corrections",

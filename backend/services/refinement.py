@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 
 from . import llm as llm_service
+from .dictation_edits import apply_dictation_edits
 
 
 # A run that repeats this many times gets collapsed before the LLM sees
@@ -282,6 +283,16 @@ async def refine_transcript(
     # Pre-process before the LLM sees the text — the model shouldn't have
     # to reason about obvious STT garbage (see ``collapse_repetitive_artifacts``).
     cleaned_input = collapse_repetitive_artifacts(transcript)
+
+    edited = apply_dictation_edits(
+        cleaned_input,
+        formatting=flags.smart_cleanup,
+        corrections=flags.self_correction,
+    )
+    if edited is not None:
+        # Explicit structural edits are already resolved. A second generative
+        # pass can reintroduce deleted text or flatten the list on small models.
+        return edited, resolved_size
 
     system_prompt = build_refinement_prompt(flags)
     text = await backend.generate(
