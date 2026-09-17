@@ -230,22 +230,14 @@ export function useAudioRecording({
         const stream = await acquireStream();
         streamRef.current = stream;
 
-        let recordingStream: RecordingStream | undefined;
-        try {
-          recordingStream = await onRecordingStream?.(stream, context);
-          recordingStreamRef.current = recordingStream ?? null;
-        } catch {
-          // Streaming is optional; the full recording remains available.
-        }
-
         if (!mountedRef.current) {
-          recordingStream?.cancel();
           stream.getTracks().forEach((track) => {
             track.stop();
           });
           startingRef.current = false;
           return;
         }
+        let recordingStream: RecordingStream | undefined;
 
         // Create MediaRecorder with preferred MIME type
         const options: MediaRecorderOptions = {
@@ -335,6 +327,24 @@ export function useAudioRecording({
         // both AudioContext and ffmpeg. Starting with no timeslice produces
         // exactly one dataavailable on stop() with a valid container.
         mediaRecorder.start();
+        // The optional PCM processor must never delay capturing the first words.
+        // If setup finishes after stop/unmount, discard it and use the archive.
+        void onRecordingStream?.(stream, context)
+          .then((sidecar) => {
+            if (
+              !mountedRef.current ||
+              mediaRecorder.state !== 'recording' ||
+              cancelledRef.current
+            ) {
+              sidecar.cancel();
+              return;
+            }
+            recordingStream = sidecar;
+            recordingStreamRef.current = sidecar;
+          })
+          .catch(() => {
+            // Streaming is optional; the full recording remains available.
+          });
         setRecording(true);
         startTimeRef.current = Date.now();
         startingRef.current = false;
@@ -473,6 +483,7 @@ export function useAudioRecording({
       acquireGenRef.current += 1;
       cancelledRef.current = true;
       recordingStreamRef.current?.cancel();
+      if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
       if (timerRef.current !== null) {
         clearInterval(timerRef.current);
       }

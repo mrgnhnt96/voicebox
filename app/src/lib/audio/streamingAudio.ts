@@ -2,6 +2,7 @@
 export interface RecordingStream {
   stop: (duration?: number) => Promise<void>;
   cancel: () => void;
+  coversStart?: boolean;
 }
 
 const processorSource = `
@@ -42,14 +43,51 @@ class CapturePCM extends AudioWorkletProcessor {
 registerProcessor('capture-pcm', CapturePCM);
 `;
 
+// One processor module per webview. Keeping an unconnected audio context alive
+// does not hold a microphone; the recorder still owns device acquisition/release.
+let prepared: { context: AudioContext; ready: Promise<void>; loaded: boolean } | undefined;
+
+export function prepareStreamingAudio(): Promise<void> {
+  if (prepared && prepared.context.state !== 'closed') return prepared.ready;
+  try {
+    const context = new AudioContext();
+    const moduleUrl = URL.createObjectURL(new Blob([processorSource], { type: 'text/javascript' }));
+    const entry = { context, ready: Promise.resolve(), loaded: false };
+    prepared = entry;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    entry.ready = Promise.race([
+      context.audioWorklet.addModule(moduleUrl),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Audio streaming setup timed out')), 3000);
+      }),
+    ])
+      .then(() => {
+        entry.loaded = true;
+      })
+      .catch((error) => {
+        if (prepared === entry) prepared = undefined;
+        void context.close().catch(() => {});
+        throw error;
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        URL.revokeObjectURL(moduleUrl);
+      });
+    return entry.ready;
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
 export async function startStreamingAudio(
   stream: MediaStream,
   onStart: (sampleRate: number) => void,
   onFrame: (frame: ArrayBuffer) => void,
   onFailure?: () => void,
 ): Promise<RecordingStream> {
-  const context = new AudioContext();
-  const moduleUrl = URL.createObjectURL(new Blob([processorSource], { type: 'text/javascript' }));
+  const coversStart = !!prepared?.loaded && prepared.context.state === 'running';
+  if (!prepared?.loaded || prepared.context.state === 'closed') await prepareStreamingAudio();
+  const context = prepared!.context;
   let source: MediaStreamAudioSourceNode | undefined;
   let processor: AudioWorkletNode | undefined;
   let closed = false;
@@ -58,20 +96,22 @@ export async function startStreamingAudio(
     source?.disconnect();
     processor?.disconnect();
     processor?.port.close();
-    void context.close().catch(() => {});
   };
   try {
     let setupTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await Promise.race([
-        (async () => {
-          await context.audioWorklet.addModule(moduleUrl);
-          if (!closed) await context.resume();
-        })(),
-        new Promise<never>((_, reject) => {
-          setupTimer = setTimeout(() => reject(new Error('Audio streaming setup timed out')), 3000);
-        }),
-      ]);
+      if (context.state !== 'running')
+        await Promise.race([
+          (async () => {
+            if (context.state !== 'running' && !closed) await context.resume();
+          })(),
+          new Promise<never>((_, reject) => {
+            setupTimer = setTimeout(
+              () => reject(new Error('Audio streaming setup timed out')),
+              3000,
+            );
+          }),
+        ]);
     } finally {
       clearTimeout(setupTimer);
     }
@@ -92,6 +132,7 @@ export async function startStreamingAudio(
     // The processor's output is silence; connecting keeps WebKit's graph active.
     processor.connect(context.destination);
     return {
+      coversStart,
       cancel: close,
       stop: () =>
         new Promise<void>((resolve, reject) => {
@@ -114,7 +155,5 @@ export async function startStreamingAudio(
   } catch (error) {
     close();
     throw error;
-  } finally {
-    URL.revokeObjectURL(moduleUrl);
   }
 }

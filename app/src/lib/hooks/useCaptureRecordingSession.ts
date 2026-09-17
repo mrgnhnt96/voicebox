@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PillState } from '@/components/CapturePill/CapturePill';
 import { apiClient } from '@/lib/api/client';
 import { CaptureStream, type StreamingCaptureFinal } from '@/lib/api/captureStream';
-import { startStreamingAudio } from '@/lib/audio/streamingAudio';
+import { prepareStreamingAudio, startStreamingAudio } from '@/lib/audio/streamingAudio';
 import { useServerStore } from '@/stores/serverStore';
 import type { CaptureListResponse, CaptureResponse, CaptureSource } from '@/lib/api/types';
 import { useAudioRecording } from '@/lib/hooks/useAudioRecording';
@@ -112,6 +112,10 @@ export function useCaptureRecordingSession(
   options: UseCaptureRecordingSessionOptions = {},
 ): UseCaptureRecordingSessionResult {
   const mountedRef = useRef(true);
+  useEffect(() => {
+    // Prepare the processor without opening the microphone.
+    void prepareStreamingAudio().catch(() => {});
+  }, []);
   const queryClient = useQueryClient();
   // Every capture setting is resolved server-side. ``stt_model``,
   // ``llm_model`` and refine flags are read from the capture_settings table
@@ -218,7 +222,9 @@ export function useCaptureRecordingSession(
       if (text) await onFinalTextRef.current?.(text, capture, allowAutoPaste, context);
       if (
         shouldUpdatePill() &&
-        (pillStateRef.current === 'transcribing' || pillStateRef.current === 'refining')
+        (currentTake ||
+          pillStateRef.current === 'transcribing' ||
+          pillStateRef.current === 'refining')
       ) {
         scheduleHidePill();
       }
@@ -325,6 +331,10 @@ export function useCaptureRecordingSession(
           (frame) => take.stream?.append(frame),
           () => take.stream?.cancel(),
         );
+        if (!audio.coversStart) {
+          audio.cancel();
+          throw new Error('Streaming was not ready at capture start; using the complete recording');
+        }
         return {
           stop: async (duration) => {
             try {

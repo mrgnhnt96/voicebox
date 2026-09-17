@@ -72,7 +72,11 @@ beforeEach(() => {
     configurable: true,
     value: { mediaDevices: { getUserMedia } },
   });
-  Object.assign(globalThis, { window: globalThis, MediaRecorder: Recorder });
+  Object.assign(globalThis, {
+    window: globalThis,
+    MediaRecorder: Recorder,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
 });
 afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount());
@@ -241,12 +245,13 @@ function SessionHarness() {
   session = useCaptureRecordingSession(sessionOptions);
   return null;
 }
-async function mountSession(value = {}) {
+async function mountSession(value = {}, concurrent = false) {
   sessionOptions = value;
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   await act(async () => {
     renderer = create(
       createElement(QueryClientProvider, { client }, createElement(SessionHarness)),
+      { unstable_isConcurrent: concurrent } as Parameters<typeof create>[1],
     );
   });
 }
@@ -339,7 +344,8 @@ test('unmount during streaming setup cancels the late sidecar and releases mic',
   await start;
   expect(cancel).toHaveBeenCalledTimes(1);
   expect(streams[0].getTracks()[0].readyState).toBe('ended');
-  expect(Recorder.instances).toHaveLength(0);
+  expect(Recorder.instances).toHaveLength(1);
+  expect(Recorder.instances[0].state).toBe('inactive');
 });
 
 test('delayed completion of the prior take cannot replace the current recording pill', async () => {
@@ -416,4 +422,146 @@ test('empty refined output completes without pasting raw text or replacing a sel
   expect(deliver).not.toHaveBeenCalled();
   expect(session.pillState).toBe('rest');
   expect(session.errorMessage).toBeNull();
+});
+
+test('recording starts while optional streaming setup is pending', async () => {
+  let resolve!: (value: { stop: () => Promise<void>; cancel: () => void }) => void;
+  await mount({
+    onRecordingStream: () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  });
+  let start!: Promise<void>;
+  await act(async () => {
+    start = hook.startRecording();
+  });
+  try {
+    expect(hook.isRecording).toBe(true);
+    expect(Recorder.instances[0].state).toBe('recording');
+  } finally {
+    resolve({ stop: async () => {}, cancel: mock() });
+    await act(async () => {
+      await start;
+      hook.stopRecording();
+    });
+  }
+});
+
+test('an immediate silent streaming result clears the pill without pasting', async () => {
+  const originalContext = globalThis.AudioContext;
+  const originalWorklet = globalThis.AudioWorkletNode;
+  const originalSocket = globalThis.WebSocket;
+  const originalNow = Date.now;
+  let now = 1000;
+  Date.now = () => now;
+  class AudioContextMock {
+    static latest: AudioContextMock;
+    constructor() {
+      AudioContextMock.latest = this;
+    }
+    sampleRate = 48000;
+    state = 'running';
+    audioWorklet = { addModule: async () => {} };
+    resume = async () => {};
+    close = async () => {
+      this.state = 'closed';
+    };
+    createMediaStreamSource = () => ({ connect() {}, disconnect() {} });
+  }
+  class Worklet {
+    port = {
+      onmessage: undefined as ((event: { data: string }) => void) | undefined,
+      postMessage: () => this.port.onmessage?.({ data: 'stopped' }),
+      close() {},
+    };
+    connect() {}
+    disconnect() {}
+  }
+  class Socket {
+    static OPEN = 1;
+    readyState = 1;
+    bufferedAmount = 0;
+    onopen?: () => void;
+    onclose?: () => void;
+    onmessage?: (event: { data: string }) => void;
+    constructor() {
+      queueMicrotask(() => this.onopen?.());
+    }
+    send(data: string) {
+      const command = JSON.parse(data);
+      this.onmessage?.({
+        data: JSON.stringify(
+          command.type === 'start'
+            ? { type: 'ready', session_id: 'silent' }
+            : {
+                type: 'final',
+                refinement_complete: true,
+                capture: {
+                  id: 'silent',
+                  transcript_raw: '',
+                  transcript_refined: '',
+                  allow_auto_paste: true,
+                },
+              },
+        ),
+      });
+    }
+    close() {
+      this.onclose?.();
+    }
+  }
+  Object.assign(globalThis, {
+    AudioContext: AudioContextMock,
+    AudioWorkletNode: Worklet,
+    WebSocket: Socket,
+  });
+  const deliver = mock();
+  try {
+    await mountSession({ onFinalText: deliver }, true);
+    await act(async () => session.startRecording());
+    expect(session.pillState).toBe('recording');
+    now += 1000;
+    await act(async () => session.stopRecording());
+    expect(session.pillState).toBe('rest');
+    expect(session.isUploading).toBe(false);
+    expect(deliver).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => renderer.unmount());
+    await AudioContextMock.latest.close();
+    Object.assign(globalThis, {
+      AudioContext: originalContext,
+      AudioWorkletNode: originalWorklet,
+      WebSocket: originalSocket,
+    });
+    Date.now = originalNow;
+  }
+});
+
+test('stop does not wait for a late sidecar and retains the full recording', async () => {
+  let resolve!: (value: { stop: () => Promise<void>; cancel: () => void }) => void;
+  const complete = mock();
+  const cancel = mock();
+  const stop = mock(async () => {});
+  await mount({
+    onRecordingStream: () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+    onRecordingComplete: complete,
+  });
+  await act(async () => {
+    await hook.startRecording('target');
+  });
+  await act(async () => hook.stopRecording());
+  expect(complete).toHaveBeenCalledTimes(1);
+  expect(complete.mock.calls[0][0].size).toBeGreaterThan(0);
+  expect(complete.mock.calls[0][2]).toBe('target');
+  expect(hook.canStartRecording()).toBe(true);
+  await act(async () => {
+    resolve({ stop, cancel });
+  });
+  expect(cancel).toHaveBeenCalledTimes(1);
+  expect(stop).not.toHaveBeenCalled();
+  expect(complete).toHaveBeenCalledTimes(1);
 });

@@ -82,4 +82,28 @@ Do not conflate source tests, a frozen backend socket check, and an installed de
 
 The rebuilt PyInstaller server passed the same real WebSocket recording check with offline cached models: five transcript updates and one refinement before stop, expected final text, one capture, origin rejection, and recovery all passed. The measured final wait was approximately 0.81 seconds for this synthetic short recording. A separate connection closed immediately after sending finish; polling recovered exactly one additional persisted capture, demonstrating recovery without a duplicate upload.
 
-The updated macOS bundle was built at `tauri/src-tauri/target/release/bundle/macos/Voicebox.app`, signed with the available local development identity, and passed deep/strict code-signature verification. The installed `/Applications/Voicebox.app` was not replaced or restarted. An actual installed-app microphone/hotkey-to-paste session remains a separate hands-on check; synthetic WebKit capture and packaged server inference do not establish that entire interaction.
+The updated macOS bundle was built at `tauri/src-tauri/target/release/bundle/macos/Voicebox.app`, signed with the available local development identity, and passed deep/strict code-signature verification. That initial validation did not replace the installed app. The user subsequently requested installation, and `/Applications/Voicebox.app` was replaced and relaunched with a healthy backend. An actual installed-app microphone/hotkey-to-paste session remains a separate hands-on check; synthetic WebKit capture and packaged server inference do not establish that entire interaction.
+
+
+## Startup and empty-result fixes
+
+The first implementation awaited AudioWorklet setup before starting MediaRecorder.
+Recording now starts immediately after microphone acquisition. The dictation
+session prepares and reuses the worklet module and AudioContext ahead of time,
+without opening the microphone. If the processor is cold or suspended at capture
+start, that take uses the complete archival recording instead of finalizing PCM
+that could omit its first words. A sidecar that resolves after stop or unmount is
+canceled without delaying completion.
+
+An empty streaming result could finish within one React render batch. Completion
+previously checked a pill-state ref that still said “recording”, then left the
+newly queued “transcribing” state visible indefinitely. Completion now checks the
+recording identity; empty output clears the pill without pasting and old results
+cannot hide a newer recording.
+
+Both failures were reproduced in regression tests before fixing them, including
+React concurrent rendering for the empty-result race. The focused frontend suite
+now passes 28 tests, with typecheck and scoped lint passing. A production-module
+WKWebView smoke test also verifies PCM capture, flush, and reuse of a prepared
+context across takes. Physical microphone startup still depends on device access;
+the existing opt-in “keep microphone ready” setting avoids reopening the device.
