@@ -224,7 +224,14 @@ test('known denied microphone permission prevents requesting a stream', async ()
 });
 
 const createCapture = mock();
-mock.module('../src/lib/api/client', () => ({ apiClient: { createCapture } }));
+const refineCapture = mock();
+mock.module('../src/lib/api/client', () => ({
+  apiClient: {
+    createCapture,
+    refineCapture,
+    pauseLearningForRecording: mock(async () => {}),
+  },
+}));
 mock.module('@tauri-apps/api/event', () => ({ emit: mock(async () => {}) }));
 const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
 const { useCaptureRecordingSession } = await import('../src/lib/hooks/useCaptureRecordingSession');
@@ -279,4 +286,99 @@ test('paste failures surface as errors instead of silently completing', async ()
   });
   expect(session.pillState).toBe('error');
   expect(session.errorMessage).toContain('Accessibility permission required');
+});
+
+test('streaming flush starts finalization before archival WAV conversion', async () => {
+  const order: string[] = [];
+  convert.mockImplementation(async (blob) => { order.push('convert'); return blob; });
+  await mount({
+    onRecordingStream: async () => ({
+      stop: async () => { order.push('flush'); }, cancel: mock(),
+    }),
+    onRecordingComplete: () => order.push('complete'),
+  });
+  await act(async () => hook.startRecording());
+  await act(async () => hook.stopRecording());
+  expect(order).toEqual(['flush', 'convert', 'complete']);
+});
+
+test('streaming initialization failure preserves full recording completion', async () => {
+  const complete = mock();
+  await mount({
+    onRecordingStream: async () => { throw new Error('AudioWorklet unavailable'); },
+    onRecordingComplete: complete,
+  });
+  await act(async () => hook.startRecording());
+  await act(async () => hook.stopRecording());
+  expect(complete).toHaveBeenCalledTimes(1);
+});
+
+test('unmount during streaming setup cancels the late sidecar and releases mic', async () => {
+  let resolve!: (value: { stop: () => Promise<void>; cancel: () => void }) => void;
+  const cancel = mock();
+  await mount({ onRecordingStream: () => new Promise((r) => { resolve = r; }) });
+  let start!: Promise<void>;
+  await act(async () => { start = hook.startRecording(); });
+  await act(async () => renderer.unmount());
+  resolve({ stop: async () => {}, cancel });
+  await start;
+  expect(cancel).toHaveBeenCalledTimes(1);
+  expect(streams[0].getTracks()[0].readyState).toBe('ended');
+  expect(Recorder.instances).toHaveLength(0);
+});
+
+test('delayed completion of the prior take cannot replace the current recording pill', async () => {
+  const originalNow = Date.now;
+  let now = 1000;
+  Date.now = () => now;
+  let resolve!: (blob: Blob) => void;
+  convert.mockImplementation(() => new Promise((r) => { resolve = r; }));
+  const delivered = mock();
+  createCapture.mockResolvedValue({ id: 'previous', auto_refine: false, allow_auto_paste: true, transcript_raw: 'First take.' });
+  try {
+    await mountSession({ onFinalText: delivered });
+    await act(async () => session.startRecording('first-target'));
+    now += 600;
+    await act(async () => session.stopRecording());
+    await act(async () => session.startRecording('second-target'));
+    expect(session.pillState).toBe('recording');
+    await act(async () => {
+      resolve(new Blob(['wav'], { type: 'audio/wav' }));
+      await new Promise((done) => setTimeout(done, 10));
+    });
+    expect(session.pillState).toBe('recording');
+    expect(delivered.mock.calls[0][3]).toBe('first-target');
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test('recorder rejects a new take until the PCM tail has flushed', async () => {
+  let finish!: () => void;
+  await mount({ onRecordingStream: async () => ({ stop: () => new Promise<void>((r) => { finish = r; }), cancel: mock() }) });
+  await act(async () => hook.startRecording());
+  await act(async () => hook.stopRecording());
+  expect(hook.canStartRecording()).toBe(false);
+  await act(async () => finish());
+  expect(hook.canStartRecording()).toBe(true);
+});
+
+
+test('empty refined output completes without pasting raw text or replacing a selection', async () => {
+  const capture = {
+    id: 'empty-refinement', auto_refine: true, allow_auto_paste: true,
+    transcript_raw: 'remove that', transcript_refined: '',
+  };
+  createCapture.mockResolvedValue({ ...capture, transcript_refined: null });
+  refineCapture.mockResolvedValue(capture);
+  const deliver = mock();
+  await mountSession({ onFinalText: deliver });
+  await act(async () => {
+    session.uploadFile(new File(['audio'], 'empty.wav'), 'file');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(refineCapture).toHaveBeenCalledWith('empty-refinement', {});
+  expect(deliver).not.toHaveBeenCalled();
+  expect(session.pillState).toBe('rest');
+  expect(session.errorMessage).toBeNull();
 });

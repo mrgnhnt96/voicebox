@@ -92,6 +92,7 @@
     "source": {
       "dictation": "Dictation",
       "recording": "Recording",
+      "batchFallback": "{{state}} · batch mode",
       "file": "File"
     },
     "transcript": {

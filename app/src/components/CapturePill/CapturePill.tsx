@@ -13,7 +13,6 @@ export type PillState =
   | 'transcribing'
   | 'refining'
   | 'speaking'
-  | 'completed'
   | 'rest'
   | 'error';
 
@@ -23,14 +22,13 @@ const PILL_LABEL_KEYS: Record<Exclude<PillState, 'rest' | 'error'>, string> = {
   transcribing: 'captures.pill.transcribing',
   refining: 'captures.pill.refining',
   speaking: 'captures.pill.speaking',
-  completed: 'captures.pill.completed',
 };
 
 function barModeFor(
   state: Exclude<PillState, 'error'>,
 ): 'generating' | 'playing' | 'idle' {
   if (state === 'recording' || state === 'speaking') return 'playing';
-  if (state === 'completed' || state === 'rest') return 'idle';
+  if (state === 'rest') return 'idle';
   return 'generating';
 }
 
@@ -78,6 +76,7 @@ function formatElapsed(ms: number): string {
 export function CapturePill({
   state,
   elapsedMs,
+  batchFallback = false,
   onStop,
   errorMessage,
   onDismiss,
@@ -85,6 +84,7 @@ export function CapturePill({
 }: {
   state: PillState;
   elapsedMs: number;
+  batchFallback?: boolean;
   onStop?: () => void;
   errorMessage?: string | null;
   onDismiss?: () => void;
@@ -126,21 +126,12 @@ export function CapturePill({
     </button>
   ) : dot;
 
-  // Completed gets an inset accent stroke (via box-shadow, not Tailwind's
-  // ring — ring utility doesn't compose with arbitrary shadow-[…]) to mark
-  // the success moment without changing the pill's dimensions.
-  const completedStroke =
-    state === 'completed'
-      ? 'shadow-[inset_0_0_0_2px_hsl(var(--accent)/0.6)]'
-      : null;
-
   return (
     <div
       className={cn(
         'inline-flex items-center gap-3 px-4 h-10 rounded-full text-accent',
         'bg-white/80 ring-1 ring-black/5 shadow-lg backdrop-blur-xl',
         'dark:bg-black/55 dark:ring-0 dark:shadow-none dark:backdrop-blur-md',
-        completedStroke,
         'transition-opacity duration-300 ease-out',
         visible ? 'opacity-100' : 'opacity-0 pointer-events-none',
         className,
@@ -148,7 +139,9 @@ export function CapturePill({
     >
       {stopButton}
       <span className="text-sm font-medium shrink-0" style={{ minWidth: '104px' }}>
-        {labelText}
+        {batchFallback && (state === 'recording' || state === 'transcribing')
+          ? t('captures.pill.batchFallback', { defaultValue: '{{state}} · batch mode', state: labelText })
+          : labelText}
       </span>
       <PillAudioBars mode={barMode} />
       <span className="text-xs tabular-nums text-accent/70 font-medium shrink-0 -ml-1">
@@ -197,4 +190,3 @@ function ErrorPill({
     </button>
   );
 }
-

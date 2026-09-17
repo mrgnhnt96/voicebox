@@ -174,6 +174,14 @@ def build_server(cuda=False, rocm=False):
             "fastapi",
             "--hidden-import",
             "uvicorn",
+            # Uvicorn resolves WebSocket transports by import string. Include
+            # the streaming dictation transport in frozen desktop builds.
+            "--hidden-import",
+            "uvicorn.protocols.websockets.auto",
+            "--hidden-import",
+            "uvicorn.protocols.websockets.websockets_impl",
+            "--collect-submodules",
+            "websockets",
             "--hidden-import",
             "sqlalchemy",
             # librosa uses lazy_loader which generates .pyi stub files at

@@ -188,21 +188,11 @@ def create_app() -> FastAPI:
 
 def _configure_cors(application: FastAPI) -> None:
     """Set up CORS middleware with local-first defaults."""
-    default_origins = [
-        "http://localhost:5173",  # Vite dev server
-        "http://127.0.0.1:5173",
-        "http://localhost:17493",
-        "http://127.0.0.1:17493",
-        "tauri://localhost",  # Tauri webview (macOS)
-        "https://tauri.localhost",  # Tauri webview (Windows/Linux)
-        "http://tauri.localhost",  # Tauri webview (Windows, some builds)
-    ]
-    env_origins = os.environ.get("VOICEBOX_CORS_ORIGINS", "")
-    all_origins = default_origins + [o.strip() for o in env_origins.split(",") if o.strip()]
+    from .utils.origins import allowed_origins
 
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=all_origins,
+        allow_origins=allowed_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

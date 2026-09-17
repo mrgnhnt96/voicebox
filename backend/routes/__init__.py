@@ -13,6 +13,7 @@ def register_routers(app: FastAPI) -> None:
     from .transcription import router as transcription_router
     from .llm import router as llm_router
     from .captures import router as captures_router
+    from .capture_stream import router as capture_stream_router
     from .stories import router as stories_router
     from .effects import router as effects_router
     from .audio import router as audio_router
@@ -33,6 +34,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(history_router)
     app.include_router(transcription_router)
     app.include_router(llm_router)
+    app.include_router(capture_stream_router)
     app.include_router(captures_router)
     app.include_router(stories_router)
     app.include_router(effects_router)

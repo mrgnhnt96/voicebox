@@ -3,6 +3,9 @@ import { emit as tauriEmit } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PillState } from '@/components/CapturePill/CapturePill';
 import { apiClient } from '@/lib/api/client';
+import { CaptureStream, type StreamingCaptureFinal } from '@/lib/api/captureStream';
+import { startStreamingAudio } from '@/lib/audio/streamingAudio';
+import { useServerStore } from '@/stores/serverStore';
 import type {
   CaptureListResponse,
   CaptureResponse,
@@ -34,10 +37,13 @@ function broadcastUpdated(id: string) {
   });
 }
 
+interface RecordingTake {
+  context: unknown;
+  stream?: CaptureStream;
+  final?: Promise<{ result: StreamingCaptureFinal | null; error?: Error }>;
+}
+
 const REST_FADE_MS = 900;
-// How long the green "Done" pill stays visible after refine (or transcribe,
-// when auto-refine is off) completes, before the fade-out begins.
-const COMPLETED_DWELL_MS = 2000;
 // Long enough to read a full backend stack message and click-to-copy.
 const ERROR_PILL_VISIBLE_MS = 6000;
 // Short self-explanatory notices (e.g. "Recording too short, canceled") —
@@ -83,6 +89,7 @@ export interface UseCaptureRecordingSessionOptions {
 
 export interface UseCaptureRecordingSessionResult {
   pillState: CapturePillState;
+  batchFallback: boolean;
   pillElapsedMs: number;
   errorMessage: string | null;
   isRecording: boolean;
@@ -108,6 +115,7 @@ export interface UseCaptureRecordingSessionResult {
 export function useCaptureRecordingSession(
   options: UseCaptureRecordingSessionOptions = {},
 ): UseCaptureRecordingSessionResult {
+  const mountedRef = useRef(true);
   const queryClient = useQueryClient();
   // Every capture setting is resolved server-side. ``stt_model``,
   // ``llm_model`` and refine flags are read from the capture_settings table
@@ -115,6 +123,11 @@ export function useCaptureRecordingSession(
   // back on the create response so the client decides whether to chain a
   // refine call using a value that can't go stale across sibling webviews.
 
+  const [batchFallback, setBatchFallback] = useState(false);
+  const activeTakeRef = useRef<RecordingTake | null>(null);
+  const startingRef = useRef(false);
+  const [finalizingCount, setFinalizingCount] = useState(0);
+  const streamsRef = useRef(new Set<CaptureStream>());
   const [pillState, setPillState] = useState<CapturePillState>('hidden');
   const [frozenElapsedMs, setFrozenElapsedMs] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -135,7 +148,7 @@ export function useCaptureRecordingSession(
   // by capture id so a refine that resolves after another dictation started
   // still delivers to the right target with the setting the capture was created
   // under. Populated on capture-create and consumed once the final text lands.
-  const captureDeliveryRef = useRef<Map<string, { context: unknown; allowAutoPaste: boolean }>>(
+  const captureDeliveryRef = useRef<Map<string, { context: unknown; allowAutoPaste: boolean; take?: RecordingTake }>>(
     new Map(),
   );
 
@@ -155,16 +168,11 @@ export function useCaptureRecordingSession(
 
   const scheduleHidePill = useCallback(() => {
     clearRestTimer();
-    setPillState('completed');
-    // Two-hop timer: show the green "Done" pill for COMPLETED_DWELL_MS,
-    // then hand off to the existing rest-fade before unmounting.
+    setPillState('rest');
     restTimerRef.current = window.setTimeout(() => {
-      setPillState('rest');
-      restTimerRef.current = window.setTimeout(() => {
-        setPillState('hidden');
-        restTimerRef.current = null;
-      }, REST_FADE_MS);
-    }, COMPLETED_DWELL_MS);
+      setPillState('hidden');
+      restTimerRef.current = null;
+    }, REST_FADE_MS);
   }, [clearRestTimer]);
 
   const showError = useCallback(
@@ -189,9 +197,15 @@ export function useCaptureRecordingSession(
   }, [clearErrorTimer]);
 
   useEffect(
-    () => () => {
+    () => {
+      mountedRef.current = true;
+      return () => {
+      mountedRef.current = false;
       clearRestTimer();
       clearErrorTimer();
+      for (const stream of streamsRef.current) stream.cancel();
+      streamsRef.current.clear();
+      };
     },
     [clearRestTimer, clearErrorTimer],
   );
@@ -201,15 +215,19 @@ export function useCaptureRecordingSession(
     capture: CaptureResponse,
     allowAutoPaste: boolean,
     context?: unknown,
+    currentTake?: RecordingTake,
   ) => {
+    const shouldUpdatePill = () => mountedRef.current && (!currentTake || activeTakeRef.current === currentTake);
     try {
+      // Phase one inserts only at completion. Empty output must not replace
+      // an existing selection; deletion requires a verified owned range later.
       if (text) await onFinalTextRef.current?.(text, capture, allowAutoPaste, context);
-      if (pillStateRef.current === 'transcribing' || pillStateRef.current === 'refining') {
+      if (shouldUpdatePill() && (pillStateRef.current === 'transcribing' || pillStateRef.current === 'refining')) {
         scheduleHidePill();
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      showError(`Text saved in Captures. ${message}`);
+      if (shouldUpdatePill()) showError(`Text saved in Captures. ${message}`);
     }
   };
 
@@ -222,11 +240,12 @@ export function useCaptureRecordingSession(
       const delivery = captureDeliveryRef.current.get(captureId);
       captureDeliveryRef.current.delete(captureId);
       const finalText = data.transcript_refined ?? data.transcript_raw;
-      await deliverText(finalText, data, delivery?.allowAutoPaste ?? true, delivery?.context);
+      await deliverText(finalText, data, delivery?.allowAutoPaste ?? true, delivery?.context, delivery?.take);
     },
     onError: (err: Error, captureId) => {
+      const delivery = captureDeliveryRef.current.get(captureId);
       captureDeliveryRef.current.delete(captureId);
-      showError(err.message || 'Refinement failed');
+      if (!delivery?.take || activeTakeRef.current === delivery.take) showError(err.message || 'Refinement failed');
     },
   });
 
@@ -238,8 +257,10 @@ export function useCaptureRecordingSession(
       file: File;
       source: CaptureSource;
       context?: unknown;
+      take?: RecordingTake;
     }) => apiClient.createCapture(file, { source }),
-    onSuccess: async (capture, { context }) => {
+    onSuccess: async (capture, { context, take }) => {
+      if (!mountedRef.current) return;
       queryClient.setQueryData<CaptureListResponse>(['captures'], (prev) => {
         if (!prev) return prev;
         if (prev.items.some((c) => c.id === capture.id)) return prev;
@@ -252,14 +273,16 @@ export function useCaptureRecordingSession(
         captureDeliveryRef.current.set(capture.id, {
           context,
           allowAutoPaste: capture.allow_auto_paste,
+          take,
         });
-        setPillState('refining');
+        if (!take || activeTakeRef.current === take) setPillState('refining');
         refineMutation.mutate(capture.id);
       } else {
-        await deliverText(capture.transcript_raw, capture, capture.allow_auto_paste, context);
+        await deliverText(capture.transcript_raw, capture, capture.allow_auto_paste, context, take);
       }
     },
-    onError: (err: Error) => {
+    onError: (err: Error, { take }) => {
+      if (!mountedRef.current || (take && activeTakeRef.current !== take)) return;
       // Backend's librosa-audioread fallback returns a 400 with this shape
       // for tiny/corrupt webm blobs that slip past the client guard —
       // translate it to the same friendly message so the user sees one
@@ -277,22 +300,97 @@ export function useCaptureRecordingSession(
     isRecording,
     duration,
     startRecording: beginAudioRecording,
+    canStartRecording,
     stopRecording,
     error: recordError,
     prewarm,
     releaseWarm,
   } = useAudioRecording({
     keepWarm: options.keepMicWarm ?? false,
-    onRecordingComplete: (blob, recordedDuration, context) => {
+    onRecordingStream: async (stream, context) => {
+      const take = context as RecordingTake;
+      try {
+        const audio = await startStreamingAudio(stream, (sampleRate) => {
+          take.stream = new CaptureStream(useServerStore.getState().serverUrl, sampleRate, () => {
+            if (activeTakeRef.current === take) setBatchFallback(true);
+          });
+          streamsRef.current.add(take.stream);
+        }, (frame) => take.stream?.append(frame), () => take.stream?.cancel());
+        return {
+          stop: async (duration) => {
+            try { await audio.stop(); }
+            catch { take.stream?.cancel(); }
+            if (take.stream && (duration ?? 0) >= MIN_RECORDING_DURATION_S) {
+              setFinalizingCount((count) => count + 1);
+              take.final = take.stream.finish().then(
+                (result) => ({ result }),
+                (error: Error) => ({ result: null, error }),
+              );
+            } else take.stream?.cancel();
+          },
+          cancel: () => {
+            audio.cancel();
+            take.stream?.cancel();
+            if (take.stream) streamsRef.current.delete(take.stream);
+          },
+        };
+      } catch (error) {
+        if (activeTakeRef.current === take) setBatchFallback(true);
+        take.stream?.cancel();
+        if (take.stream) streamsRef.current.delete(take.stream);
+        throw error;
+      }
+    },
+    onRecordingComplete: async (blob, recordedDuration, recordingContext) => {
+      if (!mountedRef.current) return;
+      const take = recordingContext as RecordingTake;
+      const context = take.context;
       // Trigger-happy tap — MediaRecorder hasn't emitted a usable chunk yet
       // so the blob is empty or unparseable. Surface it as a transient pill
       // so the user sees their recording was recognised and canceled.
-      if (!blob.size || (recordedDuration ?? 0) < MIN_RECORDING_DURATION_S) {
-        showError(SHORT_RECORDING_MESSAGE, BRIEF_NOTICE_MS);
+      if ((!blob.size && !take.final) || (recordedDuration ?? 0) < MIN_RECORDING_DURATION_S) {
+        take.stream?.cancel();
+        if (take.stream) streamsRef.current.delete(take.stream);
+        if (activeTakeRef.current === take) showError(SHORT_RECORDING_MESSAGE, BRIEF_NOTICE_MS);
         return;
       }
-      setFrozenElapsedMs(Math.round((recordedDuration ?? 0) * 1000));
-      setPillState('transcribing');
+      if (activeTakeRef.current === take) {
+        setFrozenElapsedMs(Math.round((recordedDuration ?? 0) * 1000));
+        setPillState('transcribing');
+      }
+      if (take.stream) {
+        try {
+          const final = take.final ? await take.final : { result: null };
+          if (!mountedRef.current) return;
+          if (final.error) throw final.error;
+          const result = final.result;
+          if (result) {
+            if (result.degraded_reason && activeTakeRef.current === take) setBatchFallback(true);
+            const capture = result.capture;
+            queryClient.setQueryData<CaptureListResponse>(['captures'], (previous) => {
+              if (!previous || previous.items.some((item) => item.id === capture.id)) return previous;
+              return { ...previous, items: [capture, ...previous.items], total: previous.total + 1 };
+            });
+            queryClient.invalidateQueries({ queryKey: ['captures'] });
+            broadcastCreated(capture);
+            onCaptureCreatedRef.current?.(capture, context);
+            if (result.refinement_error) {
+              if (activeTakeRef.current === take) showError(`Text saved in Captures. ${result.refinement_error}`);
+            } else {
+              await deliverText(capture.transcript_refined ?? capture.transcript_raw, capture,
+                capture.allow_auto_paste, context, take);
+            }
+            return;
+          }
+          // No finish was sent, so the archived audio can safely use batch transcription.
+        } catch (error) {
+          if (activeTakeRef.current === take) showError(error instanceof Error ? error.message : 'Streaming finalization failed');
+          return;
+        } finally {
+          streamsRef.current.delete(take.stream);
+          if (take.final && mountedRef.current) setFinalizingCount((count) => count - 1);
+        }
+      }
       const extension = blob.type.includes('wav')
         ? 'wav'
         : blob.type.includes('webm')
@@ -301,7 +399,7 @@ export function useCaptureRecordingSession(
       const file = new File([blob], `dictation-${Date.now()}.${extension}`, {
         type: blob.type,
       });
-      uploadMutation.mutate({ file, source: 'dictation', context });
+      uploadMutation.mutate({ file, source: 'dictation', context, take });
     },
   });
 
@@ -316,17 +414,30 @@ export function useCaptureRecordingSession(
     }
   }, [recordError, showError]);
 
+  useEffect(() => {
+    if (!isRecording) return;
+    const interval = window.setInterval(() => {
+      void apiClient.pauseLearningForRecording().catch(() => {});
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [isRecording]);
+
   const startRecording = useCallback(
     (context?: unknown) => {
-      if (isRecording) return;
+      if (isRecording || startingRef.current || !canStartRecording()) return;
+      startingRef.current = true;
+      void apiClient.pauseLearningForRecording().catch(() => {});
       clearRestTimer();
       setFrozenElapsedMs(0);
       clearErrorTimer();
       setErrorMessage(null);
       setPillState('preparing');
-      beginAudioRecording(context);
+      const take: RecordingTake = { context };
+      activeTakeRef.current = take;
+      setBatchFallback(false);
+      void beginAudioRecording(take).finally(() => { startingRef.current = false; });
     },
-    [isRecording, beginAudioRecording, clearRestTimer, clearErrorTimer],
+    [isRecording, canStartRecording, beginAudioRecording, clearRestTimer, clearErrorTimer],
   );
 
   const toggleRecording = useCallback(() => {
@@ -356,10 +467,11 @@ export function useCaptureRecordingSession(
 
   return {
     pillState,
+    batchFallback,
     pillElapsedMs,
     errorMessage,
     isRecording,
-    isUploading: uploadMutation.isPending,
+    isUploading: uploadMutation.isPending || finalizingCount > 0,
     isRefining: refineMutation.isPending,
     startRecording,
     stopRecording,

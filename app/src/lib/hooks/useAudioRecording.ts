@@ -3,8 +3,10 @@ import { usePlatform } from '@/platform/PlatformContext';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
 import { openAudioInput } from '@/lib/utils/audioInput';
 import { convertToWav } from '@/lib/utils/audio';
+import type { RecordingStream } from '@/lib/audio/streamingAudio';
 
 interface UseAudioRecordingOptions {
+  onRecordingStream?: (stream: MediaStream, context?: unknown) => Promise<RecordingStream>;
   maxDurationSeconds?: number;
   deviceId?: string | null;
   // ``context`` is whatever was handed to ``startRecording`` for this take,
@@ -46,8 +48,10 @@ export function useAudioRecording({
   maxDurationSeconds,
   deviceId,
   onRecordingComplete,
+  onRecordingStream,
   keepWarm = false,
 }: UseAudioRecordingOptions = {}) {
+  const mountedRef = useRef(true);
   const platform = usePlatform();
   const { settings: captureSettings } = useCaptureSettings();
   const targetDeviceId = deviceId !== undefined ? deviceId : captureSettings?.input_device_id;
@@ -56,6 +60,7 @@ export function useAudioRecording({
   const [error, setError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recordingStreamRef = useRef<RecordingStream | null>(null);
   // The stream currently backing the MediaRecorder. When ``keepWarm`` is set
   // this is the same object as ``warmStreamRef`` and is *not* torn down on
   // stop; otherwise it's stopped as soon as the recording completes.
@@ -225,6 +230,21 @@ export function useAudioRecording({
         const stream = await acquireStream();
         streamRef.current = stream;
 
+        let recordingStream: RecordingStream | undefined;
+        try {
+          recordingStream = await onRecordingStream?.(stream, context);
+          recordingStreamRef.current = recordingStream ?? null;
+        } catch {
+          // Streaming is optional; the full recording remains available.
+        }
+
+        if (!mountedRef.current) {
+          recordingStream?.cancel();
+          stream.getTracks().forEach((track) => track.stop());
+          startingRef.current = false;
+          return;
+        }
+
         // Create MediaRecorder with preferred MIME type
         const options: MediaRecorderOptions = {
           mimeType: 'audio/webm;codecs=opus',
@@ -280,13 +300,17 @@ export function useAudioRecording({
             if (isCurrent) streamRef.current = null;
           }
 
+          if (isCurrent) recordingStreamRef.current = null;
+          if (wasCancelled) recordingStream?.cancel();
+          else await recordingStream?.stop(recordedDuration).catch(() => recordingStream?.cancel());
+
           // All shared per-take refs have now been snapshotted and stream
           // cleanup is complete. A new take may begin while WAV conversion and
           // upload continue using the local values above.
           finishingRef.current = false;
 
           // Don't fire completion callback if the recording was cancelled
-          if (wasCancelled) return;
+          if (wasCancelled || !mountedRef.current) return;
 
           // Convert to WAV format to avoid needing ffmpeg on backend
           try {
@@ -359,6 +383,8 @@ export function useAudioRecording({
           });
           streamRef.current = null;
         }
+        recordingStreamRef.current?.cancel();
+        recordingStreamRef.current = null;
         startingRef.current = false;
         finishingRef.current = false;
         pendingStopRef.current = false;
@@ -369,6 +395,7 @@ export function useAudioRecording({
     [
       maxDurationSeconds,
       onRecordingComplete,
+      onRecordingStream,
       acquireStream,
       keepWarm,
       releaseWarmStream,
@@ -398,6 +425,7 @@ export function useAudioRecording({
   }, [setRecording]);
 
   const cancelRecording = useCallback(() => {
+    recordingStreamRef.current?.cancel();
     cancelledRef.current = true; // Must be set before stop() triggers onstop
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== 'inactive') {
@@ -435,10 +463,14 @@ export function useAudioRecording({
 
   // Cleanup on unmount — always fully release the device, warm or not.
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       // Invalidate any in-flight acquisition so a stream resolving after unmount
       // stops itself instead of leaking a live mic.
       acquireGenRef.current += 1;
+      cancelledRef.current = true;
+      recordingStreamRef.current?.cancel();
       if (timerRef.current !== null) {
         clearInterval(timerRef.current);
       }
@@ -455,6 +487,7 @@ export function useAudioRecording({
     isRecording,
     duration,
     error,
+    canStartRecording: () => !startingRef.current && !finishingRef.current && !isRecordingRef.current,
     startRecording,
     stopRecording,
     cancelRecording,

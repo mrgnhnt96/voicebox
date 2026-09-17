@@ -1,0 +1,378 @@
+"""Bounded rolling-window dictation, using the existing file-based STT backend.
+
+Recognition windows end on pauses where possible. Full audio is archived once;
+only a bounded backlog and one inference window are kept in memory.
+"""
+
+import asyncio
+import contextlib
+import json
+import logging
+import re
+import struct
+import tempfile
+import unicodedata
+import uuid
+import wave
+from pathlib import Path
+
+import numpy as np
+
+from .. import config, models
+from ..database import Capture
+from .captures import _to_response
+from .refinement import RefinementFlags, prepare_refinement, refine_transcript
+from .transcribe import get_whisper_model
+
+logger = logging.getLogger(__name__)
+MAX_FRAME_BYTES = 65536
+MAX_SECONDS = 3600
+
+
+def join_overlap(prefix: str, tail: str) -> str:
+    """Remove only matching boundary tokens from overlapping recognition windows."""
+    left, right = prefix.split(), tail.split()
+
+    def key(value: str) -> str:
+        return re.sub(r"[^\w]", "", value).lower()
+
+    for count in range(min(32, len(left), len(right)), 0, -1):
+        if [key(w) for w in left[-count:]] == [key(w) for w in right[:count]]:
+            return " ".join(left + right[count:])
+    return " ".join(part for part in (prefix, tail) if part)
+
+
+def guard_phrase_refinement(raw: str, refined: str, flags: RefinementFlags) -> tuple[str, bool]:
+    """Allow phrase cleanup only when ordered content tokens are preserved.
+
+    A short isolated clause can make the LLM follow a dictated instruction or
+    omit its beginning. Preserve prepared STT text in that case. This deliberately
+    forgoes ambiguous rewrites (including spelling/number normalization) rather
+    than trying to infer semantic equivalence without session context.
+    """
+    cleaned, explicit = prepare_refinement(raw, flags)
+    if explicit is not None:
+        return explicit, False
+
+    def tokens(text: str) -> list[str]:
+        normalized = unicodedata.normalize("NFKC", text).casefold().replace("\u2212", "-").replace("\u2019", "'")
+        words = re.findall(r"[+-]?\d+(?:[.,]\d+)*|\w+(?:'\w+)*|[-+*/=<>%$#@\\]", normalized)
+        fillers = {"um", "uh", "er", "hmm", "ah"} if flags.smart_cleanup else set()
+        return [word for word in words if word not in fillers]
+
+    if tokens(cleaned) == tokens(refined):
+        return refined, False
+    return cleaned, True
+
+
+class StreamingCapture:
+    def __init__(self, start: dict, settings, send):
+        if start.get("type") != "start" or start.get("protocol_version") != 1:
+            raise ValueError("Expected protocol version 1 start message")
+        self.rate = start.get("sample_rate")
+        if not isinstance(self.rate, int) or not 16000 <= self.rate <= 48000:
+            raise ValueError("sample_rate must be between 16000 and 48000")
+        if start.get("channels") != 1 or start.get("encoding") != "pcm_s16le":
+            raise ValueError("Audio must be mono pcm_s16le")
+        self.source = start.get("source", "dictation")
+        if not isinstance(self.source, str) or self.source not in {"dictation", "recording"}:
+            raise ValueError("Invalid streaming capture source")
+        self.settings = settings
+        self.language = start.get("language", settings.language)
+        if self.language is not None and (
+            not isinstance(self.language, str) or not re.fullmatch(r"[A-Za-z-]{2,32}", self.language)
+        ):
+            raise ValueError("Invalid language")
+        if self.language == "auto":
+            self.language = None
+        self.stt_model = start.get("stt_model") or settings.stt_model
+        if not isinstance(self.stt_model, str) or self.stt_model not in {"base", "small", "medium", "large", "turbo"}:
+            raise ValueError("Invalid STT model")
+        from .model_improvement.manager import speech_model
+
+        self.stt_model = speech_model(self.stt_model)
+        self.id = str(uuid.uuid4())
+        self.send = send
+        self.path = config.get_captures_dir() / f"{self.id}.wav"
+        self.archive = wave.open(str(self.path), "wb")  # noqa: SIM115 — session owns this until close()
+        self.archive.setnchannels(1)
+        self.archive.setsampwidth(2)
+        self.archive.setframerate(self.rate)
+        self.pending = bytearray()
+        self.cuts = []
+        self.offset = 0
+        self.samples = 0
+        self.sequence = 0
+        self.silence = 0
+        self.last_cut = 0
+        self.last_preview = 0
+        self.last_refine_preview = 0
+        self.preview_refinement = None
+        self.revision = 0
+        self.covered = 0
+        self.cached_pcm = None
+        self.cached_text = None
+        self.raw = ""
+        self.refined = ""
+        self.last_phrase_raw = ""
+        self.last_phrase_refined = ""
+        self.llm_model = None
+        self.refinement_error = None
+        self.needs_final_refinement = False
+        self.overlap = False
+        self.degraded_reason = None
+        self.abort = False
+        self.finished = False
+        self.persisted = False
+        self.wake = asyncio.Event()
+        self.flags = RefinementFlags(settings.smart_cleanup, settings.self_correction, settings.preserve_technical)
+
+    async def emit(self, kind, **payload):
+        self.revision += 1
+        await self.send(
+            dict(
+                type=kind,
+                session_id=self.id,
+                revision=self.revision,
+                covered_samples=self.covered,
+                degraded_reason=self.degraded_reason,
+                **payload,
+            )
+        )
+
+    def append(self, frame: bytes):
+        if len(frame) < 10 or len(frame) > MAX_FRAME_BYTES or (len(frame) - 8) % 2:
+            raise ValueError("Invalid PCM frame size")
+        sequence, offset = struct.unpack("<II", frame[:8])
+        if sequence != self.sequence or offset != self.samples:
+            raise ValueError("Audio frames must have contiguous sequence and sample offsets")
+        pcm = frame[8:]
+        count = len(pcm) // 2
+        if self.samples + count > self.rate * MAX_SECONDS:
+            raise ValueError("Streaming session exceeds one hour")
+        if len(self.pending) + len(pcm) > self.rate * 2 * 60:
+            raise ValueError("Recognition cannot keep up with audio; retry using batch recording")
+        self.archive.writeframesraw(pcm)
+        self.pending.extend(pcm)
+        self.samples += count
+        self.sequence += 1
+        # A conservative energy gate avoids treating ordinary short gaps as a
+        # phrase boundary. It does not suppress audio from the recognizer.
+        rms = float(np.sqrt(np.mean(np.frombuffer(pcm, dtype="<i2").astype(np.float32) ** 2)))
+        self.silence = self.silence + count if rms < 250 else 0
+        if self.samples - self.last_cut >= self.rate * 2 and self.silence >= self.rate * 0.7:
+            self.cuts.append(self.samples)
+            self.last_cut = self.samples
+            self.silence = 0
+        self.wake.set()
+
+    async def recognize(self, pcm):
+        if pcm == self.cached_pcm:
+            return self.cached_text
+        samples = np.frombuffer(pcm, dtype="<i2")
+        if not len(samples) or np.max(np.abs(samples.astype(np.int32))) < 250:
+            self.cached_pcm, self.cached_text = pcm, ""
+            return ""
+        # Keep each temporary window alive until inference actually completes.
+        with tempfile.TemporaryDirectory(prefix="voicebox-stream-") as directory:
+            path = Path(directory) / "window.wav"
+            with wave.open(str(path), "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(self.rate)
+                audio.writeframes(pcm)
+            text = (await get_whisper_model().transcribe(str(path), self.language, self.stt_model)).strip()
+            self.cached_pcm, self.cached_text = pcm, text
+            return text
+
+    async def accept(self, text):
+        self.raw = join_overlap(self.raw, text) if self.overlap else " ".join(filter(None, (self.raw, text)))
+        await self.emit("transcript", accepted_text=self.raw, provisional_text="", text=self.raw, final=False)
+        if not self.settings.auto_refine:
+            return
+        try:
+            # Explicit corrections operate on the entire raw session so a later
+            # "scratch that" can revise a previously accepted phrase.
+            _, correction = prepare_refinement(self.raw, self.flags)
+            if correction is not None:
+                self.refined = correction
+                self.llm_model = self.settings.llm_model
+            elif text:
+                revise_previous = (
+                    self.flags.self_correction
+                    and self.last_phrase_raw
+                    and bool(re.search(r"\b(actually|no wait|no actually|make that|I mean|scratch that)\b", text, re.I))
+                )
+                prompt = " ".join((self.last_phrase_raw[-4000:], text)) if revise_previous else text
+                if self.preview_refinement and self.preview_refinement[0] == prompt:
+                    _, refined, self.llm_model = self.preview_refinement
+                else:
+                    refined, self.llm_model = await refine_transcript(
+                        prompt, self.flags, model_size=self.settings.llm_model
+                    )
+                refined, rejected = guard_phrase_refinement(prompt, refined, self.flags)
+                if (
+                    rejected
+                    and self.flags.self_correction
+                    and re.search(r"\b(actually|no wait|no actually|make that|I mean|scratch that)\b", prompt, re.I)
+                ):
+                    self.needs_final_refinement = True
+                prefix = self.refined
+                if revise_previous:
+                    if self.last_phrase_refined and prefix.endswith(self.last_phrase_refined):
+                        prefix = prefix[: -len(self.last_phrase_refined)].rstrip()
+                    else:
+                        # Learned substitutions may have changed the accepted
+                        # tail. Its cached spelling no longer locates a safe
+                        # replacement boundary, so avoid appending it twice.
+                        self.needs_final_refinement = True
+                        prefix = ""
+                        refined = self.raw
+                self.refined = (
+                    join_overlap(prefix, refined) if self.overlap else " ".join(filter(None, (prefix, refined)))
+                )
+                self.last_phrase_raw = prompt
+                self.last_phrase_refined = refined
+            from .correction_learning import apply_learned_corrections
+
+            self.refined = apply_learned_corrections(self.refined, self.language)
+            await self.emit("refined", text=self.refined)
+        except Exception as error:
+            logger.exception("Streaming refinement failed")
+            self.refinement_error = str(error)
+
+    async def run(self):
+        while True:
+            if self.abort:
+                return
+            while self.cuts and self.cuts[0] <= self.offset:
+                self.cuts.pop(0)
+            available = len(self.pending) // 2
+            cut = self.cuts[0] - self.offset if self.cuts else None
+            forced = available >= self.rate * 20 and (cut is None or cut > self.rate * 20)
+            if self.finished and (self.degraded_reason or forced):
+                self.degraded_reason = (
+                    "Continuous speech exceeded the safe phrase window; final output uses full-audio recognition."
+                )
+                await self.reconcile_full_audio()
+                return
+            size = self.rate * 20 if forced else cut
+            if size is None and self.finished:
+                size = available
+            if size:
+                pcm = bytes(self.pending[: size * 2])
+                text = await self.recognize(pcm)
+                if self.abort:
+                    return
+                # Keep one second of context only for forced (unpaused) cuts.
+                if forced:
+                    self.degraded_reason = (
+                        "Continuous speech exceeded the safe phrase window; final output uses full-audio recognition."
+                    )
+                advance = size - self.rate if forced else size
+                del self.pending[: advance * 2]
+                self.covered = max(self.covered, self.offset + size)
+                self.offset += advance
+                await self.accept(text)
+                self.overlap = forced
+                self.last_preview = self.offset
+                continue
+            if self.finished:
+                if self.degraded_reason:
+                    await self.reconcile_full_audio()
+                elif self.needs_final_refinement:
+                    await self.reconcile_refinement()
+                return
+            if available >= self.rate * 2 and self.samples - self.last_preview >= self.rate * 2:
+                end = self.samples
+                text = await self.recognize(bytes(self.pending))
+                if self.abort:
+                    return
+                self.covered = max(self.covered, end)
+                self.last_preview = end
+                combined = join_overlap(self.raw, text) if self.overlap else " ".join(filter(None, (self.raw, text)))
+                await self.emit("transcript", accepted_text=self.raw, provisional_text=text, text=combined, final=False)
+                # Speculate only on the bounded active phrase, at most once per
+                # six seconds of new audio. Final acceptance reuses an exact
+                # match; changed text must be refined again.
+                if (
+                    not self.finished
+                    and self.settings.auto_refine
+                    and text
+                    and end - self.last_refine_preview >= self.rate * 6
+                ):
+                    self.last_refine_preview = end
+                    try:
+                        refined, model = await refine_transcript(text, self.flags, model_size=self.settings.llm_model)
+                        self.preview_refinement = (text, refined, model)
+                        refined, _ = guard_phrase_refinement(text, refined, self.flags)
+                        output = (
+                            join_overlap(self.refined, refined)
+                            if self.overlap
+                            else " ".join(filter(None, (self.refined, refined)))
+                        )
+                        await self.emit("refined", text=output)
+                    except Exception:
+                        logger.debug("Speculative streaming refinement failed", exc_info=True)
+                continue
+            self.wake.clear()
+            await self.wake.wait()
+
+    async def reconcile_full_audio(self):
+        """Use the established batch path when a forced seam cannot be proven."""
+        self.archive.close()
+        self.raw = (await get_whisper_model().transcribe(str(self.path), self.language, self.stt_model)).strip()
+        if self.abort:
+            return
+        self.covered = self.samples
+        await self.emit("transcript", accepted_text=self.raw, provisional_text="", text=self.raw, final=False)
+        await self.reconcile_refinement()
+
+    async def reconcile_refinement(self):
+        """Resolve ambiguous spoken corrections with complete session context."""
+        if self.settings.auto_refine:
+            try:
+                self.refined, self.llm_model = await refine_transcript(
+                    self.raw, self.flags, model_size=self.settings.llm_model
+                )
+                from .correction_learning import apply_learned_corrections
+
+                self.refined = apply_learned_corrections(self.refined, self.language)
+                self.refinement_error = None
+                await self.emit("refined", text=self.refined)
+            except Exception as error:
+                self.refinement_error = str(error)
+
+    def finish(self):
+        self.finished = True
+        self.wake.set()
+
+    def persist(self, db):
+        self.archive.close()
+        row = Capture(
+            id=self.id,
+            audio_path=config.to_storage_path(self.path),
+            source=self.source,
+            language=self.language,
+            duration_ms=round(self.samples / self.rate * 1000),
+            transcript_raw=self.raw,
+            stt_model=self.stt_model,
+            transcript_refined=self.refined if self.settings.auto_refine and not self.refinement_error else None,
+            llm_model=self.llm_model,
+            refinement_flags=json.dumps(self.flags.to_dict()) if self.settings.auto_refine else None,
+        )
+        db.add(row)
+        db.commit()
+        self.persisted = True
+        db.refresh(row)
+        return models.CaptureCreateResponse(
+            **_to_response(row).model_dump(),
+            auto_refine=self.settings.auto_refine,
+            allow_auto_paste=self.settings.allow_auto_paste,
+        )
+
+    def close(self):
+        self.archive.close()
+        if not self.persisted:
+            with contextlib.suppress(OSError):
+                self.path.unlink()

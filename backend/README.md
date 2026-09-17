@@ -85,6 +85,7 @@ Detection is handled by `utils/platform_detect.py`. Both backends implement the 
 | Generation | `/generate` | TTS generation, retry, regenerate, status SSE |
 | History | `/history` | Generation history, search, favorites, export |
 | Transcription | `/transcribe` | Whisper-based audio-to-text |
+| Streaming dictation | `WS /captures/stream` | PCM recognition/refinement during recording, with one final capture |
 | Stories | `/stories` | Multi-track timeline editor, audio export |
 | Effects | `/effects` | Effect presets, preview, version management |
 | Audio | `/audio`, `/samples` | Audio file serving |
