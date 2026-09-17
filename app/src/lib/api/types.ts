@@ -587,10 +587,23 @@ export interface CorrectionLearningStatus {
     active_adapter: string | null;
     speech_model: string | null;
     can_rollback: boolean;
-    counts: { train?: number; validation?: number; test?: number; audio_test?: number; speech_test?: number };
+    counts: {
+      train?: number;
+      validation?: number;
+      test?: number;
+      audio_test?: number;
+      speech_test?: number;
+    };
     last_run: string | null;
     error: string | null;
-    metrics: { adapter?: { passed: boolean; reasons: string[]; baseline_errors: number; candidate_errors: number } } | null;
+    metrics: {
+      adapter?: {
+        passed: boolean;
+        reasons: string[];
+        baseline_errors: number;
+        candidate_errors: number;
+      };
+    } | null;
   };
   evaluated_report_ids: string[];
   revision: number;

@@ -240,7 +240,9 @@ export function useAudioRecording({
 
         if (!mountedRef.current) {
           recordingStream?.cancel();
-          stream.getTracks().forEach((track) => track.stop());
+          stream.getTracks().forEach((track) => {
+            track.stop();
+          });
           startingRef.current = false;
           return;
         }
@@ -487,7 +489,8 @@ export function useAudioRecording({
     isRecording,
     duration,
     error,
-    canStartRecording: () => !startingRef.current && !finishingRef.current && !isRecordingRef.current,
+    canStartRecording: () =>
+      !startingRef.current && !finishingRef.current && !isRecordingRef.current,
     startRecording,
     stopRecording,
     cancelRecording,

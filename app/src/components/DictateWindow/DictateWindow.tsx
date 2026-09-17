@@ -48,7 +48,8 @@ export function DictateWindow() {
       const focus = context as FocusSnapshot | null;
       if (!allowAutoPaste) return;
       if (!text.trim()) return;
-      if (!focus) throw new Error('Could not identify the paste target. Check Accessibility permission.');
+      if (!focus)
+        throw new Error('Could not identify the paste target. Check Accessibility permission.');
       try {
         const pasted = await invoke<boolean>('paste_final_text', { text, focus });
         if (!pasted) throw new Error('Paste target unavailable. Copy the text from Captures.');
@@ -160,9 +161,7 @@ export function DictateWindow() {
     audio.onplaying = () => {
       emit('dictate:show').catch(() => {});
       setSpeaking((prev) =>
-        prev && prev.generationId === generationId
-          ? { ...prev, startedAt: Date.now() }
-          : prev,
+        prev && prev.generationId === generationId ? { ...prev, startedAt: Date.now() } : prev,
       );
       setSpeakElapsed(0);
     };
@@ -305,7 +304,7 @@ export function DictateWindow() {
     >
       {effectiveState !== 'hidden' ? (
         <CapturePill
-                batchFallback={session.batchFallback}
+          batchFallback={session.batchFallback}
           state={effectiveState}
           elapsedMs={effectiveElapsed}
           errorMessage={session.errorMessage}

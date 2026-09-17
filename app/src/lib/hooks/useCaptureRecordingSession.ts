@@ -6,11 +6,7 @@ import { apiClient } from '@/lib/api/client';
 import { CaptureStream, type StreamingCaptureFinal } from '@/lib/api/captureStream';
 import { startStreamingAudio } from '@/lib/audio/streamingAudio';
 import { useServerStore } from '@/stores/serverStore';
-import type {
-  CaptureListResponse,
-  CaptureResponse,
-  CaptureSource,
-} from '@/lib/api/types';
+import type { CaptureListResponse, CaptureResponse, CaptureSource } from '@/lib/api/types';
 import { useAudioRecording } from '@/lib/hooks/useAudioRecording';
 
 /**
@@ -148,9 +144,9 @@ export function useCaptureRecordingSession(
   // by capture id so a refine that resolves after another dictation started
   // still delivers to the right target with the setting the capture was created
   // under. Populated on capture-create and consumed once the final text lands.
-  const captureDeliveryRef = useRef<Map<string, { context: unknown; allowAutoPaste: boolean; take?: RecordingTake }>>(
-    new Map(),
-  );
+  const captureDeliveryRef = useRef<
+    Map<string, { context: unknown; allowAutoPaste: boolean; take?: RecordingTake }>
+  >(new Map());
 
   const clearRestTimer = useCallback(() => {
     if (restTimerRef.current !== null) {
@@ -196,19 +192,16 @@ export function useCaptureRecordingSession(
     setErrorMessage(null);
   }, [clearErrorTimer]);
 
-  useEffect(
-    () => {
-      mountedRef.current = true;
-      return () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
       clearRestTimer();
       clearErrorTimer();
       for (const stream of streamsRef.current) stream.cancel();
       streamsRef.current.clear();
-      };
-    },
-    [clearRestTimer, clearErrorTimer],
-  );
+    };
+  }, [clearRestTimer, clearErrorTimer]);
 
   const deliverText = async (
     text: string | null | undefined,
@@ -217,12 +210,16 @@ export function useCaptureRecordingSession(
     context?: unknown,
     currentTake?: RecordingTake,
   ) => {
-    const shouldUpdatePill = () => mountedRef.current && (!currentTake || activeTakeRef.current === currentTake);
+    const shouldUpdatePill = () =>
+      mountedRef.current && (!currentTake || activeTakeRef.current === currentTake);
     try {
       // Phase one inserts only at completion. Empty output must not replace
       // an existing selection; deletion requires a verified owned range later.
       if (text) await onFinalTextRef.current?.(text, capture, allowAutoPaste, context);
-      if (shouldUpdatePill() && (pillStateRef.current === 'transcribing' || pillStateRef.current === 'refining')) {
+      if (
+        shouldUpdatePill() &&
+        (pillStateRef.current === 'transcribing' || pillStateRef.current === 'refining')
+      ) {
         scheduleHidePill();
       }
     } catch (error) {
@@ -240,12 +237,19 @@ export function useCaptureRecordingSession(
       const delivery = captureDeliveryRef.current.get(captureId);
       captureDeliveryRef.current.delete(captureId);
       const finalText = data.transcript_refined ?? data.transcript_raw;
-      await deliverText(finalText, data, delivery?.allowAutoPaste ?? true, delivery?.context, delivery?.take);
+      await deliverText(
+        finalText,
+        data,
+        delivery?.allowAutoPaste ?? true,
+        delivery?.context,
+        delivery?.take,
+      );
     },
     onError: (err: Error, captureId) => {
       const delivery = captureDeliveryRef.current.get(captureId);
       captureDeliveryRef.current.delete(captureId);
-      if (!delivery?.take || activeTakeRef.current === delivery.take) showError(err.message || 'Refinement failed');
+      if (!delivery?.take || activeTakeRef.current === delivery.take)
+        showError(err.message || 'Refinement failed');
     },
   });
 
@@ -310,16 +314,24 @@ export function useCaptureRecordingSession(
     onRecordingStream: async (stream, context) => {
       const take = context as RecordingTake;
       try {
-        const audio = await startStreamingAudio(stream, (sampleRate) => {
-          take.stream = new CaptureStream(useServerStore.getState().serverUrl, sampleRate, () => {
-            if (activeTakeRef.current === take) setBatchFallback(true);
-          });
-          streamsRef.current.add(take.stream);
-        }, (frame) => take.stream?.append(frame), () => take.stream?.cancel());
+        const audio = await startStreamingAudio(
+          stream,
+          (sampleRate) => {
+            take.stream = new CaptureStream(useServerStore.getState().serverUrl, sampleRate, () => {
+              if (activeTakeRef.current === take) setBatchFallback(true);
+            });
+            streamsRef.current.add(take.stream);
+          },
+          (frame) => take.stream?.append(frame),
+          () => take.stream?.cancel(),
+        );
         return {
           stop: async (duration) => {
-            try { await audio.stop(); }
-            catch { take.stream?.cancel(); }
+            try {
+              await audio.stop();
+            } catch {
+              take.stream?.cancel();
+            }
             if (take.stream && (duration ?? 0) >= MIN_RECORDING_DURATION_S) {
               setFinalizingCount((count) => count + 1);
               take.final = take.stream.finish().then(
@@ -368,23 +380,35 @@ export function useCaptureRecordingSession(
             if (result.degraded_reason && activeTakeRef.current === take) setBatchFallback(true);
             const capture = result.capture;
             queryClient.setQueryData<CaptureListResponse>(['captures'], (previous) => {
-              if (!previous || previous.items.some((item) => item.id === capture.id)) return previous;
-              return { ...previous, items: [capture, ...previous.items], total: previous.total + 1 };
+              if (!previous || previous.items.some((item) => item.id === capture.id))
+                return previous;
+              return {
+                ...previous,
+                items: [capture, ...previous.items],
+                total: previous.total + 1,
+              };
             });
             queryClient.invalidateQueries({ queryKey: ['captures'] });
             broadcastCreated(capture);
             onCaptureCreatedRef.current?.(capture, context);
             if (result.refinement_error) {
-              if (activeTakeRef.current === take) showError(`Text saved in Captures. ${result.refinement_error}`);
+              if (activeTakeRef.current === take)
+                showError(`Text saved in Captures. ${result.refinement_error}`);
             } else {
-              await deliverText(capture.transcript_refined ?? capture.transcript_raw, capture,
-                capture.allow_auto_paste, context, take);
+              await deliverText(
+                capture.transcript_refined ?? capture.transcript_raw,
+                capture,
+                capture.allow_auto_paste,
+                context,
+                take,
+              );
             }
             return;
           }
           // No finish was sent, so the archived audio can safely use batch transcription.
         } catch (error) {
-          if (activeTakeRef.current === take) showError(error instanceof Error ? error.message : 'Streaming finalization failed');
+          if (activeTakeRef.current === take)
+            showError(error instanceof Error ? error.message : 'Streaming finalization failed');
           return;
         } finally {
           streamsRef.current.delete(take.stream);
@@ -435,7 +459,9 @@ export function useCaptureRecordingSession(
       const take: RecordingTake = { context };
       activeTakeRef.current = take;
       setBatchFallback(false);
-      void beginAudioRecording(take).finally(() => { startingRef.current = false; });
+      void beginAudioRecording(take).finally(() => {
+        startingRef.current = false;
+      });
     },
     [isRecording, canStartRecording, beginAudioRecording, clearRestTimer, clearErrorTimer],
   );
@@ -462,8 +488,7 @@ export function useCaptureRecordingSession(
     [refineMutation],
   );
 
-  const pillElapsedMs =
-    pillState === 'recording' ? Math.round(duration * 1000) : frozenElapsedMs;
+  const pillElapsedMs = pillState === 'recording' ? Math.round(duration * 1000) : frozenElapsedMs;
 
   return {
     pillState,

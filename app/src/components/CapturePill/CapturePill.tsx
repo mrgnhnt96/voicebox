@@ -24,9 +24,7 @@ const PILL_LABEL_KEYS: Record<Exclude<PillState, 'rest' | 'error'>, string> = {
   speaking: 'captures.pill.speaking',
 };
 
-function barModeFor(
-  state: Exclude<PillState, 'error'>,
-): 'generating' | 'playing' | 'idle' {
+function barModeFor(state: Exclude<PillState, 'error'>): 'generating' | 'playing' | 'idle' {
   if (state === 'recording' || state === 'speaking') return 'playing';
   if (state === 'rest') return 'idle';
   return 'generating';
@@ -115,16 +113,19 @@ export function CapturePill({
     </span>
   );
 
-  const stopButton = onStop && state === 'recording' ? (
-    <button
-      type="button"
-      onClick={onStop}
-      aria-label={t('captures.pill.stopAria')}
-      className="relative flex h-2 w-2 shrink-0 items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-accent/50"
-    >
-      {dot}
-    </button>
-  ) : dot;
+  const stopButton =
+    onStop && state === 'recording' ? (
+      <button
+        type="button"
+        onClick={onStop}
+        aria-label={t('captures.pill.stopAria')}
+        className="relative flex h-2 w-2 shrink-0 items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-accent/50"
+      >
+        {dot}
+      </button>
+    ) : (
+      dot
+    );
 
   return (
     <div
@@ -140,7 +141,10 @@ export function CapturePill({
       {stopButton}
       <span className="text-sm font-medium shrink-0" style={{ minWidth: '104px' }}>
         {batchFallback && (state === 'recording' || state === 'transcribing')
-          ? t('captures.pill.batchFallback', { defaultValue: '{{state}} · batch mode', state: labelText })
+          ? t('captures.pill.batchFallback', {
+              defaultValue: '{{state}} · batch mode',
+              state: labelText,
+            })
           : labelText}
       </span>
       <PillAudioBars mode={barMode} />

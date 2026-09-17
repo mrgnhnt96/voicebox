@@ -290,10 +290,16 @@ test('paste failures surface as errors instead of silently completing', async ()
 
 test('streaming flush starts finalization before archival WAV conversion', async () => {
   const order: string[] = [];
-  convert.mockImplementation(async (blob) => { order.push('convert'); return blob; });
+  convert.mockImplementation(async (blob) => {
+    order.push('convert');
+    return blob;
+  });
   await mount({
     onRecordingStream: async () => ({
-      stop: async () => { order.push('flush'); }, cancel: mock(),
+      stop: async () => {
+        order.push('flush');
+      },
+      cancel: mock(),
     }),
     onRecordingComplete: () => order.push('complete'),
   });
@@ -305,7 +311,9 @@ test('streaming flush starts finalization before archival WAV conversion', async
 test('streaming initialization failure preserves full recording completion', async () => {
   const complete = mock();
   await mount({
-    onRecordingStream: async () => { throw new Error('AudioWorklet unavailable'); },
+    onRecordingStream: async () => {
+      throw new Error('AudioWorklet unavailable');
+    },
     onRecordingComplete: complete,
   });
   await act(async () => hook.startRecording());
@@ -316,9 +324,16 @@ test('streaming initialization failure preserves full recording completion', asy
 test('unmount during streaming setup cancels the late sidecar and releases mic', async () => {
   let resolve!: (value: { stop: () => Promise<void>; cancel: () => void }) => void;
   const cancel = mock();
-  await mount({ onRecordingStream: () => new Promise((r) => { resolve = r; }) });
+  await mount({
+    onRecordingStream: () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  });
   let start!: Promise<void>;
-  await act(async () => { start = hook.startRecording(); });
+  await act(async () => {
+    start = hook.startRecording();
+  });
   await act(async () => renderer.unmount());
   resolve({ stop: async () => {}, cancel });
   await start;
@@ -332,9 +347,19 @@ test('delayed completion of the prior take cannot replace the current recording 
   let now = 1000;
   Date.now = () => now;
   let resolve!: (blob: Blob) => void;
-  convert.mockImplementation(() => new Promise((r) => { resolve = r; }));
+  convert.mockImplementation(
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
   const delivered = mock();
-  createCapture.mockResolvedValue({ id: 'previous', auto_refine: false, allow_auto_paste: true, transcript_raw: 'First take.' });
+  createCapture.mockResolvedValue({
+    id: 'previous',
+    auto_refine: false,
+    allow_auto_paste: true,
+    transcript_raw: 'First take.',
+  });
   try {
     await mountSession({ onFinalText: delivered });
     await act(async () => session.startRecording('first-target'));
@@ -355,7 +380,15 @@ test('delayed completion of the prior take cannot replace the current recording 
 
 test('recorder rejects a new take until the PCM tail has flushed', async () => {
   let finish!: () => void;
-  await mount({ onRecordingStream: async () => ({ stop: () => new Promise<void>((r) => { finish = r; }), cancel: mock() }) });
+  await mount({
+    onRecordingStream: async () => ({
+      stop: () =>
+        new Promise<void>((r) => {
+          finish = r;
+        }),
+      cancel: mock(),
+    }),
+  });
   await act(async () => hook.startRecording());
   await act(async () => hook.stopRecording());
   expect(hook.canStartRecording()).toBe(false);
@@ -363,11 +396,13 @@ test('recorder rejects a new take until the PCM tail has flushed', async () => {
   expect(hook.canStartRecording()).toBe(true);
 });
 
-
 test('empty refined output completes without pasting raw text or replacing a selection', async () => {
   const capture = {
-    id: 'empty-refinement', auto_refine: true, allow_auto_paste: true,
-    transcript_raw: 'remove that', transcript_refined: '',
+    id: 'empty-refinement',
+    auto_refine: true,
+    allow_auto_paste: true,
+    transcript_raw: 'remove that',
+    transcript_refined: '',
   };
   createCapture.mockResolvedValue({ ...capture, transcript_refined: null });
   refineCapture.mockResolvedValue(capture);
