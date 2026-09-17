@@ -229,3 +229,37 @@ async def retranscribe_capture_endpoint(
     if not capture:
         raise HTTPException(status_code=404, detail="Capture not found")
     return capture
+
+
+@router.post("/captures/{capture_id}/feedback", response_model=models.CaptureFeedbackResponse)
+async def report_capture_output(
+    capture_id: str,
+    request: models.CaptureFeedbackCreate,
+    db: Session = Depends(get_db),
+):
+    from ..services.capture_feedback import save_feedback
+
+    try:
+        feedback = save_feedback(capture_id, request, db)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    if feedback is None:
+        raise HTTPException(status_code=404, detail="Capture not found")
+    return feedback
+
+
+@router.get("/captures/{capture_id}/feedback", response_model=list[models.CaptureFeedbackResponse])
+async def list_capture_feedback(capture_id: str, db: Session = Depends(get_db)):
+    from ..services.capture_feedback import list_feedback
+
+    if captures_service.get_capture(capture_id, db) is None:
+        raise HTTPException(status_code=404, detail="Capture not found")
+    return list_feedback(db, capture_id)
+
+
+@router.get("/capture/feedback/export", response_model=list[models.CaptureFeedbackResponse])
+async def export_capture_feedback(db: Session = Depends(get_db)):
+    """Export local correction snapshots; audio remains available on each capture."""
+    from ..services.capture_feedback import list_feedback
+
+    return list_feedback(db)

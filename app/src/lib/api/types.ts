@@ -566,3 +566,16 @@ export interface CloudStatus {
   connected_at: string | null;
   dashboard_url: string;
 }
+
+export interface CaptureFeedbackCreate {
+  target: 'raw' | 'refined';
+  expected_text: string;
+  notes: string;
+  snapshot: CaptureResponse;
+}
+
+export interface CaptureFeedbackResponse extends CaptureFeedbackCreate {
+  id: string;
+  capture_id: string;
+  created_at: string;
+}

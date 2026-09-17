@@ -25,6 +25,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AudioBars } from '@/components/AudioBars';
 import { CapturePill } from '@/components/CapturePill/CapturePill';
+import { CaptureFeedback } from '@/components/CapturesTab/CaptureFeedback';
 import { CaptureInlinePlayer } from '@/components/CapturesTab/CaptureInlinePlayer';
 import { DictationReadinessChecklist } from '@/components/CapturesTab/DictationReadinessChecklist';
 import {
@@ -682,7 +683,7 @@ export function CapturesTab() {
             <div className="rounded-xl border border-border bg-muted/10">
               <Textarea
                 key={`${selected.id}-${showRefined}`}
-                defaultValue={
+                value={
                   showRefined && selected.transcript_refined
                     ? selected.transcript_refined
                     : selected.transcript_raw
@@ -691,6 +692,12 @@ export function CapturesTab() {
                 className="text-[15px] leading-relaxed min-h-[260px] border-0 bg-transparent resize-none focus-visible:ring-0 focus-visible:ring-offset-0 p-6"
               />
             </div>
+
+            <CaptureFeedback
+              key={selected.id}
+              capture={selected}
+              target={showRefined && selected.transcript_refined != null ? 'refined' : 'raw'}
+            />
 
             {/* Bottom actions */}
             <div className="flex items-center gap-2 mt-4 flex-wrap">

@@ -307,3 +307,17 @@ class Capture(Base):
     llm_model = Column(String, nullable=True)
     refinement_flags = Column(Text, nullable=True)  # JSON blob
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CaptureFeedback(Base):
+    """Immutable correction paired with the model output observed by the user."""
+
+    __tablename__ = "capture_feedback"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    capture_id = Column(String, ForeignKey("captures.id"), nullable=False, index=True)
+    target = Column(String, nullable=False)
+    expected_text = Column(Text, nullable=False)
+    notes = Column(Text, nullable=False, default="")
+    snapshot = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

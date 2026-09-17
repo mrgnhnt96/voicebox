@@ -23,6 +23,21 @@
     "updateBadge": "Update"
   },
   "captures": {
+    "feedback": {
+      "report": "Report incorrect output",
+      "description": "Enter the output you expected. Reports stay on this server with the original audio and model details for future evaluation and training. Saving a report does not retrain the model. Deleting the capture also deletes its reports.",
+      "original": "Model output ({{target}})",
+      "expected": "Expected output",
+      "emptyHint": "Leave empty if the correct output should contain no text.",
+      "notes": "What went wrong? (optional)",
+      "save": "Save correction",
+      "saved": "Correction saved",
+      "failed": "Could not save correction",
+      "history": "Saved corrections ({{count}})",
+      "export": "Export all corrections (JSON)",
+      "exportFailed": "Could not export corrections",
+      "loadFailed": "Could not load saved corrections"
+    },
     "title": "Captures",
     "beta": "Beta",
     "searchPlaceholder": "Search transcripts…",

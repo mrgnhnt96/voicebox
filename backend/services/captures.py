@@ -188,6 +188,9 @@ def delete_capture(capture_id: str, db: Session) -> bool:
         except OSError:
             logger.exception("Failed to remove capture audio %s", resolved)
 
+    from ..database.models import CaptureFeedback
+
+    db.query(CaptureFeedback).filter(CaptureFeedback.capture_id == capture_id).delete()
     db.delete(row)
     db.commit()
     return True

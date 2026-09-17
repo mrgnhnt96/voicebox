@@ -38,6 +38,8 @@ import type {
   VoiceProfileResponse,
   WhisperModelSize,
   CaptureListResponse,
+  CaptureFeedbackCreate,
+  CaptureFeedbackResponse,
   CaptureResponse,
   CaptureCreateResponse,
   CaptureReadinessResponse,
@@ -423,6 +425,18 @@ class ApiClient {
     }
 
     return response.json();
+  }
+
+  async reportCaptureOutput(captureId: string, body: CaptureFeedbackCreate): Promise<CaptureFeedbackResponse> {
+    return this.request(`/captures/${captureId}/feedback`, { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  async listCaptureFeedback(captureId: string): Promise<CaptureFeedbackResponse[]> {
+    return this.request(`/captures/${captureId}/feedback`);
+  }
+
+  async exportCaptureFeedback(): Promise<CaptureFeedbackResponse[]> {
+    return this.request('/capture/feedback/export');
   }
 
   // Captures

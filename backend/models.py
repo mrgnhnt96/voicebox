@@ -3,7 +3,7 @@ Pydantic models for request/response validation.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime
 
 from .utils.capture_chords import (
@@ -823,3 +823,20 @@ class CloudStatusResponse(BaseModel):
     key_prefix: Optional[str] = None
     connected_at: Optional[datetime] = None
     dashboard_url: str
+
+
+class CaptureFeedbackCreate(BaseModel):
+    target: Literal["raw", "refined"]
+    expected_text: str = Field(max_length=100000)
+    notes: str = Field(default="", max_length=5000)
+    snapshot: CaptureResponse
+
+
+class CaptureFeedbackResponse(BaseModel):
+    id: str
+    capture_id: str
+    target: Literal["raw", "refined"]
+    expected_text: str
+    notes: str
+    snapshot: CaptureResponse
+    created_at: datetime
