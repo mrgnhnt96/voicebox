@@ -1,0 +1,259 @@
+{
+  "date": "2026-09-17",
+  "hardware": "Apple M2 Max, 64 GiB RAM",
+  "scope": "Synthetic, offline, real-time service replay. No UI, WebSocket, microphone, or native paste timing. Background PyInstaller build during part of validation.",
+  "fixtures": {
+    "short": {
+      "audio_sha256": "67e739980cfc236cf061999f79f9ba45ac6049da9468a72e296d8624f7ecf22a",
+      "service_sha256_at_start": "f9711a27f405cede51e74eb6dd60fb43127888f0c291374c3990b4a9c649ae27",
+      "packages": {
+        "mlx": "0.32.2",
+        "mlx-audio": "0.4.1",
+        "mlx-lm": "0.31.1"
+      },
+      "duration_seconds": 11.166875,
+      "platform": "macOS-26.6.2-arm64-arm-64bit",
+      "stt_model": "turbo",
+      "llm_model": "0.6B",
+      "peak_rss_platform_units": 2714468352,
+      "notes": "First batch includes cold model load; streaming runs after warm batch. No paste/UI measured.",
+      "runs": [
+        {
+          "run": 0,
+          "batch": {
+            "stt_seconds": 2.372009209007956,
+            "refine_seconds": 0.7266791659640148,
+            "stop_to_output_seconds": 3.098688374971971,
+            "raw_wer": 0.0,
+            "refined_wer": 0.0
+          },
+          "stream": {
+            "stop_to_output_seconds": 0.794494416040834,
+            "first_partial_seconds": 2.3236456659506075,
+            "first_accepted_seconds": 11.546216790971812,
+            "first_refined_seconds": 6.707369582960382,
+            "events_before_stop": 6,
+            "raw_wer": 0.0,
+            "refined_wer": 0.0,
+            "raw_matches_batch": true,
+            "max_pending_audio_seconds": 11.166875,
+            "refinement_error": false,
+            "degraded_reason": null
+          }
+        },
+        {
+          "run": 1,
+          "batch": {
+            "stt_seconds": 0.37006412498885766,
+            "refine_seconds": 0.4031825000420213,
+            "stop_to_output_seconds": 0.7732466250308789,
+            "raw_wer": 0.0,
+            "refined_wer": 0.0
+          },
+          "stream": {
+            "stop_to_output_seconds": 0.8056483330437914,
+            "first_partial_seconds": 2.3214022910105996,
+            "first_accepted_seconds": 11.56365295802243,
+            "first_refined_seconds": 6.712682000012137,
+            "events_before_stop": 6,
+            "raw_wer": 0.0,
+            "refined_wer": 0.0,
+            "raw_matches_batch": true,
+            "max_pending_audio_seconds": 11.166875,
+            "refinement_error": false,
+            "degraded_reason": null
+          }
+        }
+      ]
+    },
+    "paused": {
+      "audio_sha256": "895508d9de4ffae48e84a09d7b06df4fa74fe005876d2c9f71d9e70176bef29d",
+      "service_sha256_at_start": "f9711a27f405cede51e74eb6dd60fb43127888f0c291374c3990b4a9c649ae27",
+      "packages": {
+        "mlx": "0.32.2",
+        "mlx-audio": "0.4.1",
+        "mlx-lm": "0.31.1"
+      },
+      "duration_seconds": 40.6131875,
+      "platform": "macOS-26.6.2-arm64-arm-64bit",
+      "stt_model": "turbo",
+      "llm_model": "0.6B",
+      "peak_rss_platform_units": 2715271168,
+      "notes": "First batch includes cold model load; streaming runs after warm batch. No paste/UI measured.",
+      "runs": [
+        {
+          "run": 0,
+          "batch": {
+            "stt_seconds": 2.884523209009785,
+            "refine_seconds": 1.0817066660383716,
+            "stop_to_output_seconds": 3.966229875048157,
+            "raw_wer": 0.0,
+            "refined_wer": 0.0
+          },
+          "stream": {
+            "stop_to_output_seconds": 0.7060218330007046,
+            "first_partial_seconds": 2.3242087499820627,
+            "first_accepted_seconds": 3.6166315830196254,
+            "first_refined_seconds": 3.934223500022199,
+            "events_before_stop": 33,
+            "raw_wer": 0.0,
+            "refined_wer": 0.0,
+            "raw_matches_batch": true,
+            "max_pending_audio_seconds": 7.4,
+            "refinement_error": false,
+            "degraded_reason": null
+          }
+        },
+        {
+          "run": 1,
+          "batch": {
+            "stt_seconds": 0.8368781669996679,
+            "refine_seconds": 0.7039997079991736,
+            "stop_to_output_seconds": 1.5408778749988414,
+            "raw_wer": 0.0,
+            "refined_wer": 0.0
+          },
+          "stream": {
+            "stop_to_output_seconds": 0.7100462089874782,
+            "first_partial_seconds": 2.3240828340058215,
+            "first_accepted_seconds": 3.605074084014632,
+            "first_refined_seconds": 3.9236966670141555,
+            "events_before_stop": 33,
+            "raw_wer": 0.0,
+            "refined_wer": 0.0,
+            "raw_matches_batch": true,
+            "max_pending_audio_seconds": 7.4,
+            "refinement_error": false,
+            "degraded_reason": null
+          }
+        }
+      ]
+    },
+    "continuous": {
+      "audio_sha256": "f18a59e677f59b694a714aff5db2c79ca84c7bd4e882e710e3fc9a21d9d0958b",
+      "service_sha256_at_start": "f9711a27f405cede51e74eb6dd60fb43127888f0c291374c3990b4a9c649ae27",
+      "packages": {
+        "mlx": "0.32.2",
+        "mlx-audio": "0.4.1",
+        "mlx-lm": "0.31.1"
+      },
+      "duration_seconds": 35.8380625,
+      "platform": "macOS-26.6.2-arm64-arm-64bit",
+      "stt_model": "turbo",
+      "llm_model": "0.6B",
+      "peak_rss_platform_units": 2714812416,
+      "notes": "First batch includes cold model load; streaming runs after warm batch. No paste/UI measured.",
+      "runs": [
+        {
+          "run": 0,
+          "batch": {
+            "stt_seconds": 2.9697611249866895,
+            "refine_seconds": 1.0597668749978766,
+            "stop_to_output_seconds": 4.029527999984566,
+            "raw_wer": 0.009174311926605505,
+            "refined_wer": 0.0
+          },
+          "stream": {
+            "stop_to_output_seconds": 1.5987935419543646,
+            "first_partial_seconds": 2.3210973339737393,
+            "first_accepted_seconds": 20.629892083990853,
+            "first_refined_seconds": 6.720861334004439,
+            "events_before_stop": 24,
+            "raw_wer": 0.009174311926605505,
+            "refined_wer": 0.0,
+            "raw_matches_batch": true,
+            "max_pending_audio_seconds": 20.6,
+            "refinement_error": false,
+            "degraded_reason": "Continuous speech exceeded the safe phrase window; final output uses full-audio recognition."
+          }
+        },
+        {
+          "run": 1,
+          "batch": {
+            "stt_seconds": 0.8730237919953652,
+            "refine_seconds": 0.7311853329883888,
+            "stop_to_output_seconds": 1.604209124983754,
+            "raw_wer": 0.009174311926605505,
+            "refined_wer": 0.0
+          },
+          "stream": {
+            "stop_to_output_seconds": 1.7406897920300253,
+            "first_partial_seconds": 2.331075750000309,
+            "first_accepted_seconds": 20.47196133399848,
+            "first_refined_seconds": 6.733041084022261,
+            "events_before_stop": 24,
+            "raw_wer": 0.009174311926605505,
+            "refined_wer": 0.0,
+            "raw_matches_batch": true,
+            "max_pending_audio_seconds": 20.4,
+            "refinement_error": false,
+            "degraded_reason": "Continuous speech exceeded the safe phrase window; final output uses full-audio recognition."
+          }
+        }
+      ]
+    },
+    "technical": {
+      "audio_sha256": "2c2bd90228205e81d61427208115bb4beff77ba26329eef3eddf8581548353e0",
+      "service_sha256_at_start": "8d0c450967e2802b0887f540122afe2f809a5654e59cd0ba8e6959cefaa31751",
+      "packages": {
+        "mlx": "0.32.2",
+        "mlx-audio": "0.4.1",
+        "mlx-lm": "0.31.1"
+      },
+      "duration_seconds": 12.83175,
+      "platform": "macOS-26.6.2-arm64-arm-64bit",
+      "stt_model": "turbo",
+      "llm_model": "0.6B",
+      "peak_rss_platform_units": 2718105600,
+      "notes": "First batch includes cold model load; streaming runs after warm batch. No paste/UI measured.",
+      "runs": [
+        {
+          "run": 0,
+          "batch": {
+            "stt_seconds": 2.4845890409778804,
+            "refine_seconds": 0.7730523339705542,
+            "stop_to_output_seconds": 3.2576413749484345,
+            "raw_wer": 0.21428571428571427,
+            "refined_wer": 0.21428571428571427
+          },
+          "stream": {
+            "stop_to_output_seconds": 0.8511164159863256,
+            "first_partial_seconds": 2.3335630410001613,
+            "first_accepted_seconds": 2.712748375022784,
+            "first_refined_seconds": 3.0334124580258504,
+            "events_before_stop": 11,
+            "raw_wer": 0.21428571428571427,
+            "refined_wer": 0.21428571428571427,
+            "raw_matches_batch": false,
+            "max_pending_audio_seconds": 4.13175,
+            "refinement_error": false,
+            "degraded_reason": null
+          }
+        },
+        {
+          "run": 1,
+          "batch": {
+            "stt_seconds": 0.36559274996398017,
+            "refine_seconds": 0.4063110839924775,
+            "stop_to_output_seconds": 0.7719038339564577,
+            "raw_wer": 0.21428571428571427,
+            "refined_wer": 0.21428571428571427
+          },
+          "stream": {
+            "stop_to_output_seconds": 0.8877827500109561,
+            "first_partial_seconds": 2.3301227089832537,
+            "first_accepted_seconds": 2.7081884169601835,
+            "first_refined_seconds": 3.038908583985176,
+            "events_before_stop": 11,
+            "raw_wer": 0.21428571428571427,
+            "refined_wer": 0.21428571428571427,
+            "raw_matches_batch": false,
+            "max_pending_audio_seconds": 4.13175,
+            "refinement_error": false,
+            "degraded_reason": null
+          }
+        }
+      ]
+    }
+  }
+}
