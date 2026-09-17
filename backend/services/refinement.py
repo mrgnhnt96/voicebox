@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from . import llm as llm_service
 from .dictation_edits import apply_dictation_edits
+from .spoken_corrections import apply_spoken_corrections
 
 
 # A run that repeats this many times gets collapsed before the LLM sees
@@ -270,6 +271,10 @@ async def refine_transcript(
     transcript: str,
     flags: RefinementFlags,
     model_size: str | None = None,
+    *,
+    backend_override=None,
+    adapter_path: str | None = None,
+    use_personal_model: bool = True,
 ) -> tuple[str, str]:
     """Run the transcript through the LLM with the built system prompt.
 
@@ -277,30 +282,49 @@ async def refine_transcript(
         (refined_text, llm_model_size) — so callers can persist which model
         produced the refinement.
     """
-    backend = llm_service.get_llm_model()
+    backend = backend_override or llm_service.get_llm_model()
     resolved_size = model_size or backend.model_size
+
+    cleaned_input, resolved_edit = prepare_refinement(transcript, flags)
+    if resolved_edit is not None:
+        return resolved_edit, resolved_size
+
+    if use_personal_model and getattr(backend, 'supports_adapters', False):
+        from .model_improvement.manager import active_adapter
+        adapter_path = active_adapter(resolved_size, flags.to_dict())
+    options = {'adapter_path': adapter_path} if adapter_path else {}
+    system_prompt = build_refinement_prompt(flags)
+    arguments = dict(prompt=cleaned_input, system=system_prompt, max_tokens=2048,
+                     temperature=0.2, model_size=resolved_size, examples=REFINEMENT_EXAMPLES)
+    try:
+        text = await backend.generate(**arguments, **options)
+    except Exception:
+        if not adapter_path or not use_personal_model:
+            raise
+        from .model_improvement.manager import quarantine_adapter
+        quarantine_adapter('The personal adapter failed to load or generate; reverted to the base model.')
+        text = await backend.generate(**arguments)
+    return text.strip(), resolved_size
+
+
+def prepare_refinement(transcript: str, flags: RefinementFlags) -> tuple[str, str | None]:
+    """Shared production/training preprocessing, including deterministic edits."""
 
     # Pre-process before the LLM sees the text — the model shouldn't have
     # to reason about obvious STT garbage (see ``collapse_repetitive_artifacts``).
     cleaned_input = collapse_repetitive_artifacts(transcript)
+    corrected = apply_spoken_corrections(cleaned_input) if flags.self_correction else None
+    if corrected is not None:
+        # Do not let a small generative model restore the retracted clause.
+        cleaned_input = corrected
 
     edited = apply_dictation_edits(
         cleaned_input,
         formatting=flags.smart_cleanup,
         corrections=flags.self_correction,
     )
-    if edited is not None:
+    if edited is not None or corrected is not None:
         # Explicit structural edits are already resolved. A second generative
         # pass can reintroduce deleted text or flatten the list on small models.
-        return edited, resolved_size
-
-    system_prompt = build_refinement_prompt(flags)
-    text = await backend.generate(
-        prompt=cleaned_input,
-        system=system_prompt,
-        max_tokens=2048,
-        temperature=0.2,
-        model_size=resolved_size,
-        examples=REFINEMENT_EXAMPLES,
-    )
-    return text.strip(), resolved_size
+        return cleaned_input, edited if edited is not None else corrected
+    return cleaned_input, None

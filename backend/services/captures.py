@@ -129,6 +129,8 @@ async def create_capture(
         logger.info("Capture %s audio preparation: %.3fs", capture_id, time.monotonic() - preparation_started)
         whisper = get_whisper_model()
         resolved_stt = stt_model or whisper.model_size
+        from .model_improvement.manager import speech_model
+        resolved_stt = speech_model(resolved_stt)
         transcription_started = time.monotonic()
         transcript = await whisper.transcribe(str(audio_path), language, resolved_stt)
         logger.info("Capture %s transcription (including model load/queue): %.3fs for %sms audio", capture_id, time.monotonic() - transcription_started, duration_ms)
@@ -211,6 +213,10 @@ async def refine_capture(
         flags,
         model_size=model_size,
     )
+
+    from .correction_learning import apply_learned_corrections
+
+    refined = apply_learned_corrections(refined, row.language)
 
     row.transcript_refined = refined
     row.llm_model = llm_size

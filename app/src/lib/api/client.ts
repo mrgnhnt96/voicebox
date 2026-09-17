@@ -15,6 +15,7 @@ import type {
   CaptureSettings,
   CaptureSettingsUpdate,
   CaptureSource,
+  CorrectionLearningStatus,
   CloudLoginStartResponse,
   CloudStatus,
   CudaStatus,
@@ -443,6 +444,26 @@ class ApiClient {
 
   async exportCaptureFeedback(): Promise<CaptureFeedbackResponse[]> {
     return this.request('/capture/feedback/export');
+  }
+
+  async correctionLearningStatus(): Promise<CorrectionLearningStatus> {
+    return this.request('/capture/learning');
+  }
+
+  async runCorrectionLearning(): Promise<CorrectionLearningStatus> {
+    return this.request('/capture/learning/run', { method: 'POST' });
+  }
+
+  async pauseLearningForRecording(): Promise<void> {
+    await this.request('/capture/learning/activity', { method: 'POST' });
+  }
+
+  async cancelModelLearning(): Promise<void> {
+    await this.request('/capture/learning/cancel', { method: 'POST' });
+  }
+
+  async rollbackCorrectionLearning(): Promise<CorrectionLearningStatus> {
+    return this.request('/capture/learning/rollback', { method: 'POST' });
   }
 
   // Captures

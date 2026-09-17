@@ -579,3 +579,31 @@ export interface CaptureFeedbackResponse extends CaptureFeedbackCreate {
   capture_id: string;
   created_at: string;
 }
+export interface CorrectionLearningStatus {
+  model?: {
+    phase: string;
+    revision: number;
+    running: boolean;
+    active_adapter: string | null;
+    speech_model: string | null;
+    can_rollback: boolean;
+    counts: { train?: number; validation?: number; test?: number; audio_test?: number; speech_test?: number };
+    last_run: string | null;
+    error: string | null;
+    metrics: { adapter?: { passed: boolean; reasons: string[]; baseline_errors: number; candidate_errors: number } } | null;
+  };
+  evaluated_report_ids: string[];
+  revision: number;
+  active_rules: number;
+  last_run: string | null;
+  outcome: 'waiting' | 'updated' | 'no_change' | 'rolled_back';
+  can_rollback: boolean;
+  metrics: {
+    training_examples: number;
+    heldout_examples: number;
+    candidates: number;
+    accepted: number;
+    median_rule_ms: number;
+    latency_passed: boolean;
+  } | null;
+}

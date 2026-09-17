@@ -186,11 +186,14 @@ class PyTorchQwenLLMBackend:
 class MLXQwenLLMBackend:
     """Qwen3 LLM backend using mlx-lm (Apple Silicon)."""
 
+    supports_adapters = True
+
     def __init__(self, model_size: str = "0.6B"):
         self.model = None
         self.tokenizer = None
         self.model_size = model_size
         self._current_model_size: Optional[str] = None
+        self._adapter_path: Optional[str] = None
 
     def is_loaded(self) -> bool:
         return self.model is not None
@@ -235,11 +238,16 @@ class MLXQwenLLMBackend:
         progress_model_name = _progress_name(model_size)
         is_cached = self._is_model_cached(model_size)
         repo = self._get_model_path(model_size)
+        if self._adapter_path:
+            import json
+            from pathlib import Path
+            adapter_config = json.loads((Path(self._adapter_path) / 'adapter_config.json').read_text())
+            repo = adapter_config['voicebox_base_path']
 
         with model_load_progress(progress_model_name, is_cached):
             logger.info("Loading Qwen3 %s via MLX...", model_size)
             # See the PyTorch loader comment — no offline forcing (issue #841).
-            loaded = mlx_load(repo)
+            loaded = mlx_load(repo, adapter_path=self._adapter_path)
 
         # mlx_lm.load returns (model, tokenizer) by default and
         # (model, tokenizer, config) when return_config=True.
@@ -269,10 +277,14 @@ class MLXQwenLLMBackend:
         temperature: float = DEFAULT_LLM_TEMPERATURE,
         model_size: Optional[str] = None,
         examples: Optional[list[tuple[str, str]]] = None,
+        adapter_path: Optional[str] = None,
     ) -> str:
         # Load-if-needed and inference run as one job on the MLX worker so a
         # concurrent unload or different-size load can't land between them.
         def _load_and_generate() -> str:
+            if self._adapter_path != adapter_path:
+                self.unload_model()
+                self._adapter_path = adapter_path
             self._ensure_loaded_sync(model_size)
             return self._generate_sync(prompt, system, max_tokens, temperature, examples)
 

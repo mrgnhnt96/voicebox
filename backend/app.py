@@ -141,9 +141,19 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def voicebox_lifespan(app: FastAPI):
         await _run_startup(app)
+        from .services.correction_learning import initialize
+        from .services.model_improvement.manager import periodic_job
+
+        initialize()
+        learning_task = asyncio.create_task(periodic_job())
         try:
             yield
         finally:
+            learning_task.cancel()
+            try:
+                await learning_task
+            except asyncio.CancelledError:
+                pass
             # Paired with _run_startup via try/finally: runs whether or
             # not the nested MCP lifespan entered cleanly, so a partial
             # startup still unloads whatever models were loaded.
@@ -165,6 +175,8 @@ def create_app() -> FastAPI:
     )
 
     _configure_cors(application)
+    from .services.model_improvement.middleware import ForegroundPriorityMiddleware
+    application.add_middleware(ForegroundPriorityMiddleware)
     application.add_middleware(ClientIdMiddleware)
     register_routers(application)
     application.mount("/mcp", mcp_app)

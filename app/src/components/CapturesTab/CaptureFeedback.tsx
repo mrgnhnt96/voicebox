@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { apiClient } from '@/lib/api/client';
 import type { CaptureFeedbackCreate, CaptureResponse } from '@/lib/api/types';
 import { usePlatform } from '@/platform/PlatformContext';
+import { CorrectionLearning } from './CorrectionLearning';
 
 export function CaptureFeedback({
   capture,
@@ -101,6 +102,7 @@ export function CaptureFeedback({
           {t('captures.feedback.loadFailed')}
         </p>
       )}
+      <CorrectionLearning reports={reports.data ?? []} />
       {!!reports.data?.length && (
         <details className="text-sm">
           <summary className="cursor-pointer text-muted-foreground">
