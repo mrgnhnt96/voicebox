@@ -55,6 +55,9 @@ def build_server(cuda=False, rocm=False):
         pack_mode,
         "--name",
         binary_name,
+        # Include service packages used by optional flows and subprocess workers.
+        "--collect-submodules",
+        "backend.services",
     ]
 
     # Hide console window on Windows only. On macOS/Linux the sidecar needs
@@ -784,4 +787,3 @@ if __name__ == "__main__":
         build_shim()
     else:
         build_server(cuda=cli_args.cuda, rocm=cli_args.rocm)
-
