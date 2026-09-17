@@ -58,6 +58,7 @@ export interface ServerLogEntry {
 export interface PlatformLifecycle {
   startServer(remote?: boolean, modelsDir?: string | null): Promise<string>;
   stopServer(): Promise<void>;
+  restartApp(): Promise<void>;
   restartServer(modelsDir?: string | null): Promise<string>;
   setKeepServerRunning(keep: boolean): Promise<void>;
   setBackendOverride(backend?: string | null): Promise<void>;

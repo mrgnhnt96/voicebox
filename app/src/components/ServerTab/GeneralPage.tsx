@@ -37,6 +37,7 @@ export function GeneralPage() {
   const mode = useServerStore((state) => state.mode);
   const setMode = useServerStore((state) => state.setMode);
   const { toast } = useToast();
+  const [restarting, setRestarting] = useState(false);
   const { data: health, isLoading, error: healthError } = useServerHealth();
 
   const resolver = useMemo(
@@ -140,6 +141,36 @@ export function GeneralPage() {
             </form>
           </Form>
         </SettingRow>
+
+        {platform.metadata.isTauri && (
+          <SettingRow
+            title={t('settings.general.restart.title')}
+            description={t('settings.general.restart.description')}
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={restarting}
+                onClick={async () => {
+                  setRestarting(true);
+                  try {
+                    await platform.lifecycle.restartApp();
+                  } catch (error) {
+                    setRestarting(false);
+                    toast({
+                      title: t('settings.general.restart.failed'),
+                      description: String(error),
+                      variant: 'destructive',
+                    });
+                  }
+                }}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${restarting ? 'animate-spin' : ''}`} />
+                {t(restarting ? 'settings.general.restart.busy' : 'settings.general.restart.title')}
+              </Button>
+            }
+          />
+        )}
 
         <SettingRow
           title={t('settings.general.keepServerRunning.title')}

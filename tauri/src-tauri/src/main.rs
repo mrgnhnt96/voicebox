@@ -13,6 +13,7 @@ mod input_monitoring;
 mod key_codes;
 mod keyboard_layout;
 mod speak_monitor;
+mod server_process;
 mod synthetic_keys;
 
 use std::sync::Mutex;
@@ -23,6 +24,7 @@ use tokio::sync::mpsc;
 pub const DICTATE_WINDOW_LABEL: &str = "dictate";
 const DICTATE_WINDOW_WIDTH: f64 = 420.0;
 const DICTATE_WINDOW_HEIGHT: f64 = 64.0;
+const DICTATE_BOTTOM_PADDING: f64 = 24.0;
 
 /// Create the floating dictate webview hidden. The HotkeyMonitor shows it on
 /// chord-start; the frontend hides it when the capture pipeline finishes.
@@ -49,19 +51,33 @@ fn build_dictate_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewW
     .visible(false)
     .build()?;
 
-    if let Some(monitor) = window.current_monitor()? {
-        let monitor_size = monitor.size();
-        let win_size = window.outer_size()?;
-        let x = (monitor_size.width as i32 - win_size.width as i32) / 2;
-        let y = (monitor_size.height as f64 * 0.04) as i32;
-        window.set_position(PhysicalPosition::new(x, y))?;
-    }
+    position_dictate_window(&window)?;
 
     // Make the pill able to float over other apps' native fullscreen Spaces.
     #[cfg(target_os = "macos")]
     apply_fullscreen_overlay_behavior(&window);
 
     Ok(window)
+}
+
+/// Center the pill above the usable screen edge, leaving room for the Dock/taskbar.
+#[cfg(desktop)]
+pub(crate) fn position_dictate_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    // Hidden pills are parked off-screen, so their current monitor can be absent.
+    let monitor = window
+        .current_monitor()?
+        .or(window.primary_monitor()?);
+    if let Some(monitor) = monitor {
+        let area = monitor.work_area();
+        let size = window.outer_size()?;
+        let padding = (DICTATE_BOTTOM_PADDING * monitor.scale_factor()).round() as i32;
+        let available_width = (area.size.width as i32 - size.width as i32).max(0);
+        let available_height = (area.size.height as i32 - size.height as i32).max(0);
+        let x = area.position.x + available_width / 2;
+        let y = area.position.y + (available_height - padding).max(0);
+        window.set_position(PhysicalPosition::new(x, y))?;
+    }
+    Ok(())
 }
 
 // `object_setClass` — reclass a live object. Not re-exported by `objc`.
@@ -227,22 +243,8 @@ pub fn show_dictate_window(app: &tauri::AppHandle) {
             }
         },
     };
-    // current_monitor() returns None when the window has been parked
-    // off any display by the hide path; fall back to the primary.
-    let monitor = window
-        .current_monitor()
-        .ok()
-        .flatten()
-        .or_else(|| window.primary_monitor().ok().flatten());
-    if let Some(monitor) = monitor {
-        let monitor_pos = monitor.position();
-        let monitor_size = monitor.size();
-        if let Ok(win_size) = window.outer_size() {
-            let x = monitor_pos.x
-                + (monitor_size.width as i32 - win_size.width as i32) / 2;
-            let y = monitor_pos.y + (monitor_size.height as f64 * 0.04) as i32;
-            let _ = window.set_position(PhysicalPosition::new(x, y));
-        }
+    if let Err(e) = position_dictate_window(&window) {
+        eprintln!("show_dictate_window: failed to position pill: {e}");
     }
     // Skip on Linux: tao's CursorIgnoreEvents handler unwraps the GdkWindow,
     // which is None until the window is first shown, aborting the process.
@@ -816,13 +818,14 @@ async fn start_server(
 
     // Wait for server to be ready by listening for startup log
     // PyInstaller bundles can be slow on first import, especially torch/transformers
-    let timeout = tokio::time::Duration::from_secs(120);
+    // Startup now loads the installed dictation models before serving requests.
+    let timeout = tokio::time::Duration::from_secs(600);
     let start_time = tokio::time::Instant::now();
     let mut error_output = Vec::new();
 
     loop {
         if start_time.elapsed() > timeout {
-            eprintln!("Server startup timeout after 120 seconds");
+            eprintln!("Server startup timeout after 600 seconds");
             if !error_output.is_empty() {
                 eprintln!("Collected error output:");
                 for line in &error_output {
@@ -962,51 +965,36 @@ async fn start_server(
 
 #[command]
 async fn stop_server(state: State<'_, ServerState>) -> Result<(), String> {
-    let pid = state.server_pid.lock().unwrap().take();
-    let _child = state.child.lock().unwrap().take();
-    
-    if let Some(pid) = pid {
-        println!("stop_server: Stopping server with PID: {}", pid);
-        
-        #[cfg(unix)]
-        {
-            use std::process::Command;
-            // Kill process group with SIGTERM first
-            let _ = Command::new("kill")
-                .args(["-TERM", "--", &format!("-{}", pid)])
-                .output();
-            
-            // Brief wait then force kill
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            
-            let _ = Command::new("kill")
-                .args(["-9", "--", &format!("-{}", pid)])
-                .output();
-            let _ = Command::new("kill")
-                .args(["-9", &pid.to_string()])
-                .output();
-            
-            println!("stop_server: Process group kill completed");
-        }
-        
-        #[cfg(windows)]
-        {
-            // Send graceful shutdown via HTTP — the server's parent-pid watchdog
-            // will also handle cleanup if this app process exits.
-            println!("Sending graceful shutdown via HTTP...");
-            let client = reqwest::blocking::Client::builder()
-                .timeout(std::time::Duration::from_secs(2))
-                .build()
-                .unwrap();
+    stop_managed_server(&state)
+}
 
-            let _ = client
-                .post(&format!("http://127.0.0.1:{}/shutdown", SERVER_PORT))
-                .send();
-
-            println!("Shutdown request sent (server watchdog will handle cleanup)");
-        }
+fn stop_managed_server(state: &ServerState) -> Result<(), String> {
+    let mut pid = state.server_pid.lock().unwrap();
+    if let Some(value) = *pid {
+        server_process::stop(value)?;
+        *pid = None;
+        state.child.lock().unwrap().take();
     }
-    
+    Ok(())
+}
+
+async fn wait_for_server_exit() -> Result<(), String> {
+    for _ in 0..50 {
+        if tokio::net::TcpStream::connect(("127.0.0.1", SERVER_PORT)).await.is_err() {
+            return Ok(());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    Err("The local server is still running. Restart was cancelled; no second server was launched.".into())
+}
+
+#[command]
+async fn restart_app(app: tauri::AppHandle, state: State<'_, ServerState>) -> Result<(), String> {
+    stop_server(state.clone()).await?;
+    wait_for_server_exit().await?;
+    // A deliberate restart always stops the server, even when closing normally keeps it alive.
+    *state.keep_running_on_close.lock().unwrap() = false;
+    app.request_restart();
     Ok(())
 }
 
@@ -1032,7 +1020,7 @@ async fn restart_server(
 
     // Wait for port to be released
     println!("restart_server: waiting for port release...");
-    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+    wait_for_server_exit().await?;
 
     // Start server again (will auto-detect GPU binary and use stored models_dir)
     println!("restart_server: starting server...");
@@ -1687,6 +1675,7 @@ pub fn run() {
             start_server,
             stop_server,
             restart_server,
+            restart_app,
             set_keep_server_running,
             set_backend_override,
             start_system_audio_capture,
@@ -1797,33 +1786,20 @@ pub fn run() {
                             Err(e) => eprintln!("Failed to disable watchdog: {}", e),
                         }
                     } else {
-                        // Server will self-terminate via parent-pid watchdog when
-                        // this process exits. On Unix, also send SIGTERM for
-                        // immediate cleanup.
-                        println!("RunEvent::Exit - server will self-terminate via watchdog");
-
-                        #[cfg(unix)]
-                        {
-                            if let Some(pid) = state.server_pid.lock().unwrap().take() {
-                                use std::process::Command;
-                                let _ = Command::new("kill")
-                                    .args(["-TERM", "--", &format!("-{}", pid)])
-                                    .output();
-                                std::thread::sleep(std::time::Duration::from_millis(100));
-                                let _ = Command::new("kill")
-                                    .args(["-9", "--", &format!("-{}", pid)])
-                                    .output();
-                                let _ = Command::new("kill")
-                                    .args(["-9", &pid.to_string()])
-                                    .output();
-                            }
+                        if let Err(error) = stop_managed_server(&state) {
+                            eprintln!("Failed to stop local server on exit: {error}");
                         }
                     }
                 }
-                RunEvent::ExitRequested { api, .. } => {
-                    println!("RunEvent::ExitRequested received");
-                    // Don't prevent exit, just log it
-                    let _ = api;
+                RunEvent::ExitRequested { .. } => {
+                    // Stop descendants before the shell plugin's Exit handler
+                    // kills the launcher and reparents its PyInstaller worker.
+                    let state = app.state::<ServerState>();
+                    if !*state.keep_running_on_close.lock().unwrap() {
+                        if let Err(error) = stop_managed_server(&state) {
+                            eprintln!("Failed to stop local server before exit: {error}");
+                        }
+                    }
                 }
                 _ => {}
             }

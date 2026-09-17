@@ -15,7 +15,7 @@ python -m backend.main --host 127.0.0.1 --port 17493
 python -m backend.main --data-dir /path/to/data
 ```
 
-The server auto-initializes the SQLite database on first startup. Models are downloaded from HuggingFace on first use.
+The server auto-initializes the SQLite database on first startup. Before reporting ready, it loads the installed Whisper model selected in capture settings and the selected refinement model when auto-refine is enabled. Missing models are left to the existing download/setup flow; a model load failure is logged without preventing the server from opening. Other models are downloaded from HuggingFace on first use.
 
 ## Architecture
 

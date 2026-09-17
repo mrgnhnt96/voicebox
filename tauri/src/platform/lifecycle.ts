@@ -20,6 +20,10 @@ class TauriLifecycle implements PlatformLifecycle {
     }
   }
 
+  async restartApp(): Promise<void> {
+    await invoke('restart_app');
+  }
+
   async stopServer(): Promise<void> {
     try {
       await invoke('stop_server');

@@ -1,0 +1,16 @@
+# Restart and detached-server output
+
+The bundled server inherits stdout/stderr pipes from the desktop app. The app can leave a server alive deliberately (Keep server running) or accidentally: shutdown previously signalled a process group without creating a dedicated group and then killed only the recorded launcher PID. PyInstaller can spawn another process. The shell plugin also kills its launcher during Exit, so cleanup must run during ExitRequested before children are reparented. The next app launch reuses an existing server without reconnecting its old log pipes.
+
+`backend/server.py` previously tested output once, using an empty write. That does not protect against a reader disappearing later, or a buffered write failing at flush. MLX model loading/generation prints status, and Hugging Face download tracking enables tqdm output, so a console EPIPE can escape through otherwise unrelated operations. This is a reproduced shared failure mechanism; the user's screenshot alone does not establish that every historical EPIPE came from console output rather than a socket or subprocess.
+
+Changes:
+
+- Wrap stdout/stderr before importing logging or model libraries. On EPIPE from console write/flush, redirect that descriptor to the null device and retry. Existing pipe logging works while the app is connected. Other I/O errors propagate. Network calls are not wrapped. After a disconnect, that server's console output is discarded; live log reattachment is not implemented.
+- Stop the server process tree, including nested workers, on normal shutdown when Keep server running is off. Keep server running retains its existing meaning.
+- Settings → General → Restart Voicebox explicitly stops the local server regardless of the keep-running setting, verifies its port is released, and relaunches the app. It does not kill an unowned external server; a port still in use produces an error instead of pretending a restart succeeded. In-progress work is interrupted, as the button description explains.
+- `scripts/build-local-app.sh` uses an Apple Development certificate (or `VOICEBOX_SIGNING_IDENTITY`) instead of ad-hoc signing. Run after building backend binaries when Python changes. Keep using the same signing identity and bundle identifier across installs. Switching from the previous ad-hoc signature may require granting permissions once more.
+
+Validation: real disconnected OS pipes (write and buffered flush), direct descriptor writes after redirection, tqdm and logging with a disconnected reader, unrelated disk errors propagating; native shutdown test starts a shell worker without a dedicated process group and verifies it stops; focused backend/frontend regressions and TypeScript checks. Native build and installed-app smoke checks are recorded in the task report.
+
+Installed verification (2026-09-16): 43 focused backend tests, 11 frontend tests, and 2 native process tests passed; TypeScript checks and release build passed. The certificate-signed packaged server exited successfully with both stdout/stderr readers disconnected. Clicking Restart Voicebox replaced the application, launcher, and worker PIDs and returned a healthy backend. One Cmd+Q then stopped all three processes and released port 17493. The updated app was reopened afterward.

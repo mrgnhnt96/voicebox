@@ -240,29 +240,10 @@ fn apply_effect(app: &AppHandle, effect: Effect) {
             let focus = focus_capture::capture_focus().ok();
 
             if let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) {
-                // The previous hide-cycle parked the window off-screen and
-                // made it click-through — undo both before showing, so the
-                // pill lands at top-center and the user can actually click
-                // the error pill / stop button.
-                //
-                // `current_monitor()` returns None when the window is off
-                // any display (our hide handler parks it at -10_000, -10_000
-                // precisely so it never intercepts clicks), so fall back to
-                // the primary monitor for the reposition.
-                let monitor = window
-                    .current_monitor()
-                    .ok()
-                    .flatten()
-                    .or_else(|| window.primary_monitor().ok().flatten());
-                if let Some(monitor) = monitor {
-                    let monitor_pos = monitor.position();
-                    let monitor_size = monitor.size();
-                    if let Ok(win_size) = window.outer_size() {
-                        let x = monitor_pos.x
-                            + (monitor_size.width as i32 - win_size.width as i32) / 2;
-                        let y = monitor_pos.y + (monitor_size.height as f64 * 0.04) as i32;
-                        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
-                    }
+                // Restore bottom-center placement after the hide path parks
+                // the pill off-screen, then make its controls clickable again.
+                if let Err(e) = crate::position_dictate_window(&window) {
+                    eprintln!("dictate:start: failed to position pill: {e}");
                 }
                 // Skip on Linux: aborts if the window was never realized
                 // (see show_dictate_window in main.rs).

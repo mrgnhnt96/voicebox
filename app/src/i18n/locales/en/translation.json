@@ -891,6 +891,12 @@
           "profiles": "List voices",
           "history": "Past generations"
         }
+      },
+      "restart": {
+        "title": "Restart Voicebox",
+        "description": "Restart the app and its local server. Any recording or task in progress will stop.",
+        "busy": "Restarting…",
+        "failed": "Restart failed"
       }
     },
     "generation": {

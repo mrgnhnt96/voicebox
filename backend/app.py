@@ -176,6 +176,7 @@ def create_app() -> FastAPI:
 
     _configure_cors(application)
     from .services.model_improvement.middleware import ForegroundPriorityMiddleware
+
     application.add_middleware(ForegroundPriorityMiddleware)
     application.add_middleware(ClientIdMiddleware)
     register_routers(application)
@@ -274,7 +275,7 @@ def _get_gpu_status() -> str:
 
 
 async def _run_startup(application: FastAPI) -> None:
-    """Database init, warnings, model-cache prep. Runs on lifespan entry."""
+    """Initialize storage and load configured models on lifespan entry."""
     import platform
     import sys
 
@@ -355,6 +356,9 @@ async def _run_startup(application: FastAPI) -> None:
     except Exception as e:
         logger.warning("Could not create HuggingFace cache directory: %s", e)
 
+    from .services.model_startup import load_startup_models
+
+    await load_startup_models()
     logger.info("Ready")
 
 

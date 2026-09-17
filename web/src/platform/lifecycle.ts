@@ -11,6 +11,10 @@ class WebLifecycle implements PlatformLifecycle {
     return serverUrl;
   }
 
+  async restartApp(): Promise<void> {
+    window.location.reload();
+  }
+
   async stopServer(): Promise<void> {
     // No-op for web - server is managed externally
   }
