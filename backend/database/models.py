@@ -202,6 +202,7 @@ class CaptureSettings(Base):
     smart_cleanup = Column(Boolean, nullable=False, default=True)
     self_correction = Column(Boolean, nullable=False, default=True)
     preserve_technical = Column(Boolean, nullable=False, default=True)
+    punctuation_style = Column(String, nullable=False, default="standard")
     allow_auto_paste = Column(Boolean, nullable=False, default=True)
     default_playback_voice_id = Column(String, nullable=True)
     # Configured audio input deviceId (None means system default microphone)

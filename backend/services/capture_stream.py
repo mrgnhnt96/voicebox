@@ -8,6 +8,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import re
 import struct
 import tempfile
@@ -21,6 +22,7 @@ import numpy as np
 from .. import config, models
 from ..database import Capture
 from .captures import _to_response
+from .phrase_seams import close_phrase, join_phrases, open_phrase
 from .refinement import RefinementFlags, prepare_refinement, refine_transcript
 from .transcribe import get_whisper_model
 
@@ -127,7 +129,9 @@ class StreamingCapture:
         self.finished = False
         self.persisted = False
         self.wake = asyncio.Event()
-        self.flags = RefinementFlags(settings.smart_cleanup, settings.self_correction, settings.preserve_technical)
+        self.flags = RefinementFlags(
+            settings.smart_cleanup, settings.self_correction, settings.preserve_technical, settings.punctuation_style
+        )
 
     async def emit(self, kind, **payload):
         self.revision += 1
@@ -195,8 +199,13 @@ class StreamingCapture:
             self.cached_key, self.cached_text = (pcm, previous_text), text
             return text
 
+    def join(self, previous, phrase, raw_phrase):
+        if self.overlap:
+            return join_overlap(previous, phrase)
+        return join_phrases(previous, phrase, raw_phrase, self.flags.punctuation_style)
+
     async def accept(self, text):
-        self.raw = join_overlap(self.raw, text) if self.overlap else " ".join(filter(None, (self.raw, text)))
+        self.raw = self.join(self.raw, text, text)
         await self.emit("transcript", accepted_text=self.raw, provisional_text="", text=self.raw, final=False)
         if not self.settings.auto_refine:
             return
@@ -238,11 +247,12 @@ class StreamingCapture:
                         self.needs_final_refinement = True
                         prefix = ""
                         refined = self.raw
-                self.refined = (
-                    join_overlap(prefix, refined) if self.overlap else " ".join(filter(None, (prefix, refined)))
-                )
+                # Pieces stay open at pauses; finish() closes the dictation.
+                joined = self.join(prefix, refined if self.overlap else open_phrase(refined, prompt), prompt)
+                self.refined = joined
                 self.last_phrase_raw = prompt
-                self.last_phrase_refined = refined
+                # Includes any seam punctuation, so a revision can peel it off.
+                self.last_phrase_refined = joined[len(os.path.commonprefix((prefix, joined))) :]
             from .correction_learning import apply_learned_corrections
 
             self.refined = apply_learned_corrections(self.refined, self.language)
@@ -292,6 +302,9 @@ class StreamingCapture:
                     await self.reconcile_full_audio()
                 elif self.needs_final_refinement:
                     await self.reconcile_refinement()
+                elif self.settings.auto_refine and (closed := close_phrase(self.refined)) != self.refined:
+                    self.refined = closed
+                    await self.emit("refined", text=self.refined)
                 return
             if available >= self.rate * 2 and self.samples - self.last_preview >= self.rate * 2:
                 end = self.samples
@@ -300,7 +313,7 @@ class StreamingCapture:
                     return
                 self.covered = max(self.covered, end)
                 self.last_preview = end
-                combined = join_overlap(self.raw, text) if self.overlap else " ".join(filter(None, (self.raw, text)))
+                combined = self.join(self.raw, text, text)
                 await self.emit("transcript", accepted_text=self.raw, provisional_text=text, text=combined, final=False)
                 # Speculate only on the bounded active phrase, at most once per
                 # six seconds of new audio. Final acceptance reuses an exact
@@ -316,11 +329,7 @@ class StreamingCapture:
                         refined, model = await refine_transcript(text, self.flags, model_size=self.settings.llm_model)
                         self.preview_refinement = (text, refined, model)
                         refined, _ = guard_phrase_refinement(text, refined, self.flags)
-                        output = (
-                            join_overlap(self.refined, refined)
-                            if self.overlap
-                            else " ".join(filter(None, (self.refined, refined)))
-                        )
+                        output = self.join(self.refined, refined if self.overlap else open_phrase(refined, text), text)
                         await self.emit("refined", text=output)
                     except Exception:
                         logger.debug("Speculative streaming refinement failed", exc_info=True)

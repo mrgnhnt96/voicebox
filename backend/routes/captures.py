@@ -172,12 +172,14 @@ async def refine_capture_endpoint(
             smart_cleanup=request.flags.smart_cleanup,
             self_correction=request.flags.self_correction,
             preserve_technical=request.flags.preserve_technical,
+            punctuation_style=request.flags.punctuation_style,
         )
     else:
         flags = RefinementFlags(
             smart_cleanup=saved.smart_cleanup,
             self_correction=saved.self_correction,
             preserve_technical=saved.preserve_technical,
+            punctuation_style=saved.punctuation_style,
         )
 
     resolved_model = request.model_size or saved.llm_model

@@ -153,10 +153,13 @@ export interface FocusSnapshot {
   role: string | null;
 }
 
+export type PunctuationStyle = 'standard' | 'casual';
+
 export interface RefinementFlags {
   smart_cleanup: boolean;
   self_correction: boolean;
   preserve_technical: boolean;
+  punctuation_style?: PunctuationStyle;
 }
 
 export interface CaptureResponse {
@@ -208,6 +211,7 @@ export interface CaptureSettings {
   smart_cleanup: boolean;
   self_correction: boolean;
   preserve_technical: boolean;
+  punctuation_style: PunctuationStyle;
   allow_auto_paste: boolean;
   default_playback_voice_id: string | null;
   /** Configured audio input deviceId (null or empty string means system default microphone). */

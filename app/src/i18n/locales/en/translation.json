@@ -1049,6 +1049,12 @@
           "title": "Smart cleanup",
           "description": "Remove filler words, restore punctuation, and apply spoken formatting such as new lines, paragraphs, and bullet lists without rephrasing."
         },
+        "punctuationStyle": {
+          "title": "Punctuation style",
+          "description": "Casual joins related thoughts with commas and keeps run-on sentences the way you said them. Standard punctuates like written prose.",
+          "casual": "Casual · commas, as spoken",
+          "standard": "Standard · written prose"
+        },
         "selfCorrection": {
           "title": "Remove self-corrections",
           "description": "When you change your mind mid-sentence (\"actually, no...\", \"wait, I meant...\"), drop the retracted part and keep the final intent."

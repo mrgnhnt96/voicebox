@@ -188,6 +188,7 @@ class RefinementFlagsModel(BaseModel):
     smart_cleanup: bool = True
     self_correction: bool = True
     preserve_technical: bool = True
+    punctuation_style: str = Field(default="standard", pattern="^(standard|casual)$")
 
 
 class CaptureResponse(BaseModel):
@@ -255,6 +256,7 @@ class CaptureSettingsResponse(BaseModel):
     smart_cleanup: bool = True
     self_correction: bool = True
     preserve_technical: bool = True
+    punctuation_style: str = Field(default="standard", pattern="^(standard|casual)$")
     allow_auto_paste: bool = True
     default_playback_voice_id: Optional[str] = None
     input_device_id: Optional[str] = Field(
@@ -283,6 +285,7 @@ class CaptureSettingsUpdate(BaseModel):
     smart_cleanup: Optional[bool] = None
     self_correction: Optional[bool] = None
     preserve_technical: Optional[bool] = None
+    punctuation_style: Optional[str] = Field(default=None, pattern="^(standard|casual)$")
     allow_auto_paste: Optional[bool] = None
     default_playback_voice_id: Optional[str] = None
     input_device_id: Optional[str] = Field(

@@ -32,7 +32,7 @@ import { usePlatform } from '@/platform/PlatformContext';
 import { useServerStore } from '@/stores/serverStore';
 import { cn } from '@/lib/utils/cn';
 import { defaultChordKeys, displayLabelForKey, modifierSideHint } from '@/lib/utils/keyCodes';
-import type { Qwen3ModelSize, VoiceProfileResponse, WhisperModelSize } from '@/lib/api/types';
+import type { PunctuationStyle, Qwen3ModelSize, VoiceProfileResponse, WhisperModelSize } from '@/lib/api/types';
 import { SettingRow, SettingSection } from './SettingRow';
 
 function ChordPreview({ keys }: { keys: string[] }) {
@@ -136,6 +136,7 @@ export function CapturesPage() {
   const smartCleanup = settings?.smart_cleanup ?? true;
   const selfCorrection = settings?.self_correction ?? true;
   const preserveTechnical = settings?.preserve_technical ?? true;
+  const punctuationStyle = settings?.punctuation_style ?? 'standard';
   const allowAutoPaste = settings?.allow_auto_paste ?? true;
   const defaultVoiceId = settings?.default_playback_voice_id ?? null;
   const hotkeyEnabled = settings?.hotkey_enabled ?? false;
@@ -468,6 +469,30 @@ export function CapturesPage() {
               onCheckedChange={(v) => update({ smart_cleanup: v })}
               disabled={!autoRefine}
             />
+          }
+        />
+
+        {/* Not tied to auto-refine: pause joins in raw dictation follow it too. */}
+        <SettingRow
+          title={t('settings.captures.refinement.punctuationStyle.title')}
+          description={t('settings.captures.refinement.punctuationStyle.description')}
+          action={
+            <Select
+              value={punctuationStyle}
+              onValueChange={(v) => update({ punctuation_style: v as PunctuationStyle })}
+            >
+              <SelectTrigger className="w-[260px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="casual">
+                  {t('settings.captures.refinement.punctuationStyle.casual')}
+                </SelectItem>
+                <SelectItem value="standard">
+                  {t('settings.captures.refinement.punctuationStyle.standard')}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           }
         />
 

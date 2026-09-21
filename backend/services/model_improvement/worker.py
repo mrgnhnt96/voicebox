@@ -30,7 +30,7 @@ def phase(directory, name):
 
 def token_dataset(samples, tokenizer):
     from ...backends.qwen_llm_backend import _build_messages
-    from ..refinement import REFINEMENT_EXAMPLES, RefinementFlags, build_refinement_prompt, prepare_refinement
+    from ..refinement import RefinementFlags, build_refinement_prompt, prepare_refinement, refinement_examples
 
     result = []
     for sample in samples:
@@ -38,7 +38,7 @@ def token_dataset(samples, tokenizer):
         cleaned, bypass = prepare_refinement(sample["raw"], flags)
         if bypass is not None:
             continue
-        messages = _build_messages(cleaned, build_refinement_prompt(flags), REFINEMENT_EXAMPLES)
+        messages = _build_messages(cleaned, build_refinement_prompt(flags), refinement_examples(flags))
         prefix = tokenizer.apply_chat_template(
             messages, tokenize=True, add_generation_prompt=True, enable_thinking=False
         )
@@ -137,13 +137,13 @@ def generate_one(model, tokenizer, sample, compiled_rules, seed):
 
     from ...backends.qwen_llm_backend import _build_messages
     from ..correction_rules import apply_rules
-    from ..refinement import REFINEMENT_EXAMPLES, RefinementFlags, build_refinement_prompt, prepare_refinement
+    from ..refinement import RefinementFlags, build_refinement_prompt, prepare_refinement, refinement_examples
 
     flags = RefinementFlags.from_dict(sample.get("flags"))
     cleaned, bypass = prepare_refinement(sample["raw"], flags)
     start = time.perf_counter()
     if bypass is None:
-        messages = _build_messages(cleaned, build_refinement_prompt(flags), REFINEMENT_EXAMPLES)
+        messages = _build_messages(cleaned, build_refinement_prompt(flags), refinement_examples(flags))
         prompt = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
         )

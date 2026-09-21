@@ -413,7 +413,8 @@ async def test_dropped_reminder_phrase_uses_raw_without_final_llm(tmp_path, monk
     await session.accept(raw)
     session.finish()
     await session.run()
-    assert session.refined == raw
+    # The raw phrase is kept; finishing only closes the dictation.
+    assert session.refined == raw + "."
     assert not session.needs_final_refinement
     refine.assert_awaited_once()
     session.close()
@@ -484,3 +485,41 @@ def test_websocket_uses_database_factory_initialized_at_startup(tmp_path, monkey
         socket.send_json({"type": "cancel"})
         assert socket.receive()["type"] == "websocket.close"
     assert not route._active_sessions
+
+
+async def _dictate(tmp_path, monkeypatch, style, phrases):
+    session, _ = make_session(tmp_path, monkeypatch, punctuation_style=style)
+    session.settings.auto_refine = True
+    session.flags.punctuation_style = style
+
+    async def refine(text, flags, model_size=None):
+        return text[0].upper() + text[1:] + ("" if text.endswith("?") else "."), "0.6B"
+
+    monkeypatch.setattr(capture_stream, "refine_transcript", refine)
+    from backend.services import correction_learning
+
+    monkeypatch.setattr(correction_learning, "apply_learned_corrections", lambda text, _: text)
+    for phrase in phrases:
+        await session.accept(phrase)
+    session.finish()
+    await session.run()
+    session.close()
+    return session.refined
+
+
+@pytest.mark.asyncio
+async def test_pause_inside_a_sentence_does_not_add_a_period(tmp_path, monkeypatch):
+    refined = await _dictate(tmp_path, monkeypatch, "standard", ["If I'm contributing 6%, how", "much is deducted?"])
+    assert refined == "If I'm contributing 6%, how much is deducted?"
+
+
+@pytest.mark.asyncio
+async def test_standard_style_starts_a_new_sentence_after_a_pause(tmp_path, monkeypatch):
+    refined = await _dictate(tmp_path, monkeypatch, "standard", ["It might", "But we'll see"])
+    assert refined == "It might. But we'll see."
+
+
+@pytest.mark.asyncio
+async def test_casual_style_joins_thoughts_with_a_comma(tmp_path, monkeypatch):
+    refined = await _dictate(tmp_path, monkeypatch, "casual", ["It might", "But we'll see"])
+    assert refined == "It might, but we'll see."
