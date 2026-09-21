@@ -85,7 +85,6 @@ export interface UseCaptureRecordingSessionOptions {
 
 export interface UseCaptureRecordingSessionResult {
   pillState: CapturePillState;
-  batchFallback: boolean;
   pillElapsedMs: number;
   errorMessage: string | null;
   isRecording: boolean;
@@ -123,7 +122,6 @@ export function useCaptureRecordingSession(
   // back on the create response so the client decides whether to chain a
   // refine call using a value that can't go stale across sibling webviews.
 
-  const [batchFallback, setBatchFallback] = useState(false);
   const activeTakeRef = useRef<RecordingTake | null>(null);
   const startingRef = useRef(false);
   const [finalizingCount, setFinalizingCount] = useState(0);
@@ -323,9 +321,7 @@ export function useCaptureRecordingSession(
         const audio = await startStreamingAudio(
           stream,
           (sampleRate) => {
-            take.stream = new CaptureStream(useServerStore.getState().serverUrl, sampleRate, () => {
-              if (activeTakeRef.current === take) setBatchFallback(true);
-            });
+            take.stream = new CaptureStream(useServerStore.getState().serverUrl, sampleRate);
             streamsRef.current.add(take.stream);
           },
           (frame) => take.stream?.append(frame),
@@ -357,7 +353,6 @@ export function useCaptureRecordingSession(
           },
         };
       } catch (error) {
-        if (activeTakeRef.current === take) setBatchFallback(true);
         take.stream?.cancel();
         if (take.stream) streamsRef.current.delete(take.stream);
         throw error;
@@ -387,7 +382,6 @@ export function useCaptureRecordingSession(
           if (final.error) throw final.error;
           const result = final.result;
           if (result) {
-            if (result.degraded_reason && activeTakeRef.current === take) setBatchFallback(true);
             const capture = result.capture;
             queryClient.setQueryData<CaptureListResponse>(['captures'], (previous) => {
               if (!previous || previous.items.some((item) => item.id === capture.id))
@@ -468,7 +462,6 @@ export function useCaptureRecordingSession(
       setPillState('preparing');
       const take: RecordingTake = { context };
       activeTakeRef.current = take;
-      setBatchFallback(false);
       void beginAudioRecording(take).finally(() => {
         startingRef.current = false;
       });
@@ -502,7 +495,6 @@ export function useCaptureRecordingSession(
 
   return {
     pillState,
-    batchFallback,
     pillElapsedMs,
     errorMessage,
     isRecording,

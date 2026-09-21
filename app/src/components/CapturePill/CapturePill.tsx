@@ -74,7 +74,6 @@ function formatElapsed(ms: number): string {
 export function CapturePill({
   state,
   elapsedMs,
-  batchFallback = false,
   onStop,
   errorMessage,
   onDismiss,
@@ -82,7 +81,6 @@ export function CapturePill({
 }: {
   state: PillState;
   elapsedMs: number;
-  batchFallback?: boolean;
   onStop?: () => void;
   errorMessage?: string | null;
   onDismiss?: () => void;
@@ -140,12 +138,7 @@ export function CapturePill({
     >
       {stopButton}
       <span className="text-sm font-medium shrink-0" style={{ minWidth: '104px' }}>
-        {batchFallback && (state === 'recording' || state === 'transcribing')
-          ? t('captures.pill.batchFallback', {
-              defaultValue: '{{state}} · batch mode',
-              state: labelText,
-            })
-          : labelText}
+        {labelText}
       </span>
       <PillAudioBars mode={barMode} />
       <span className="text-xs tabular-nums text-accent/70 font-medium shrink-0 -ml-1">

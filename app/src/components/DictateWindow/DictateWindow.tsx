@@ -304,7 +304,6 @@ export function DictateWindow() {
     >
       {effectiveState !== 'hidden' ? (
         <CapturePill
-          batchFallback={session.batchFallback}
           state={effectiveState}
           elapsedMs={effectiveElapsed}
           errorMessage={session.errorMessage}

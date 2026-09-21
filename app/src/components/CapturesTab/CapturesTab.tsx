@@ -571,7 +571,6 @@ export function CapturesTab() {
             <div className="flex-1" />
             {session.pillState !== 'hidden' && (
               <CapturePill
-                batchFallback={session.batchFallback}
                 state={session.pillState}
                 elapsedMs={session.pillElapsedMs}
                 errorMessage={session.errorMessage}

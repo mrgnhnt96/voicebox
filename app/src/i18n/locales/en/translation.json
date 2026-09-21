@@ -153,7 +153,6 @@
       "shortcutNotArmedDescription_other": "{{names}} still need to download. Open the Captures tab to start."
     },
     "pill": {
-      "batchFallback": "{{state}} · batch mode",
       "preparing": "Opening microphone…",
       "recording": "Recording",
       "transcribing": "Transcribing",
