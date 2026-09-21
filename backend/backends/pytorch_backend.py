@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 from . import TTSBackend, STTBackend, LANGUAGE_CODE_TO_NAME, WHISPER_HF_REPOS
 from .base import (
+    ellipsis_token_ids,
     is_model_cached,
     get_torch_device,
     empty_device_cache,
@@ -319,6 +320,7 @@ class PyTorchSTTBackend:
         audio_path: str,
         language: Optional[str] = None,
         model_size: Optional[str] = None,
+        previous_text: Optional[str] = None,
     ) -> str:
         """
         Transcribe audio to text.
@@ -327,6 +329,7 @@ class PyTorchSTTBackend:
             audio_path: Path to audio file
             language: Optional language hint
             model_size: Optional model size override
+            previous_text: Earlier dictation text when transcribing one phrase
 
         Returns:
             Transcribed text
@@ -359,6 +362,15 @@ class PyTorchSTTBackend:
                     task="transcribe",
                 )
                 generate_kwargs["forced_decoder_ids"] = forced_decoder_ids
+            if previous_text is not None:
+                tokenizer = self.processor.tokenizer
+                generate_kwargs["bad_words_ids"] = [
+                    [token] for token in ellipsis_token_ids(self.model_size, tokenizer.decode, len(tokenizer))
+                ]
+                if previous_text:
+                    generate_kwargs["prompt_ids"] = self.processor.get_prompt_ids(
+                        previous_text, return_tensors="pt"
+                    ).to(self.device)
 
             with torch.no_grad():
                 predicted_ids = self.model.generate(

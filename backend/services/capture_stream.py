@@ -27,6 +27,8 @@ from .transcribe import get_whisper_model
 logger = logging.getLogger(__name__)
 MAX_FRAME_BYTES = 65536
 MAX_SECONDS = 3600
+# Whisper keeps at most ~224 prompt tokens; this stays comfortably inside it.
+PHRASE_CONTEXT_CHARS = 600
 
 
 def join_overlap(prefix: str, tail: str) -> str:
@@ -110,7 +112,7 @@ class StreamingCapture:
         self.preview_refinement = None
         self.revision = 0
         self.covered = 0
-        self.cached_pcm = None
+        self.cached_key = None
         self.cached_text = None
         self.raw = ""
         self.refined = ""
@@ -167,11 +169,15 @@ class StreamingCapture:
         self.wake.set()
 
     async def recognize(self, pcm):
-        if pcm == self.cached_pcm:
+        # Earlier phrases give Whisper the sentence it is continuing, so a
+        # phrase cut at a pause neither trails off with "..." nor restarts
+        # with a capital letter.
+        previous_text = self.raw[-PHRASE_CONTEXT_CHARS:]
+        if (pcm, previous_text) == self.cached_key:
             return self.cached_text
         samples = np.frombuffer(pcm, dtype="<i2")
         if not len(samples) or np.max(np.abs(samples.astype(np.int32))) < 250:
-            self.cached_pcm, self.cached_text = pcm, ""
+            self.cached_key, self.cached_text = (pcm, previous_text), ""
             return ""
         # Keep each temporary window alive until inference actually completes.
         with tempfile.TemporaryDirectory(prefix="voicebox-stream-") as directory:
@@ -181,8 +187,12 @@ class StreamingCapture:
                 audio.setsampwidth(2)
                 audio.setframerate(self.rate)
                 audio.writeframes(pcm)
-            text = (await get_whisper_model().transcribe(str(path), self.language, self.stt_model)).strip()
-            self.cached_pcm, self.cached_text = pcm, text
+            text = (
+                await get_whisper_model().transcribe(
+                    str(path), self.language, self.stt_model, previous_text=previous_text
+                )
+            ).strip()
+            self.cached_key, self.cached_text = (pcm, previous_text), text
             return text
 
     async def accept(self, text):

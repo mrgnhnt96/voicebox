@@ -17,7 +17,12 @@ patch_huggingface_hub_offline()
 ensure_original_qwen_config_cached()
 
 from . import TTSBackend, STTBackend, LANGUAGE_CODE_TO_NAME, WHISPER_HF_REPOS
-from .base import is_model_cached, combine_voice_prompts as _combine_voice_prompts, model_load_progress
+from .base import (
+    is_model_cached,
+    combine_voice_prompts as _combine_voice_prompts,
+    ellipsis_token_ids,
+    model_load_progress,
+)
 from ..services.mlx_thread import run_on_mlx_thread, clear_mlx_cache
 from ..utils.cache import get_cache_key, get_cached_voice_prompt, cache_voice_prompt
 
@@ -349,6 +354,7 @@ class MLXSTTBackend:
         audio_path: str,
         language: Optional[str] = None,
         model_size: Optional[str] = None,
+        previous_text: Optional[str] = None,
     ) -> str:
         """
         Transcribe audio to text.
@@ -357,6 +363,7 @@ class MLXSTTBackend:
             audio_path: Path to audio file
             language: Optional language hint
             model_size: Optional model size override
+            previous_text: Earlier dictation text when transcribing one phrase
 
         Returns:
             Transcribed text
@@ -368,6 +375,11 @@ class MLXSTTBackend:
             decode_options = {}
             if language:
                 decode_options["language"] = language
+            if previous_text is not None:
+                tokenizer = self.model.get_tokenizer(language=language or "en")
+                decode_options["suppress_tokens"] = [-1, *ellipsis_token_ids(self.model_size, tokenizer.decode, tokenizer.eot)]
+                if previous_text:
+                    decode_options["initial_prompt"] = previous_text
 
             # Inference runs with the process's default HF_HUB_OFFLINE
             # state — see the comment in MLXTTSBackend.generate for the

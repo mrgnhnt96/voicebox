@@ -77,6 +77,23 @@ def is_model_cached(
         return False
 
 
+_ELLIPSIS_TOKEN_IDS: dict[tuple[str, int], Tuple[int, ...]] = {}
+
+
+def ellipsis_token_ids(model_key: str, decode: Callable[[List[int]], str], vocab_size: int) -> Tuple[int, ...]:
+    """Whisper token ids whose text contains an ellipsis ("..." or "…").
+
+    Whisper writes an ellipsis wherever audio trails off into silence, so a
+    dictation phrase cut at a pause would otherwise end with one.
+    """
+    key = (model_key, vocab_size)
+    if key not in _ELLIPSIS_TOKEN_IDS:
+        _ELLIPSIS_TOKEN_IDS[key] = tuple(
+            token for token in range(vocab_size) if ".." in (text := decode([token])) or "…" in text
+        )
+    return _ELLIPSIS_TOKEN_IDS[key]
+
+
 def get_torch_device(
     *,
     allow_xpu: bool = False,

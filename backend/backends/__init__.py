@@ -146,9 +146,14 @@ class STTBackend(Protocol):
         audio_path: str,
         language: Optional[str] = None,
         model_size: Optional[str] = None,
+        previous_text: Optional[str] = None,
     ) -> str:
         """
         Transcribe audio to text.
+
+        ``previous_text`` marks the audio as one phrase of a longer dictation:
+        it conditions recognition on the text heard so far and keeps Whisper
+        from marking the pause that ended the phrase with an ellipsis.
 
         Returns:
             Transcribed text

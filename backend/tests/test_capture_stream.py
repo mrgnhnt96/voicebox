@@ -160,6 +160,21 @@ async def test_silence_does_not_invoke_whisper(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_each_phrase_is_recognized_in_context_of_earlier_phrases(tmp_path, monkeypatch):
+    session, _ = make_session(tmp_path, monkeypatch)
+    stt = type("STT", (), {"transcribe": AsyncMock(side_effect=["How", "much is it?"])})()
+    monkeypatch.setattr(capture_stream, "get_whisper_model", lambda: stt)
+    append(session, 2)
+    append(session, 1, amplitude=0)
+    append(session, 2)
+    session.finish()
+    await session.run()
+    assert [call.kwargs["previous_text"] for call in stt.transcribe.await_args_list] == ["", "How"]
+    assert session.raw == "How much is it?"
+    session.close()
+
+
+@pytest.mark.asyncio
 async def test_preview_audio_and_refinement_are_reused_at_finish(tmp_path, monkeypatch):
     session, events = make_session(tmp_path, monkeypatch)
     session.settings.auto_refine = True
