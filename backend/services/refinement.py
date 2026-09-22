@@ -13,8 +13,8 @@ from dataclasses import dataclass
 
 from . import llm as llm_service
 from .dictation_edits import apply_dictation_edits
+from .spoken_cleanup import apply_spoken_cleanup
 from .spoken_corrections import apply_spoken_corrections
-
 
 # A run that repeats this many times gets collapsed before the LLM sees
 # the transcript. Whisper occasionally loops content hundreds of times
@@ -49,11 +49,11 @@ def collapse_repetitive_artifacts(text: str, min_run: int = _REPETITION_RUN_THRE
        (with surrounding punctuation stripped for comparison). Catches
        single-word loops like "URL URL URL…" and normalizes punctuated
        variants like "URL, URL, URL, URL, URL, URL".
-    2. Character-level: any substring 2–60 chars long that repeats
+    2. Character-level: any substring 2-60 chars long that repeats
        ``min_run``+ times immediately after itself. Catches multi-word
-       English loops ("thanks for watching" × 6) that the word-level
+       English loops ("thanks for watching" x 6) that the word-level
        pass misses (no consecutive identical tokens) and CJK loops
-       ("谢谢观看" × 6) where ``text.split()`` yields a single unsplit
+       ("谢谢观看" x 6) where ``text.split()`` yields a single unsplit
        token.
 
     Both passes preserve rhetorical repetition: "no, no, no, no, no"
@@ -145,7 +145,9 @@ class RefinementFlags:
             smart_cleanup=bool(data.get("smart_cleanup", True)),
             self_correction=bool(data.get("self_correction", True)),
             preserve_technical=bool(data.get("preserve_technical", True)),
-            punctuation_style=data.get("punctuation_style") if data.get("punctuation_style") in PUNCTUATION_STYLES else "standard",
+            punctuation_style=data.get("punctuation_style")
+            if data.get("punctuation_style") in PUNCTUATION_STYLES
+            else "standard",
         )
 
 
@@ -229,9 +231,7 @@ _CASUAL_EXAMPLES: list[tuple[str, str]] = [
 
 
 _KEEP_WORDING = "Do not rephrase or substitute synonyms for the speaker's word choices. Keep their vocabulary."
-_PERSONAL_WORDING = (
-    "Keep the speaker's own words. Change wording only the way their earlier examples do."
-)
+_PERSONAL_WORDING = "Keep the speaker's own words. Change wording only the way their earlier examples do."
 
 _PERSONAL = """The earlier conversation shows how this speaker wants their dictation cleaned up: what they said, then what they meant. Clean up the transcript the same way. People speak faster than they think, so fix these spoken patterns:
 - Restarts: when the speaker starts a phrase and starts over, keep only the second attempt. "the fix is, what we should do is load it" becomes "we should load it".
@@ -395,25 +395,33 @@ async def refine_transcript(
     if resolved_edit is not None:
         return resolved_edit, resolved_size
 
-    if use_personal_model and getattr(backend, 'supports_adapters', False):
+    if use_personal_model and getattr(backend, "supports_adapters", False):
         from .model_improvement.manager import active_adapter
+
         adapter_path = active_adapter(resolved_size, flags.to_dict())
-    options = {'adapter_path': adapter_path} if adapter_path else {}
+    options = {"adapter_path": adapter_path} if adapter_path else {}
     personal = []
     if use_personal_examples:
         from .personal_examples import closest
 
         personal = closest(cleaned_input, extra=extra_examples)
     system_prompt = build_refinement_prompt(flags, personal=bool(personal))
-    arguments = dict(prompt=cleaned_input, system=system_prompt, max_tokens=2048,
-                     temperature=0.2, model_size=resolved_size, examples=refinement_examples(flags, personal))
+    arguments = dict(
+        prompt=cleaned_input,
+        system=system_prompt,
+        max_tokens=2048,
+        temperature=0.2,
+        model_size=resolved_size,
+        examples=refinement_examples(flags, personal),
+    )
     try:
         text = await backend.generate(**arguments, **options)
     except Exception:
         if not adapter_path or not use_personal_model:
             raise
         from .model_improvement.manager import quarantine_adapter
-        quarantine_adapter('The personal adapter failed to load or generate; reverted to the base model.')
+
+        quarantine_adapter("The personal adapter failed to load or generate; reverted to the base model.")
         text = await backend.generate(**arguments)
     text = text.strip()
     if flags.punctuation_style == "learned":
@@ -429,6 +437,10 @@ def prepare_refinement(transcript: str, flags: RefinementFlags) -> tuple[str, st
     # Pre-process before the LLM sees the text — the model shouldn't have
     # to reason about obvious STT garbage (see ``collapse_repetitive_artifacts``).
     cleaned_input = collapse_repetitive_artifacts(transcript)
+    if flags.self_correction:
+        # Repeats, restarts and changed answers are cleaned, not resolved: the
+        # model still gets the text, so this never short-circuits refinement.
+        cleaned_input = apply_spoken_cleanup(cleaned_input)
     corrected = apply_spoken_corrections(cleaned_input) if flags.self_correction else None
     if corrected is not None:
         # Do not let a small generative model restore the retracted clause.
