@@ -1,15 +1,43 @@
-"""Writing style calibration and the learned punctuation profile."""
+"""Writing style calibration, the learned punctuation profile, and the user's examples."""
+
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from .. import models
 from ..database import Capture, get_db
-from ..services import personal_examples, writing_style
-from ..services.writing_style_paragraphs import BY_ID
+from ..services import personal_examples, settings as settings_service, writing_style
+from ..services.content_check import check_refinement
+from ..services.refinement import RefinementFlags, refine_transcript
+from ..services.writing_style_paragraphs import PARAGRAPHS
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/writing-style", tags=["writing-style"])
+# A preview needs something to restructure; shorter dictations rarely have it.
+PREVIEW_MIN_WORDS = 12
 PREVIEW_CANDIDATES = 50
+
+
+async def _clean(db: Session, said: str, extra=None, use_examples=True) -> str:
+    """Clean ``said`` up the way dictation would with the user's settings.
+
+    Falls back to what was said when the refinement model is unavailable, so
+    calibration still works before it has been downloaded.
+    """
+    saved = settings_service.get_capture_settings(db)
+    flags = RefinementFlags(
+        saved.smart_cleanup, saved.self_correction, saved.preserve_technical, saved.punctuation_style
+    )
+    try:
+        refined, _ = await refine_transcript(
+            said, flags, model_size=saved.llm_model, use_personal_examples=use_examples, extra_examples=extra
+        )
+    except Exception:
+        logger.warning("Calibration cleanup failed; showing the paragraph as said", exc_info=True)
+        return said
+    refined, _ = check_refinement(said, refined, flags)
+    return refined
 
 
 @router.get("", response_model=models.WritingStyleStatus)
@@ -36,14 +64,24 @@ async def remove_example(example_id: str):
 
 
 @router.post("/calibration", response_model=models.WritingStyleCalibrationStep)
-async def start_calibration():
-    return {**writing_style.start_calibration(), "done": False}
+async def start_calibration(db: Session = Depends(get_db)):
+    started = writing_style.start_calibration()
+    shown = await _clean(db, started["said"])
+    return writing_style.present(started["session_id"], shown)
 
 
 @router.post("/calibration/{session_id}/steps", response_model=models.WritingStyleCalibrationStep)
-async def submit_calibration_step(session_id: str, request: models.WritingStyleStepRequest):
+async def submit_calibration_step(
+    session_id: str, request: models.WritingStyleStepRequest, db: Session = Depends(get_db)
+):
     try:
-        return writing_style.submit_step(session_id, request.written)
+        result = writing_style.submit_step(session_id, request.written)
+        if result["done"]:
+            return result
+        # Each paragraph is cleaned up with everything learned so far,
+        # including this run's rewrites, so it arrives closer to the user.
+        shown = await _clean(db, result["said"], extra=writing_style.session_examples(session_id))
+        return writing_style.present(session_id, shown)
     except KeyError as error:
         raise HTTPException(status_code=404, detail="Calibration expired. Start it again.") from error
     except ValueError as error:
@@ -58,34 +96,29 @@ async def finish_calibration(session_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Calibration expired. Start it again.") from error
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    before, after = _preview(db)
+    before, after = await _preview(db)
     return {"status": status, "before": before, "after": after}
 
 
-def _preview(db: Session) -> tuple[str, str]:
-    """The recent dictation the learned style changes most.
+async def _preview(db: Session) -> tuple[str, str]:
+    """One of the user's own dictations, cleaned up before and after this run.
 
-    A short latest dictation often has no sentence break or comma to restyle,
-    so it would show no difference even when plenty was learned. Falls back to
-    a sample paragraph when none of the recent dictations would change.
+    Uses the newest dictation long enough to have something to restructure.
+    With none, a calibration paragraph is cleaned up without and with the
+    user's examples instead.
     """
     rows = (
-        db.query(Capture.transcript_refined)
-        .filter(Capture.transcript_refined.isnot(None), Capture.transcript_refined != "")
+        db.query(Capture.transcript_raw, Capture.transcript_refined)
+        .filter(Capture.transcript_raw != "")
         .order_by(Capture.created_at.desc())
         .limit(PREVIEW_CANDIDATES)
         .all()
     )
-    best = None
-    for (text,) in rows:
-        styled = writing_style.apply_learned(text)
-        changed = sum(a != b for a, b in zip(text.split(), styled.split(), strict=False))
-        if changed and (best is None or changed > best[0]):
-            best = (changed, text, styled)
-    if best:
-        return best[1], best[2]
-    sample = BY_ID["explanation-cache"].text
-    return sample, writing_style.apply_learned(sample)
+    for raw, refined in rows:
+        if len(raw.split()) >= PREVIEW_MIN_WORDS:
+            return refined or raw, await _clean(db, raw)
+    said = PARAGRAPHS[-1].said
+    return await _clean(db, said, use_examples=False), await _clean(db, said)
 
 
 @router.delete("/calibration/{session_id}", status_code=204)

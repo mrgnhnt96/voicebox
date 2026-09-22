@@ -233,9 +233,12 @@ _PERSONAL_WORDING = (
     "Keep the speaker's own words. Change wording only the way their earlier examples do."
 )
 
-_PERSONAL = """The earlier conversation shows how this speaker wants their dictation cleaned up: what they said, then what they meant. Clean up the transcript the same way.
-- Drop false starts, repeated words and abandoned half-sentences.
-- Put a jumbled sentence in the order the speaker meant it.
+_PERSONAL = """The earlier conversation shows how this speaker wants their dictation cleaned up: what they said, then what they meant. Clean up the transcript the same way. People speak faster than they think, so fix these spoken patterns:
+- Restarts: when the speaker starts a phrase and starts over, keep only the second attempt. "the fix is, what we should do is load it" becomes "we should load it".
+- Repeats: say each thing once. "I can, I can probably" becomes "I can probably".
+- Changed answers: after "no", "actually", "or was it", "well" or "I mean", keep only the final choice. "Friday, no Wednesday" becomes "Wednesday". "Thursday, well Thursday morning" becomes "Thursday morning".
+- Things said late: when the speaker adds something with "oh wait, before that" or "I forgot to say", move it to where it belongs and drop the cue. "do A, then B, oh wait before that do C" becomes "do C, then A, then B".
+- Filler that carries no meaning: "oh", "like", "kind of", "so" at the start of a thought.
 - Fix grammar the way their examples do.
 - Keep every idea the speaker said, in their words. Do not add ideas, explain, or summarize.
 - Never copy words from the examples that the speaker did not say in this transcript."""
@@ -377,6 +380,7 @@ async def refine_transcript(
     adapter_path: str | None = None,
     use_personal_model: bool = True,
     use_personal_examples: bool = True,
+    extra_examples: list[tuple[str, str]] | None = None,
 ) -> tuple[str, str]:
     """Run the transcript through the LLM with the built system prompt.
 
@@ -399,7 +403,7 @@ async def refine_transcript(
     if use_personal_examples:
         from .personal_examples import closest
 
-        personal = closest(cleaned_input)
+        personal = closest(cleaned_input, extra=extra_examples)
     system_prompt = build_refinement_prompt(flags, personal=bool(personal))
     arguments = dict(prompt=cleaned_input, system=system_prompt, max_tokens=2048,
                      temperature=0.2, model_size=resolved_size, examples=refinement_examples(flags, personal))

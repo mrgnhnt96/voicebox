@@ -1370,10 +1370,10 @@
   "writingStyle": {
     "settings": {
       "title": "Writing style",
-      "description": "Teach Voicebox how you punctuate so dictation reads like you typed it. Everything stays on this device.",
+      "description": "Teach Voicebox how you write so dictation comes out ready to send, in your own words. Everything stays on this device.",
       "calibrate": {
         "title": "Teach Voicebox how you write",
-        "description": "Rewrite 5 short paragraphs the way you'd type them. Takes about 3 minutes.",
+        "description": "Rewrite 5 things said out loud the way you'd send them. About 3 minutes.",
         "lastRun_one": "Last run {{date}} · {{count}} run so far",
         "lastRun_other": "Last run {{date}} · {{count}} runs so far",
         "start": "Start",
@@ -1381,7 +1381,7 @@
       },
       "reset": {
         "title": "Reset writing style",
-        "description": "Forget what Voicebox learned from calibration and corrections. Match my writing switches back to Standard.",
+        "description": "Forget your calibration rewrites and the punctuation habits learned from them and from corrections. Match my writing switches back to Standard.",
         "action": "Reset"
       },
       "examples": {
@@ -1402,38 +1402,42 @@
     },
     "calibration": {
       "title": "Teach Voicebox how you write",
-      "intro": "You'll see 5 short paragraphs punctuated the way dictation writes them today. Edit each one until it reads like something you'd type. Each paragraph arrives closer to your style than the last, and it takes about 3 minutes.",
-      "changesTitle": "Change these to match how you type:",
+      "intro": "You'll see 5 things someone might say out loud, each with how Voicebox would clean it up today. Rewrite each cleanup into what you'd actually send. Each one arrives closer to how you write than the last. It takes about 3 minutes.",
+      "changesTitle": "Fix anything you'd fix before sending:",
       "changes": {
-        "breaks": "Periods between thoughts: keep them, or swap in a comma or nothing",
-        "commas": "Commas after opening words like \"yeah\" or \"so\", and before \"and\" or \"but\"",
-        "capitals": "Capital letters at the start of sentences",
-        "finalPeriod": "The period at the very end"
+        "falseStarts": "False starts, repeats and half-finished thoughts",
+        "order": "Words and ideas said out of order",
+        "grammar": "Grammar and word choice",
+        "punctuation": "Punctuation and capitals, the way you type them"
       },
-      "wordsNote": "Only punctuation and capitals are learned. Grammar, spelling and word changes are ignored, so leave the words as they are.",
+      "wordsNote": "Keep the meaning: don't add new ideas, summarize, or leave out anything that was said.",
       "start": "Start",
       "notNow": "Not now",
       "progress": "Paragraph {{current}} of {{total}}",
-      "instructions": "Change the punctuation and capitals until this reads like you wrote it, then tap Looks like me.",
-      "paragraphLabel": "Paragraph to rewrite",
+      "instructions": "Rewrite Voicebox's cleanup into what you'd send, then tap Looks like me.",
+      "paragraphLabel": "What you'd send",
       "pickedUp": "Picked up so far",
       "looksLikeMe": "Looks like me",
-      "failed": "Could not continue calibration"
+      "failed": "Could not continue calibration",
+      "said": "What was said",
+      "cleaning": "Cleaning up the next one…"
     },
     "summary": {
       "title": "Here's what Voicebox learned",
       "settled": "Your last paragraphs needed little or no editing, so Voicebox has your style.",
       "runAgain": "Your last paragraphs still needed edits. Running it again will sharpen it.",
-      "noHabits": "Your writing matches Standard punctuation, so nothing needs to change.",
-      "before": "One of your dictations, as written now",
-      "after": "With your style",
-      "useLearned": "Use Match my writing",
+      "examplesSaved": "Your rewrites are saved as examples, and Voicebox uses them on your next dictations.",
+      "habitsTitle": "Punctuation habits",
+      "noHabits": "No punctuation habits beyond Standard yet.",
+      "before": "One of your dictations, cleaned up before",
+      "after": "Cleaned up with what you just taught",
+      "useLearned": "Also match my punctuation",
       "keepCurrent": "Keep current style",
       "done": "Done"
     },
     "prompt": {
       "title": "Make dictation write like you",
-      "description": "Rewrite 5 short paragraphs so Voicebox learns how you punctuate. About 3 minutes.",
+      "description": "Rewrite 5 things said out loud the way you'd send them, so Voicebox learns how you write. About 3 minutes.",
       "start": "Start",
       "dismiss": "Not now"
     },

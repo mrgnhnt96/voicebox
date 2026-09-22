@@ -343,7 +343,7 @@ def prompt_example() -> tuple[str, str] | None:
         return None
     for example in reversed(_load()["examples"]):
         if example["written"].strip() != example["shown"].strip():
-            return _as_spoken(example["shown"]), example["written"]
+            return example.get("said") or _as_spoken(example["shown"]), example["written"]
     return None
 
 
@@ -450,22 +450,16 @@ def _change(shown: str, written: str) -> float:
     return round(1 - SequenceMatcher(None, shown.split(), written.split(), autojunk=False).ratio(), 3)
 
 
-def _step_view(session: dict) -> dict:
-    index = session["step"]
-    learned = decide(_counts(_load(), session["examples"]))
-    shown = apply_style(BY_ID[session["paragraphs"][index]].text, learned)
-    session["shown"] = shown
-    return {
-        "session_id": session["id"],
-        "step": index,
-        "total": len(session["paragraphs"]),
-        "paragraph": shown,
-        "habits": summary(learned),
-        "changes": session["changes"],
-    }
+def _session(session_id: str) -> dict:
+    session = _sessions.get(session_id)
+    if session is None:
+        raise KeyError(session_id)
+    session["touched"] = time.monotonic()
+    return session
 
 
 def start_calibration() -> dict:
+    """Pick this run's paragraphs; the caller cleans each one up before showing it."""
     with _lock:
         _expire_sessions()
         state = _load()
@@ -479,37 +473,66 @@ def start_calibration() -> dict:
             "touched": time.monotonic(),
         }
         _sessions[session["id"]] = session
-        return _step_view(session)
+        return {"session_id": session["id"], "said": BY_ID[session["paragraphs"][0]].said}
+
+
+def session_examples(session_id: str) -> list[tuple[str, str]]:
+    """This run's rewrites so far, as "said, meant" examples for the next cleanup."""
+    with _lock:
+        return [(e["said"], e["written"]) for e in _session(session_id)["examples"] if e["written"] != e["shown"]]
+
+
+def present(session_id: str, shown: str) -> dict:
+    """Show the current paragraph as Voicebox cleaned it up."""
+    with _lock:
+        session = _session(session_id)
+        index = session["step"]
+        session["shown"] = shown
+        return {
+            "session_id": session_id,
+            "step": index,
+            "total": len(session["paragraphs"]),
+            "said": BY_ID[session["paragraphs"][index]].said,
+            "paragraph": shown,
+            "habits": summary(decide(_counts(_load(), session["examples"]))),
+            "changes": session["changes"],
+            "done": False,
+        }
 
 
 def submit_step(session_id: str, written: str) -> dict:
+    """Record the rewrite of the current paragraph.
+
+    Returns the next paragraph's ``said`` for the caller to clean up, or the
+    run's result when every paragraph is done.
+    """
     with _lock:
-        session = _sessions.get(session_id)
-        if session is None:
-            raise KeyError(session_id)
+        session = _session(session_id)
         if session["step"] >= len(session["paragraphs"]):
             raise ValueError("Calibration already has every paragraph")
         written = written.strip()
         if not written:
             raise ValueError("Rewrite the paragraph, or keep it as it is")
         paragraph_id = session["paragraphs"][session["step"]]
-        # Learn against the paragraph as Standard writes it, not the styled copy
-        # shown, so undoing a habit Voicebox applied counts as evidence too.
         session["examples"].append(
-            {"paragraph_id": paragraph_id, "shown": BY_ID[paragraph_id].text, "written": written}
+            {
+                "paragraph_id": paragraph_id,
+                "said": BY_ID[paragraph_id].said,
+                "shown": session["shown"],
+                "written": written,
+            }
         )
         session["changes"].append(_change(session["shown"], written))
         session["step"] += 1
-        session["touched"] = time.monotonic()
         if session["step"] < len(session["paragraphs"]):
-            return {**_step_view(session), "done": False}
-        learned = decide(_counts(_load(), session["examples"]))
+            return {"done": False, "said": BY_ID[session["paragraphs"][session["step"]]].said}
         return {
             "session_id": session_id,
             "step": session["step"],
             "total": len(session["paragraphs"]),
+            "said": None,
             "paragraph": None,
-            "habits": summary(learned),
+            "habits": summary(decide(_counts(_load(), session["examples"]))),
             "changes": session["changes"],
             "done": True,
         }

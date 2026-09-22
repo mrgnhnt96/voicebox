@@ -185,7 +185,9 @@ export interface WritingStyleCalibrationStep {
   session_id: string;
   step: number;
   total: number;
-  /** Next paragraph, already styled with what was learned so far; null when done. */
+  /** What was said, as speech-to-text wrote it; null when done. */
+  said: string | null;
+  /** Voicebox's cleanup of it, using everything learned so far; null when done. */
   paragraph: string | null;
   habits: WritingStyleHabit[];
   /** Share of each submitted paragraph the user changed, 0 to 1. */

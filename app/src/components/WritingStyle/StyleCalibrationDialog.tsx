@@ -21,7 +21,7 @@ import { PERSONAL_EXAMPLES_KEY } from './PersonalExamples';
 import { WritingStyleHabits } from './WritingStyleHabits';
 
 /** What calibration learns from; each has a line on the start screen. */
-const CALIBRATION_CHANGES = ['breaks', 'commas', 'capitals', 'finalPeriod'] as const;
+const CALIBRATION_CHANGES = ['falseStarts', 'order', 'grammar', 'punctuation'] as const;
 
 /** A later paragraph that still needed this much change means another run will help. */
 const SETTLED_CHANGE = 0.1;
@@ -153,13 +153,37 @@ export function StyleCalibrationDialog({
               </DialogTitle>
               <DialogDescription>{t('writingStyle.calibration.instructions')}</DialogDescription>
             </DialogHeader>
-            <Textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              className="min-h-[140px] text-sm leading-relaxed"
-              aria-label={t('writingStyle.calibration.paragraphLabel')}
-              autoFocus
-            />
+            {stage.step.said && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t('writingStyle.calibration.said')}
+                </p>
+                <p className="rounded-md bg-muted/40 p-3 text-sm text-muted-foreground">
+                  {stage.step.said}
+                </p>
+              </div>
+            )}
+            <div className="space-y-1">
+              <label
+                htmlFor="calibration-draft"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                {t('writingStyle.calibration.paragraphLabel')}
+              </label>
+              <Textarea
+                id="calibration-draft"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                disabled={busy}
+                className="min-h-[140px] text-sm leading-relaxed"
+                autoFocus
+              />
+              {submit.isPending && (
+                <p className="text-xs text-muted-foreground">
+                  {t('writingStyle.calibration.cleaning')}
+                </p>
+              )}
+            </div>
             {stage.step.habits.length > 0 && (
               <div className="text-xs text-muted-foreground space-y-1">
                 <p className="font-medium">{t('writingStyle.calibration.pickedUp')}</p>
@@ -190,11 +214,17 @@ export function StyleCalibrationDialog({
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 text-sm">
-              {stage.result.status.habits.length > 0 ? (
-                <WritingStyleHabits habits={stage.result.status.habits} />
-              ) : (
-                <p className="text-muted-foreground">{t('writingStyle.summary.noHabits')}</p>
-              )}
+              <p>{t('writingStyle.summary.examplesSaved')}</p>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t('writingStyle.summary.habitsTitle')}
+                </p>
+                {stage.result.status.habits.length > 0 ? (
+                  <WritingStyleHabits habits={stage.result.status.habits} />
+                ) : (
+                  <p className="text-muted-foreground">{t('writingStyle.summary.noHabits')}</p>
+                )}
+              </div>
               {stage.result.before !== stage.result.after && (
                 <div className="grid gap-2">
                   <p className="text-xs font-medium text-muted-foreground">

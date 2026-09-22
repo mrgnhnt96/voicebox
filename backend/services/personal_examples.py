@@ -104,13 +104,16 @@ def all_examples() -> list[dict]:
         return list(_cache)
 
 
-def closest(transcript: str, count: int = EXAMPLES_PER_REFINEMENT) -> list[tuple[str, str]]:
+def closest(
+    transcript: str, count: int = EXAMPLES_PER_REFINEMENT, extra: list[tuple[str, str]] | None = None
+) -> list[tuple[str, str]]:
     """The examples sharing the most words with ``transcript``, most similar last.
 
     Examples still help when nothing overlaps (they show how the user writes),
-    so the newest fill any remaining slots.
+    so the newest fill any remaining slots. ``extra`` examples, such as a
+    calibration run's rewrites before they are saved, count as the newest.
     """
-    examples = all_examples()
+    examples = [{"said": said, "meant": meant} for said, meant in reversed(extra or [])] + all_examples()
     if not examples:
         return []
     words = _words(transcript)

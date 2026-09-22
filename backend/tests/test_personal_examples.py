@@ -75,20 +75,25 @@ def test_hidden_examples_are_left_out(storage):
 
 
 def test_edited_calibration_rewrites_are_examples_and_unedited_are_not():
-    step = writing_style.start_calibration()
-    step = writing_style.submit_step(step["session_id"], step["paragraph"])
-    writing_style.submit_step(step["session_id"], "totally rewritten paragraph")
-    writing_style.finish_calibration(step["session_id"])
+    started = writing_style.start_calibration()
+    session_id = started["session_id"]
+    writing_style.present(session_id, "Kept as shown.")
+    second = writing_style.submit_step(session_id, "Kept as shown.")
+    writing_style.present(session_id, "Voicebox cleanup.")
+    writing_style.submit_step(session_id, "What I would send.")
+    writing_style.finish_calibration(session_id)
     examples = personal_examples.all_examples()
-    assert [e["source"] for e in examples] == ["calibration"]
-    assert examples[0]["meant"] == "totally rewritten paragraph"
+    assert [(e["source"], e["said"], e["meant"]) for e in examples] == [
+        ("calibration", second["said"], "What I would send.")
+    ]
 
 
 def test_prompt_allows_restructuring_only_with_examples():
-    assert "Drop false starts" not in build_refinement_prompt(RefinementFlags())
+    assert "Restarts:" not in build_refinement_prompt(RefinementFlags())
     assert "Keep their vocabulary." in build_refinement_prompt(RefinementFlags())
     personal = build_refinement_prompt(RefinementFlags(), personal=True)
-    assert "Drop false starts, repeated words and abandoned half-sentences." in personal
+    assert "- Changed answers: after" in personal
+    assert "- Things said late:" in personal
     assert "Keep their vocabulary." not in personal
 
 
@@ -103,7 +108,7 @@ async def test_refinement_sends_the_users_examples_after_the_defaults(storage):
         "so the release we need to push the release to friday",
         "We need to push the release to Friday.",
     )
-    assert "Drop false starts" in arguments["system"]
+    assert "Restarts:" in arguments["system"]
     await refine_transcript(
         "push it to friday",
         RefinementFlags(),

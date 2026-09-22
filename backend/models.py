@@ -873,6 +873,8 @@ class WritingStyleCalibrationStep(BaseModel):
     session_id: str
     step: int
     total: int
+    # What was said, and Voicebox's cleanup of it for the user to rewrite.
+    said: Optional[str] = None
     paragraph: Optional[str] = None
     habits: List[str]
     changes: List[float]

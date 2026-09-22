@@ -1,10 +1,11 @@
-"""Calibration paragraphs, written the way Standard refinement punctuates dictation.
+"""Calibration paragraphs: things a person might really say out loud.
 
-Each one is spoken-style content with the habits people most often change:
-sentence breaks between related thoughts, commas after opening words and
-before conjunctions, capitalized sentence starts and a closing period. A run
-draws one paragraph from each situation so the edits cover different kinds
-of writing.
+Each is written the way speech-to-text hands dictation over, with the
+problems that come from speaking faster than you think: a false start, a
+repeated word, a clause said out of order, a self-correction and a run-on.
+The user rewrites each into what they would actually send, so calibration
+teaches restructuring and punctuation together. A run draws one paragraph
+from each situation so the rewrites cover different kinds of writing.
 """
 
 from typing import NamedTuple
@@ -13,102 +14,104 @@ from typing import NamedTuple
 class Paragraph(NamedTuple):
     id: str
     situation: str
-    text: str
+    said: str
 
 
 SITUATIONS = ("chat", "update", "question", "steps", "explanation")
 
 PARAGRAPHS = (
     Paragraph(
-        "chat-dinner",
+        "said-chat-dinner",
         "chat",
-        "Yeah, that works for me. I can probably get there around seven, but it depends on traffic. If it's "
-        "bad, I'll text you. Do you want me to grab anything on the way?",
+        "yeah that works for me, I can, I can probably get there around seven but it kind of depends on traffic, "
+        "if it's bad I'll text you. oh and do you want me to, should I grab anything on the way",
     ),
     Paragraph(
-        "chat-weekend",
+        "said-chat-weekend",
         "chat",
-        "Honestly, I'm pretty wiped from this week. So I think I'm going to stay in on Friday, and just rest. "
-        "But Saturday could work. Let me know what you're thinking.",
+        "honestly I'm pretty wiped from this week so I think I'm gonna, I'm just gonna stay in on Friday. Saturday "
+        "could work though, Saturday afternoon, no actually Saturday evening is better, let me know what you're thinking",
     ),
     Paragraph(
-        "chat-thanks",
+        "said-chat-thanks",
         "chat",
-        "Thanks, I got the file. I looked through it, and it all makes sense. I'll get back to you tomorrow "
-        "with a couple of small changes. No rush on your end.",
+        "thanks for sending that over, I looked through the, I looked through it and it all makes sense. I'll get "
+        "back to you tomorrow with a couple, just a couple small changes, no rush on your end",
     ),
     Paragraph(
-        "update-release",
+        "said-update-release",
         "update",
-        "Okay, quick update on the release. The fix for the login bug is merged. We're still waiting on QA, "
-        "but it looks good so far. If nothing comes up, we should ship on Thursday.",
+        "okay quick update on the release, so the fix for the, the login bug is merged. we're still waiting on QA "
+        "but it's looking, it looks good so far and if nothing comes up we should ship Thursday, well Thursday "
+        "morning probably",
     ),
     Paragraph(
-        "update-meeting",
+        "said-update-meeting",
         "update",
-        "So, I talked to the design team this morning. They like the new layout, but they want to try a "
-        "darker header. I'll send over the updated mockups by end of day.",
+        "so I talked to the design team this morning and they, they like the new layout. the header though, they "
+        "want to try a darker header. I'll send over the, the updated mockups by end of day",
     ),
     Paragraph(
-        "update-blocked",
+        "said-update-blocked",
         "update",
-        "Heads up, I'm blocked on the payments work. The sandbox keys expired, and I can't test anything. I "
-        "already asked finance for new ones. In the meantime, I'm picking up the settings page.",
+        "heads up I'm blocked on the payments work, the sandbox keys expired so I can't test, I can't test "
+        "anything right now. I already asked finance for new ones, and in the meantime I'm picking up the, the "
+        "settings page",
     ),
     Paragraph(
-        "question-deadline",
+        "said-question-deadline",
         "question",
-        "Hey, do you know when the report is due? I thought it was Friday, but someone mentioned Wednesday in "
-        "standup. I just want to make sure I'm not behind.",
+        "hey do you know when the report is, when it's due? I thought it was Friday but somebody said Wednesday "
+        "in standup, or was it Tuesday, no Wednesday, I just want to make sure I'm not behind",
     ),
     Paragraph(
-        "question-tools",
+        "said-question-tools",
         "question",
-        "Actually, what are you using for notes these days? I've been trying a few apps, but none of them "
-        "really stick. Is there one you'd actually recommend?",
+        "what are you using for notes these days? I've been trying, I've tried a few apps and none of them really "
+        "stick. is there, like is there one you'd actually recommend",
     ),
     Paragraph(
-        "question-budget",
+        "said-question-budget",
         "question",
-        "Also, can we go over the budget before the meeting? I'm not sure the travel numbers are right, and "
-        "they seem high compared to last quarter. Does Tuesday afternoon work for you?",
+        "can we go over the, before the meeting can we go over the budget? the travel numbers, I'm not sure the "
+        "travel numbers are right, they seem really high compared to last quarter. does Tuesday afternoon work",
     ),
     Paragraph(
-        "steps-setup",
+        "said-steps-setup",
         "steps",
-        "First, pull the latest changes. Then run the install script, and wait for it to finish. Start the "
-        "server and open the app. If it asks for a key, use the one from the shared vault.",
+        "so first pull the latest changes, then run the install script, oh wait before that make sure you're on "
+        "the main branch, then run the install script and once it finishes start the server and open the app",
     ),
     Paragraph(
-        "steps-return",
+        "said-steps-return",
         "steps",
-        "Okay, to return it, log into your account. Go to your orders and pick the item. Then choose a "
-        "reason, and print the label. After that, just drop it off at any pickup point.",
+        "to return it you just, you log into your account, go to your orders and pick the item and then choose "
+        "a reason, and then you print the, print the label and drop it off at any pickup point",
     ),
     Paragraph(
-        "steps-recipe",
+        "said-steps-recipe",
         "steps",
-        "So, start by heating the oil in a big pan. Add the onions, and cook them until they're soft. Then "
-        "stir in the garlic and the tomatoes. Let it simmer for about twenty minutes.",
+        "start by heating the oil in a, in a big pan, then add the onions and cook them until they're soft, like "
+        "five minutes, then the garlic and the tomatoes go in, and let it simmer for, for about twenty minutes",
     ),
     Paragraph(
-        "explanation-cache",
+        "said-explanation-cache",
         "explanation",
-        "Basically, the page is slow because it loads everything at once. Most of that data isn't even shown. "
-        "So the fix is to load the first screen, and fetch the rest in the background. That should cut the "
-        "wait roughly in half.",
+        "the page is slow because it loads, it's loading everything at once and most of that data isn't even "
+        "shown. so the fix is, what we should do is load the first screen and then fetch the rest in the "
+        "background, that should cut the wait roughly in half",
     ),
     Paragraph(
-        "explanation-move",
+        "said-explanation-move",
         "explanation",
-        "Yeah, we decided to move the launch to next month. The main reason is the pricing change. We don't "
-        "want to announce it, and then change it again. It also gives support more time to prepare.",
+        "so we decided to move the launch to next month, and the main reason is the, it's the pricing change. we "
+        "don't want to announce it and then change it again, and also it gives support more time to, to prepare",
     ),
     Paragraph(
-        "explanation-habit",
+        "said-explanation-habit",
         "explanation",
-        "Honestly, I started walking every morning a few weeks ago. It was hard to get out of bed at first, "
-        "but now I actually look forward to it. It's the only time I'm not looking at a screen.",
+        "I started walking every morning a few, maybe three weeks ago and at first it was really hard to get out "
+        "of bed but now I actually, I look forward to it, it's the only time I'm not looking at a screen",
     ),
 )
 
