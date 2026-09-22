@@ -23,10 +23,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
+import { WritingStyleSettings } from '@/components/WritingStyle/WritingStyleSettings';
 import { useToast } from '@/components/ui/use-toast';
 import { useAudioInputDevices } from '@/lib/hooks/useAudioInputDevices';
 import { useDictationReadiness } from '@/lib/hooks/useDictationReadiness';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
+import { useWritingStyle } from '@/lib/hooks/useWritingStyle';
 import { useProfiles } from '@/lib/hooks/useProfiles';
 import { usePlatform } from '@/platform/PlatformContext';
 import { useServerStore } from '@/stores/serverStore';
@@ -137,6 +139,7 @@ export function CapturesPage() {
   const selfCorrection = settings?.self_correction ?? true;
   const preserveTechnical = settings?.preserve_technical ?? true;
   const punctuationStyle = settings?.punctuation_style ?? 'standard';
+  const { data: writingStyle } = useWritingStyle();
   const allowAutoPaste = settings?.allow_auto_paste ?? true;
   const defaultVoiceId = settings?.default_playback_voice_id ?? null;
   const hotkeyEnabled = settings?.hotkey_enabled ?? false;
@@ -491,6 +494,11 @@ export function CapturesPage() {
                 <SelectItem value="standard">
                   {t('settings.captures.refinement.punctuationStyle.standard')}
                 </SelectItem>
+                <SelectItem value="learned" disabled={!writingStyle?.ready}>
+                  {writingStyle?.ready
+                    ? t('settings.captures.refinement.punctuationStyle.learned')
+                    : t('settings.captures.refinement.punctuationStyle.learnedLocked')}
+                </SelectItem>
               </SelectContent>
             </Select>
           }
@@ -524,6 +532,8 @@ export function CapturesPage() {
           }
         />
       </SettingSection>
+
+      <WritingStyleSettings />
 
       <SettingSection
         title={t('settings.captures.playback.title')}

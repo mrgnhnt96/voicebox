@@ -153,13 +153,66 @@ export interface FocusSnapshot {
   role: string | null;
 }
 
-export type PunctuationStyle = 'standard' | 'casual';
+export type PunctuationStyle = 'standard' | 'casual' | 'learned';
+
+/** Stable codes for learned punctuation habits; the app words them. */
+export type WritingStyleHabit =
+  | 'boundary_period'
+  | 'boundary_comma'
+  | 'boundary_none'
+  | 'lowercase_start'
+  | 'drop_intro_comma'
+  | 'drop_conjunction_comma'
+  | 'drop_final_period';
+
+export interface WritingStyleStatus {
+  ready: boolean;
+  runs: number;
+  last_run_at: string | null;
+  example_count: number;
+  habits: WritingStyleHabit[];
+}
+
+export interface PersonalExample {
+  id: string;
+  source: 'correction' | 'calibration';
+  said: string;
+  meant: string;
+  created_at: string | null;
+}
+
+export interface WritingStyleCalibrationStep {
+  session_id: string;
+  step: number;
+  total: number;
+  /** Next paragraph, already styled with what was learned so far; null when done. */
+  paragraph: string | null;
+  habits: WritingStyleHabit[];
+  /** Share of each submitted paragraph the user changed, 0 to 1. */
+  changes: number[];
+  done: boolean;
+}
+
+export interface WritingStyleCalibrationResult {
+  status: WritingStyleStatus;
+  before: string;
+  after: string;
+}
 
 export interface RefinementFlags {
   smart_cleanup: boolean;
   self_correction: boolean;
   preserve_technical: boolean;
   punctuation_style?: PunctuationStyle;
+}
+
+/** Why a capture's cleanup is flagged for the user to check. */
+export interface RefinementReview {
+  /** review: cleanup kept; reject: the transcript was used instead. */
+  outcome: 'review' | 'reject';
+  added: string[];
+  missing: string[];
+  reasons: ('answered' | 'negation' | 'number' | 'technical')[];
 }
 
 export interface CaptureResponse {
@@ -173,6 +226,7 @@ export interface CaptureResponse {
   stt_model?: string | null;
   llm_model?: string | null;
   refinement_flags?: RefinementFlags | null;
+  refinement_review?: RefinementReview | null;
   created_at: string;
 }
 

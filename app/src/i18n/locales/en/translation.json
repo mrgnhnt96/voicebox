@@ -24,16 +24,16 @@
   },
   "captures": {
     "feedback": {
-      "report": "Report incorrect output",
-      "description": "Enter the output you expected. A background job uses these corrections to train and evaluate personal model improvements while the app is idle. Only improvements that pass independent accuracy, speed and memory checks are activated. Reports stay on this server. Deleting a capture removes its reports from future training; learned models and local evaluation history remain.",
-      "original": "Model output ({{target}})",
-      "expected": "Expected output",
+      "report": "Teach Voicebox",
+      "description": "Edit this into what you meant: fix wrong words, drop false starts, put things in order, fix grammar. Keep your own words and every idea you said. Voicebox uses it as an example on your next dictations right away, and the personal model trains on it while the app is idle. Everything stays on this device. Deleting a capture removes its corrections from future training.",
+      "original": "What Voicebox wrote ({{target}})",
+      "expected": "What you meant",
       "emptyHint": "Leave empty if the correct output should contain no text.",
       "notes": "What went wrong? (optional)",
-      "save": "Save correction",
-      "saved": "Correction saved",
+      "save": "Save",
+      "saved": "Saved. Voicebox will use this on your next dictations.",
       "failed": "Could not save correction",
-      "history": "Saved corrections ({{count}})",
+      "history": "Your corrections ({{count}})",
       "export": "Export all corrections (JSON)",
       "exportFailed": "Could not export corrections",
       "loadFailed": "Could not load saved corrections",
@@ -221,6 +221,20 @@
         "rechecking": "Checking…",
         "stillMissing": "Still not detected. macOS usually requires quitting and reopening Voicebox after toggling the permission."
       }
+    },
+    "review": {
+      "badge": "Check",
+      "title": "Check this cleanup",
+      "rejectedTitle": "Your words were kept instead of the cleanup",
+      "reasons": {
+        "answered": "The cleanup looked like a reply to what you said, not a cleanup of it.",
+        "negation": "The cleanup changed a \"not\" or \"never\", which can flip the meaning.",
+        "number": "The cleanup changed a number.",
+        "technical": "The cleanup changed a technical term, like a file or variable name."
+      },
+      "added": "May have added: {{words}}",
+      "missing": "May have left out: {{words}}",
+      "hint": "If it's wrong, use Teach Voicebox below so it learns what you meant."
     }
   },
   "voicesTab": {
@@ -1051,9 +1065,11 @@
         },
         "punctuationStyle": {
           "title": "Punctuation style",
-          "description": "Casual joins related thoughts with commas and keeps run-on sentences the way you said them. Standard punctuates like written prose.",
+          "description": "Casual joins related thoughts with commas and keeps run-on sentences the way you said them. Standard punctuates like written prose. Match my writing follows the habits Voicebox learned from you in Writing style below.",
           "casual": "Casual · commas, as spoken",
-          "standard": "Standard · written prose"
+          "standard": "Standard · written prose",
+          "learned": "Match my writing · learned from you",
+          "learnedLocked": "Match my writing · teach Voicebox first"
         },
         "selfCorrection": {
           "title": "Remove self-corrections",
@@ -1349,6 +1365,89 @@
       "migrationFailed": "Migration failed",
       "migrationFailedGeneric": "Failed to migrate models",
       "migrationConnectionLost": "Lost connection during migration"
+    }
+  },
+  "writingStyle": {
+    "settings": {
+      "title": "Writing style",
+      "description": "Teach Voicebox how you punctuate so dictation reads like you typed it. Everything stays on this device.",
+      "calibrate": {
+        "title": "Teach Voicebox how you write",
+        "description": "Rewrite 5 short paragraphs the way you'd type them. Takes about 3 minutes.",
+        "lastRun_one": "Last run {{date}} · {{count}} run so far",
+        "lastRun_other": "Last run {{date}} · {{count}} runs so far",
+        "start": "Start",
+        "again": "Run again"
+      },
+      "reset": {
+        "title": "Reset writing style",
+        "description": "Forget what Voicebox learned from calibration and corrections. Match my writing switches back to Standard.",
+        "action": "Reset"
+      },
+      "examples": {
+        "title": "Your examples",
+        "description_one": "{{count}} example of what you said and what you meant. Cleanup uses the closest ones on every dictation.",
+        "description_other": "{{count}} examples of what you said and what you meant. Cleanup uses the closest ones on every dictation.",
+        "empty": "No examples yet. Use Teach Voicebox on a capture, or run the calibration above.",
+        "view": "View",
+        "dialogTitle": "Your examples",
+        "dialogDescription": "Cleanup shows the model the examples closest to what you just said. Removing one stops Voicebox from using it.",
+        "said": "You said",
+        "meant": "You meant",
+        "fromCorrection": "From a correction",
+        "fromCalibration": "From calibration",
+        "remove": "Remove",
+        "removeFailed": "Could not remove the example"
+      }
+    },
+    "calibration": {
+      "title": "Teach Voicebox how you write",
+      "intro": "You'll see 5 short paragraphs punctuated the way dictation writes them today. Edit each one until it reads like something you'd type. Each paragraph arrives closer to your style than the last, and it takes about 3 minutes.",
+      "changesTitle": "Change these to match how you type:",
+      "changes": {
+        "breaks": "Periods between thoughts: keep them, or swap in a comma or nothing",
+        "commas": "Commas after opening words like \"yeah\" or \"so\", and before \"and\" or \"but\"",
+        "capitals": "Capital letters at the start of sentences",
+        "finalPeriod": "The period at the very end"
+      },
+      "wordsNote": "Only punctuation and capitals are learned. Grammar, spelling and word changes are ignored, so leave the words as they are.",
+      "start": "Start",
+      "notNow": "Not now",
+      "progress": "Paragraph {{current}} of {{total}}",
+      "instructions": "Change the punctuation and capitals until this reads like you wrote it, then tap Looks like me.",
+      "paragraphLabel": "Paragraph to rewrite",
+      "pickedUp": "Picked up so far",
+      "looksLikeMe": "Looks like me",
+      "failed": "Could not continue calibration"
+    },
+    "summary": {
+      "title": "Here's what Voicebox learned",
+      "settled": "Your last paragraphs needed little or no editing, so Voicebox has your style.",
+      "runAgain": "Your last paragraphs still needed edits. Running it again will sharpen it.",
+      "noHabits": "Your writing matches Standard punctuation, so nothing needs to change.",
+      "before": "One of your dictations, as written now",
+      "after": "With your style",
+      "useLearned": "Use Match my writing",
+      "keepCurrent": "Keep current style",
+      "done": "Done"
+    },
+    "prompt": {
+      "title": "Make dictation write like you",
+      "description": "Rewrite 5 short paragraphs so Voicebox learns how you punctuate. About 3 minutes.",
+      "start": "Start",
+      "dismiss": "Not now"
+    },
+    "learningPanel": {
+      "title": "Your writing style"
+    },
+    "habits": {
+      "boundary_period": "You end one thought and start the next as a new sentence",
+      "boundary_comma": "You join related thoughts with commas",
+      "boundary_none": "You run related thoughts together without punctuation",
+      "lowercase_start": "You start sentences in lowercase",
+      "drop_intro_comma": "You skip the comma after opening words like \"yeah\" or \"so\"",
+      "drop_conjunction_comma": "You skip the comma before \"and\" or \"but\"",
+      "drop_final_period": "You leave off the final period"
     }
   }
 }

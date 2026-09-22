@@ -12,7 +12,6 @@ import os
 import re
 import struct
 import tempfile
-import unicodedata
 import uuid
 import wave
 from pathlib import Path
@@ -22,9 +21,11 @@ import numpy as np
 from .. import config, models
 from ..database import Capture
 from .captures import _to_response
+from .content_check import Verdict, check_refinement, summarize_reviews
 from .phrase_seams import close_phrase, join_phrases, open_phrase
 from .refinement import RefinementFlags, prepare_refinement, refine_transcript
 from .transcribe import get_whisper_model
+from .writing_style import apply_learned
 
 logger = logging.getLogger(__name__)
 MAX_FRAME_BYTES = 65536
@@ -46,27 +47,15 @@ def join_overlap(prefix: str, tail: str) -> str:
     return " ".join(part for part in (prefix, tail) if part)
 
 
-def guard_phrase_refinement(raw: str, refined: str, flags: RefinementFlags) -> tuple[str, bool]:
-    """Allow phrase cleanup only when ordered content tokens are preserved.
+def guard_phrase_refinement(raw: str, refined: str, flags: RefinementFlags) -> tuple[str, Verdict]:
+    """Keep a phrase's cleanup unless the content check rejects it.
 
-    A short isolated clause can make the LLM follow a dictated instruction or
-    omit its beginning. Preserve prepared STT text in that case. This deliberately
-    forgoes ambiguous rewrites (including spelling/number normalization) rather
-    than trying to infer semantic equivalence without session context.
+    Restructuring is allowed. A cleanup that may have added or left out
+    content is kept and flagged for review; one that answered or obeyed the
+    dictation, or changed a negation, number or technical term, falls back to
+    the prepared transcript.
     """
-    cleaned, explicit = prepare_refinement(raw, flags)
-    if explicit is not None:
-        return explicit, False
-
-    def tokens(text: str) -> list[str]:
-        normalized = unicodedata.normalize("NFKC", text).casefold().replace("\u2212", "-").replace("\u2019", "'")
-        words = re.findall(r"[+-]?\d+(?:[.,]\d+)*|\w+(?:'\w+)*|[-+*/=<>%$#@\\]", normalized)
-        fillers = {"um", "uh", "er", "hmm", "ah"} if flags.smart_cleanup else set()
-        return [word for word in words if word not in fillers]
-
-    if tokens(cleaned) == tokens(refined):
-        return refined, False
-    return cleaned, True
+    return check_refinement(raw, refined, flags)
 
 
 class StreamingCapture:
@@ -123,6 +112,7 @@ class StreamingCapture:
         self.llm_model = None
         self.refinement_error = None
         self.needs_final_refinement = False
+        self.reviews = []
         self.overlap = False
         self.degraded_reason = None
         self.abort = False
@@ -199,9 +189,19 @@ class StreamingCapture:
             self.cached_key, self.cached_text = (pcm, previous_text), text
             return text
 
+    def close_dictation(self, text):
+        closed = close_phrase(text)
+        # Phrases were styled one at a time; habits like a dropped final period
+        # only apply once the whole dictation is joined.
+        return apply_learned(closed) if self.flags.punctuation_style == "learned" else closed
+
     def join(self, previous, phrase, raw_phrase):
         if self.overlap:
             return join_overlap(previous, phrase)
+        if self.flags.punctuation_style == "learned":
+            # Join like Standard, then let the user's habits decide what each
+            # sentence break becomes (comma, nothing, lowercase start...).
+            return apply_learned(join_phrases(previous, phrase, raw_phrase, "standard"))
         return join_phrases(previous, phrase, raw_phrase, self.flags.punctuation_style)
 
     async def accept(self, text):
@@ -229,9 +229,11 @@ class StreamingCapture:
                     refined, self.llm_model = await refine_transcript(
                         prompt, self.flags, model_size=self.settings.llm_model
                     )
-                refined, rejected = guard_phrase_refinement(prompt, refined, self.flags)
+                refined, verdict = guard_phrase_refinement(prompt, refined, self.flags)
+                if verdict.outcome != "ok":
+                    self.reviews.append(verdict)
                 if (
-                    rejected
+                    verdict.outcome == "reject"
                     and self.flags.self_correction
                     and re.search(r"\b(actually|no wait|no actually|make that|I mean|scratch that)\b", prompt, re.I)
                 ):
@@ -302,7 +304,7 @@ class StreamingCapture:
                     await self.reconcile_full_audio()
                 elif self.needs_final_refinement:
                     await self.reconcile_refinement()
-                elif self.settings.auto_refine and (closed := close_phrase(self.refined)) != self.refined:
+                elif self.settings.auto_refine and (closed := self.close_dictation(self.refined)) != self.refined:
                     self.refined = closed
                     await self.emit("refined", text=self.refined)
                 return
@@ -351,9 +353,13 @@ class StreamingCapture:
         """Resolve ambiguous spoken corrections with complete session context."""
         if self.settings.auto_refine:
             try:
-                self.refined, self.llm_model = await refine_transcript(
+                refined, self.llm_model = await refine_transcript(
                     self.raw, self.flags, model_size=self.settings.llm_model
                 )
+                # The whole dictation was cleaned up again, so earlier phrase
+                # verdicts no longer describe the result.
+                self.refined, verdict = guard_phrase_refinement(self.raw, refined, self.flags)
+                self.reviews = [verdict]
                 from .correction_learning import apply_learned_corrections
 
                 self.refined = apply_learned_corrections(self.refined, self.language)
@@ -379,6 +385,7 @@ class StreamingCapture:
             transcript_refined=self.refined if self.settings.auto_refine and not self.refinement_error else None,
             llm_model=self.llm_model,
             refinement_flags=json.dumps(self.flags.to_dict()) if self.settings.auto_refine else None,
+            refinement_review=json.dumps(review) if self.settings.auto_refine and (review := summarize_reviews(self.reviews)) else None,
         )
         db.add(row)
         db.commit()

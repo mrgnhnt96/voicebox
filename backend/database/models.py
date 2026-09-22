@@ -307,6 +307,8 @@ class Capture(Base):
     stt_model = Column(String, nullable=True)
     llm_model = Column(String, nullable=True)
     refinement_flags = Column(Text, nullable=True)  # JSON blob
+    # JSON: what the content check found when cleanup may have added or lost content.
+    refinement_review = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

@@ -58,6 +58,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
+import { StyleCalibrationPrompt } from '@/components/WritingStyle/StyleCalibrationPrompt';
+import { RefinementReviewNotice } from '@/components/CapturesTab/RefinementReviewNotice';
 import { apiClient } from '@/lib/api/client';
 import type {
   CaptureListResponse,
@@ -491,6 +493,7 @@ export function CapturesTab() {
 
           <ListPaneScroll className={cn(isPlayerVisible && BOTTOM_SAFE_AREA_PADDING)}>
             <div className="px-4 pb-6 space-y-1">
+              <StyleCalibrationPrompt hasCaptures={captures.length > 0} />
               {capturesLoading ? (
                 <div className="px-4 py-12 flex items-center justify-center text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -540,6 +543,14 @@ export function CapturesTab() {
                           >
                             <Sparkles className="h-2.5 w-2.5" />
                             {t('captures.transcript.refined')}
+                          </Badge>
+                        )}
+                        {capture.refinement_review && (
+                          <Badge
+                            variant="secondary"
+                            className="h-5 px-1.5 text-[10px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
+                          >
+                            {t('captures.review.badge')}
                           </Badge>
                         )}
                       </div>
@@ -698,6 +709,10 @@ export function CapturesTab() {
                     : null}
               </span>
             </div>
+
+            {showRefined && selected.refinement_review && (
+              <RefinementReviewNotice review={selected.refinement_review} />
+            )}
 
             {/* Transcript body */}
             <div className="rounded-xl border border-border bg-muted/10">

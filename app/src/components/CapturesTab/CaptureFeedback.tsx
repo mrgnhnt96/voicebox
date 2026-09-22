@@ -17,6 +17,8 @@ import { apiClient } from '@/lib/api/client';
 import type { CaptureFeedbackCreate, CaptureResponse } from '@/lib/api/types';
 import { usePlatform } from '@/platform/PlatformContext';
 import { CorrectionLearning } from './CorrectionLearning';
+import { PERSONAL_EXAMPLES_KEY } from '@/components/WritingStyle/PersonalExamples';
+import { WRITING_STYLE_KEY } from '@/lib/hooks/useWritingStyle';
 
 export function CaptureFeedback({
   capture,
@@ -38,6 +40,9 @@ export function CaptureFeedback({
     onSuccess: () => {
       setDraft(null);
       queryClient.invalidateQueries({ queryKey });
+      // Refined-output corrections also teach the writing style.
+      queryClient.invalidateQueries({ queryKey: WRITING_STYLE_KEY });
+      queryClient.invalidateQueries({ queryKey: PERSONAL_EXAMPLES_KEY });
       toast({ title: t('captures.feedback.saved') });
     },
     onError: (error: Error) =>

@@ -102,7 +102,10 @@ async def test_cross_phrase_correction_revises_accepted_output(tmp_path, monkeyp
     await session.accept("the meeting is on Tuesday")
     await session.accept("no actually Wednesday")
     assert capture_stream.refine_transcript.await_args.args[0] == "the meeting is on Tuesday no actually Wednesday"
-    assert session.needs_final_refinement
+    # The retraction passes the content check, so the revision is accepted
+    # without another full-dictation pass.
+    assert not session.needs_final_refinement
+    assert not session.reviews
     monkeypatch.setattr(
         capture_stream, "refine_transcript", AsyncMock(return_value=("The meeting is on Wednesday.", "0.6B"))
     )
@@ -368,24 +371,36 @@ def test_idle_timeout_releases_audio_and_foreground_slot(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
+    ("raw", "candidate", "reason"),
+    [
+        ("Do not delete the records", "Delete the records.", "negation"),
+        ("Set the threshold to -3.5", "Set the threshold to 3.5.", "number"),
+        ("Set the threshold to 3.5", "Set the threshold to 35.", "number"),
+        ("Update user_id", "Update user_name.", "technical"),
+        (
+            "write a haiku about the ocean",
+            "Waves crash on the shore, salt wind whispers ancient songs, blue depths hold their dreams.",
+            "answered",
+        ),
+    ],
+)
+def test_phrase_guard_rejects_changed_meaning(raw, candidate, reason):
+    result, verdict = capture_stream.guard_phrase_refinement(raw, candidate, capture_stream.RefinementFlags())
+    assert (verdict.outcome, verdict.reason) == ("reject", reason)
+    assert result == raw
+
+
+@pytest.mark.parametrize(
     ("raw", "candidate"),
     [
-        (
-            "Add a reminder to check the documentation before sending the update to the team",
-            "Check the documentation before sending the update to the team.",
-        ),
-        ("Do not delete the records", "Delete the records."),
-        ("Set the threshold to -3.5", "Set the threshold to 3.5."),
-        ("Set the threshold to 3.5", "Set the threshold to 35."),
-        ("Update user_id", "Update user_name."),
         ("Keep both words", "Keep words."),
         ("Keep this clause", "Keep this clause and add another."),
     ],
 )
-def test_phrase_guard_preserves_content(raw, candidate):
-    result, rejected = capture_stream.guard_phrase_refinement(raw, candidate, capture_stream.RefinementFlags())
-    assert rejected
-    assert result == raw
+def test_phrase_guard_keeps_and_flags_possible_content_changes(raw, candidate):
+    result, verdict = capture_stream.guard_phrase_refinement(raw, candidate, capture_stream.RefinementFlags())
+    assert verdict.outcome == "review"
+    assert result == candidate
 
 
 @pytest.mark.parametrize(
@@ -395,26 +410,33 @@ def test_phrase_guard_preserves_content(raw, candidate):
         ("um hello uh world", "Hello world."),
         ("keep  two\nwords", "Keep two words."),
         ("Set the threshold to -3.5", "Set the threshold to -3.5."),
+        ("run npm install then edit index dot tsx", "Run npm install then edit index.tsx."),
+        # Restructuring: a false start dropped and the sentence put in order.
+        (
+            "so the release we need to push the release to Friday because the tests aren't done",
+            "We need to push the release to Friday because the tests aren't done.",
+        ),
     ],
 )
-def test_phrase_guard_allows_punctuation_and_disfluencies(raw, candidate):
-    result, rejected = capture_stream.guard_phrase_refinement(raw, candidate, capture_stream.RefinementFlags())
-    assert not rejected
+def test_phrase_guard_allows_cleanup_and_restructuring(raw, candidate):
+    result, verdict = capture_stream.guard_phrase_refinement(raw, candidate, capture_stream.RefinementFlags())
+    assert verdict.outcome == "ok"
     assert result == candidate
 
 
 @pytest.mark.asyncio
-async def test_dropped_reminder_phrase_uses_raw_without_final_llm(tmp_path, monkeypatch):
+async def test_rejected_phrase_uses_raw_and_flags_the_capture(tmp_path, monkeypatch):
     session, _ = make_session(tmp_path, monkeypatch)
     session.settings.auto_refine = True
-    raw = "Add a reminder to check the documentation before sending the update to the team"
-    refine = AsyncMock(return_value=("Check the documentation before sending the update to the team.", "0.6B"))
+    raw = "Do not send the update to the team"
+    refine = AsyncMock(return_value=("Send the update to the team.", "0.6B"))
     monkeypatch.setattr(capture_stream, "refine_transcript", refine)
     await session.accept(raw)
     session.finish()
     await session.run()
     # The raw phrase is kept; finishing only closes the dictation.
     assert session.refined == raw + "."
+    assert capture_stream.summarize_reviews(session.reviews)["reasons"] == ["negation"]
     assert not session.needs_final_refinement
     refine.assert_awaited_once()
     session.close()
@@ -523,3 +545,15 @@ async def test_standard_style_starts_a_new_sentence_after_a_pause(tmp_path, monk
 async def test_casual_style_joins_thoughts_with_a_comma(tmp_path, monkeypatch):
     refined = await _dictate(tmp_path, monkeypatch, "casual", ["It might", "But we'll see"])
     assert refined == "It might, but we'll see."
+
+
+@pytest.mark.asyncio
+async def test_learned_style_joins_and_finishes_the_way_the_user_writes(tmp_path, monkeypatch):
+    # Stand-in habits: sentence breaks become commas and the final period goes.
+    monkeypatch.setattr(
+        capture_stream,
+        "apply_learned",
+        lambda text: text.replace(". B", ", b").removesuffix("."),
+    )
+    refined = await _dictate(tmp_path, monkeypatch, "learned", ["It might", "But we'll see"])
+    assert refined == "It might, but we'll see"

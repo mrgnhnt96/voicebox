@@ -176,12 +176,12 @@ async def test_future_refinement_uses_rules_without_changing_prompt_or_raw(stora
     model = AsyncMock(return_value=("Please use voice box today at lunch.", "4B"))
     monkeypatch.setattr(captures, "refine_transcript", model)
     with storage() as db:
-        db.add(Capture(id="future", audio_path="unused.wav", transcript_raw="new recording"))
+        db.add(Capture(id="future", audio_path="unused.wav", transcript_raw="please use voice box today at lunch"))
         db.commit()
         output = await refine_capture("future", RefinementFlags(), None, db)
     assert output.transcript_refined == "Please use Voicebox today at lunch."
-    assert output.transcript_raw == "new recording"
-    model.assert_awaited_once_with("new recording", RefinementFlags(), model_size=None)
+    assert output.transcript_raw == "please use voice box today at lunch"
+    model.assert_awaited_once_with("please use voice box today at lunch", RefinementFlags(), model_size=None)
 
 
 def test_raw_reports_also_supply_candidates(storage):

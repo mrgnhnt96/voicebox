@@ -56,6 +56,10 @@ import type {
   VoiceProfileCreate,
   VoiceProfileResponse,
   WhisperModelSize,
+  PersonalExample,
+  WritingStyleCalibrationResult,
+  WritingStyleCalibrationStep,
+  WritingStyleStatus,
 } from './types';
 
 function formatErrorDetail(detail: unknown, fallback: string): string {
@@ -528,6 +532,64 @@ class ApiClient {
   }
 
   // Settings
+  // Writing style
+  async getWritingStyle(): Promise<WritingStyleStatus> {
+    return this.request<WritingStyleStatus>('/writing-style');
+  }
+
+  async resetWritingStyle(): Promise<WritingStyleStatus> {
+    return this.request<WritingStyleStatus>('/writing-style', { method: 'DELETE' });
+  }
+
+  async listPersonalExamples(): Promise<PersonalExample[]> {
+    return this.request<PersonalExample[]>('/writing-style/examples');
+  }
+
+  async removePersonalExample(exampleId: string): Promise<void> {
+    const response = await fetch(
+      `${this.getBaseUrl()}/writing-style/examples/${encodeURIComponent(exampleId)}`,
+      { method: 'DELETE' },
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+  }
+
+  async startStyleCalibration(): Promise<WritingStyleCalibrationStep> {
+    return this.request<WritingStyleCalibrationStep>('/writing-style/calibration', {
+      method: 'POST',
+    });
+  }
+
+  async submitStyleCalibrationStep(
+    sessionId: string,
+    written: string,
+  ): Promise<WritingStyleCalibrationStep> {
+    return this.request<WritingStyleCalibrationStep>(
+      `/writing-style/calibration/${sessionId}/steps`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ written }),
+      },
+    );
+  }
+
+  async finishStyleCalibration(sessionId: string): Promise<WritingStyleCalibrationResult> {
+    return this.request<WritingStyleCalibrationResult>(
+      `/writing-style/calibration/${sessionId}/finish`,
+      { method: 'POST' },
+    );
+  }
+
+  async discardStyleCalibration(sessionId: string): Promise<void> {
+    const response = await fetch(`${this.getBaseUrl()}/writing-style/calibration/${sessionId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+  }
+
   async getCaptureSettings(): Promise<CaptureSettings> {
     return this.request<CaptureSettings>('/settings/captures');
   }

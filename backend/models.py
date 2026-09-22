@@ -188,7 +188,16 @@ class RefinementFlagsModel(BaseModel):
     smart_cleanup: bool = True
     self_correction: bool = True
     preserve_technical: bool = True
-    punctuation_style: str = Field(default="standard", pattern="^(standard|casual)$")
+    punctuation_style: str = Field(default="standard", pattern="^(standard|casual|learned)$")
+
+
+class RefinementReviewModel(BaseModel):
+    """Why a capture's cleanup is flagged for the user to check."""
+
+    outcome: Literal["review", "reject"]
+    added: List[str] = []
+    missing: List[str] = []
+    reasons: List[str] = []
 
 
 class CaptureResponse(BaseModel):
@@ -204,6 +213,7 @@ class CaptureResponse(BaseModel):
     stt_model: Optional[str] = None
     llm_model: Optional[str] = None
     refinement_flags: Optional[RefinementFlagsModel] = None
+    refinement_review: Optional[RefinementReviewModel] = None
     created_at: datetime
 
     class Config:
@@ -256,7 +266,7 @@ class CaptureSettingsResponse(BaseModel):
     smart_cleanup: bool = True
     self_correction: bool = True
     preserve_technical: bool = True
-    punctuation_style: str = Field(default="standard", pattern="^(standard|casual)$")
+    punctuation_style: str = Field(default="standard", pattern="^(standard|casual|learned)$")
     allow_auto_paste: bool = True
     default_playback_voice_id: Optional[str] = None
     input_device_id: Optional[str] = Field(
@@ -285,7 +295,7 @@ class CaptureSettingsUpdate(BaseModel):
     smart_cleanup: Optional[bool] = None
     self_correction: Optional[bool] = None
     preserve_technical: Optional[bool] = None
-    punctuation_style: Optional[str] = Field(default=None, pattern="^(standard|casual)$")
+    punctuation_style: Optional[str] = Field(default=None, pattern="^(standard|casual|learned)$")
     allow_auto_paste: Optional[bool] = None
     default_playback_voice_id: Optional[str] = None
     input_device_id: Optional[str] = Field(
@@ -833,6 +843,46 @@ class CaptureFeedbackCreate(BaseModel):
     expected_text: str = Field(max_length=100000)
     notes: str = Field(default="", max_length=5000)
     snapshot: CaptureResponse
+
+
+class WritingStyleStatus(BaseModel):
+    """What Voicebox has learned about how the user punctuates."""
+
+    ready: bool
+    runs: int
+    last_run_at: Optional[str] = None
+    example_count: int
+    habits: List[str]
+
+
+class PersonalExample(BaseModel):
+    """One "when I say this, I mean this" example cleanup learns from."""
+
+    id: str
+    source: Literal["correction", "calibration"]
+    said: str
+    meant: str
+    created_at: Optional[str] = None
+
+
+class WritingStyleStepRequest(BaseModel):
+    written: str = Field(..., max_length=4000)
+
+
+class WritingStyleCalibrationStep(BaseModel):
+    session_id: str
+    step: int
+    total: int
+    paragraph: Optional[str] = None
+    habits: List[str]
+    changes: List[float]
+    done: bool
+
+
+class WritingStyleCalibrationResult(BaseModel):
+    status: WritingStyleStatus
+    before: str
+    after: str
 
 
 class CaptureFeedbackResponse(BaseModel):

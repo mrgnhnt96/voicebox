@@ -1,12 +1,16 @@
 """Local correction records for evaluation and future training datasets."""
 
 import json
+import logging
 
 from sqlalchemy.orm import Session
 
 from ..database.models import CaptureFeedback
 from ..models import CaptureFeedbackCreate, CaptureFeedbackResponse
+from . import personal_examples, writing_style
 from .captures import get_capture
+
+logger = logging.getLogger(__name__)
 
 
 def to_response(row: CaptureFeedback) -> CaptureFeedbackResponse:
@@ -42,6 +46,12 @@ def save_feedback(capture_id: str, request: CaptureFeedbackCreate, db: Session):
     db.add(row)
     db.commit()
     db.refresh(row)
+    if row.target == "refined":
+        personal_examples.invalidate()
+        try:
+            writing_style.refresh_feedback(db)
+        except Exception:
+            logger.warning("Could not update the writing style from a correction", exc_info=True)
     return to_response(row)
 
 

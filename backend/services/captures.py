@@ -20,8 +20,9 @@ from sqlalchemy.orm import Session
 
 from .. import config
 from ..database import Capture as DBCapture
-from ..models import CaptureResponse, RefinementFlagsModel
+from ..models import CaptureResponse, RefinementFlagsModel, RefinementReviewModel
 from ..utils.audio import load_audio
+from .content_check import check_refinement, summarize_reviews
 from .refinement import RefinementFlags, refine_transcript
 from .transcribe import get_whisper_model
 
@@ -43,6 +44,13 @@ def _to_response(row: DBCapture) -> CaptureResponse:
         except (ValueError, TypeError):
             flags_model = None
 
+    review = None
+    if row.refinement_review:
+        try:
+            review = RefinementReviewModel(**json.loads(row.refinement_review))
+        except (ValueError, TypeError):
+            review = None
+
     return CaptureResponse(
         id=row.id,
         audio_path=row.audio_path,
@@ -54,6 +62,7 @@ def _to_response(row: DBCapture) -> CaptureResponse:
         stt_model=row.stt_model,
         llm_model=row.llm_model,
         refinement_flags=flags_model,
+        refinement_review=review,
         created_at=row.created_at,
     )
 
@@ -213,12 +222,15 @@ async def refine_capture(
         flags,
         model_size=model_size,
     )
+    refined, verdict = check_refinement(row.transcript_raw or "", refined, flags)
 
     from .correction_learning import apply_learned_corrections
 
     refined = apply_learned_corrections(refined, row.language)
 
     row.transcript_refined = refined
+    review = summarize_reviews([verdict])
+    row.refinement_review = json.dumps(review) if review else None
     row.llm_model = llm_size
     row.refinement_flags = json.dumps(flags.to_dict())
     db.commit()

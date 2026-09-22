@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api/client';
+import { WritingStyleHabits } from '@/components/WritingStyle/WritingStyleHabits';
 import type { CaptureFeedbackResponse } from '@/lib/api/types';
+import { useWritingStyle } from '@/lib/hooks/useWritingStyle';
 
 const queryKey = ['correction-learning'];
 
@@ -13,6 +15,7 @@ export function CorrectionLearning({
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const writingStyle = useWritingStyle();
   const status = useQuery({
     queryKey,
     queryFn: () => apiClient.correctionLearningStatus(),
@@ -42,6 +45,12 @@ export function CorrectionLearning({
         {t('captures.feedback.learning.title')}
       </summary>
       <p className="mt-2 text-muted-foreground">{t('captures.feedback.learning.description')}</p>
+      {writingStyle.data?.habits.length ? (
+        <div className="mt-2 space-y-1">
+          <p className="font-medium">{t('writingStyle.learningPanel.title')}</p>
+          <WritingStyleHabits habits={writingStyle.data.habits} />
+        </div>
+      ) : null}
       {status.data && (
         <div className="mt-2 space-y-1">
           <p>{t('captures.feedback.learning.active', { count: status.data.active_rules })}</p>
