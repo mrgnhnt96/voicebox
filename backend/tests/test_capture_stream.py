@@ -81,9 +81,23 @@ def test_frames_reject_gaps_and_bound_memory(tmp_path, monkeypatch):
     session, _ = make_session(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="contiguous"):
         session.append(struct.pack("<IIh", 1, 0, 100))
-    append(session, 60)
-    with pytest.raises(ValueError, match="cannot keep up"):
-        append(session, 0.1)
+    session.close()
+
+
+@pytest.mark.asyncio
+async def test_recognition_backlog_falls_back_to_full_audio(tmp_path, monkeypatch):
+    session, _ = make_session(tmp_path, monkeypatch)
+    stt = type("STT", (), {"transcribe": AsyncMock(return_value="the whole recording")})()
+    monkeypatch.setattr(capture_stream, "get_whisper_model", lambda: stt)
+    # Recognition never runs, so a minute of audio piles up unprocessed.
+    append(session, 61)
+    assert len(session.pending) <= session.rate * 2 * 60
+    assert session.degraded_reason
+    session.finish()
+    await session.run()
+    assert session.raw == "the whole recording"
+    assert session.covered == session.samples == 61 * session.rate
+    stt.transcribe.assert_awaited_once()
     session.close()
 
 

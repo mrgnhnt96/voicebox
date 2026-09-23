@@ -122,6 +122,7 @@ async def stream_capture(websocket: WebSocket):
                 refinement_error=session.refinement_error,
                 degraded_reason=session.degraded_reason,
             )
+            logger.info("Dictation stream finished: %s", session.timing_summary())
             _results[session.id] = (time.monotonic(), result)
             while len(_results) > 32:
                 _results.popitem(last=False)
@@ -130,7 +131,9 @@ async def stream_capture(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     except Exception as error:
-        logger.warning("Streaming capture failed: %s", error)
+        logger.warning(
+            "Streaming capture failed: %s (%s)", error, session.timing_summary() if session else "before start"
+        )
         error_event = dict(type="error", message=str(error), session_id=session.id if session else None)
         if session and session.finished:
             _results[session.id] = (time.monotonic(), error_event)

@@ -113,6 +113,22 @@ def disable_watchdog():
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
 
+def _log_to_file(data_dir):
+    """Keep server logs on disk; the desktop app discards the sidecar's stderr."""
+    from logging.handlers import RotatingFileHandler
+
+    try:
+        log_dir = os.path.join(data_dir, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        handler = RotatingFileHandler(
+            os.path.join(log_dir, "server.log"), maxBytes=2 * 1024 * 1024, backupCount=3
+        )
+        handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        logging.getLogger().addHandler(handler)
+    except Exception:
+        logger.warning("Could not open the server log file", exc_info=True)
+
+
 def _start_parent_watchdog(parent_pid, data_dir=None):
     """Monitor parent process and exit if it dies.
 
@@ -292,6 +308,7 @@ if __name__ == "__main__":
         if args.data_dir:
             logger.info(f"Setting data directory to: {args.data_dir}")
             config.set_data_dir(args.data_dir)
+            _log_to_file(args.data_dir)
 
         # Initialize database after data directory is set
         logger.info("Initializing database...")

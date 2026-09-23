@@ -12,6 +12,7 @@ import os
 import re
 import struct
 import tempfile
+import time
 import uuid
 import wave
 from pathlib import Path
@@ -115,6 +116,10 @@ class StreamingCapture:
         self.reviews = []
         self.overlap = False
         self.degraded_reason = None
+        self.backlogged = False
+        self.peak_backlog = 0.0
+        self.started_at = time.monotonic()
+        self.finished_at = None
         self.abort = False
         self.finished = False
         self.persisted = False
@@ -146,12 +151,26 @@ class StreamingCapture:
         count = len(pcm) // 2
         if self.samples + count > self.rate * MAX_SECONDS:
             raise ValueError("Streaming session exceeds one hour")
-        if len(self.pending) + len(pcm) > self.rate * 2 * 60:
-            raise ValueError("Recognition cannot keep up with audio; retry using batch recording")
         self.archive.writeframesraw(pcm)
-        self.pending.extend(pcm)
         self.samples += count
         self.sequence += 1
+        if self.backlogged:
+            return
+        if len(self.pending) + len(pcm) > self.rate * 2 * 60:
+            # Recognition fell a minute behind. Keep archiving and transcribe
+            # the whole recording at finish rather than failing the dictation.
+            logger.warning(
+                "Streaming recognition fell %.1fs behind; finishing with full-audio recognition",
+                len(self.pending) / (self.rate * 2),
+            )
+            self.backlogged = True
+            self.degraded_reason = "Recognition fell behind; final output uses full-audio recognition."
+            self.pending.clear()
+            self.cuts.clear()
+            self.wake.set()
+            return
+        self.pending.extend(pcm)
+        self.peak_backlog = max(self.peak_backlog, len(self.pending) / (self.rate * 2))
         # A conservative energy gate avoids treating ordinary short gaps as a
         # phrase boundary. It does not suppress audio from the recognizer.
         rms = float(np.sqrt(np.mean(np.frombuffer(pcm, dtype="<i2").astype(np.float32) ** 2)))
@@ -267,6 +286,13 @@ class StreamingCapture:
         while True:
             if self.abort:
                 return
+            if self.backlogged:
+                if self.finished:
+                    await self.reconcile_full_audio()
+                    return
+                self.wake.clear()
+                await self.wake.wait()
+                continue
             while self.cuts and self.cuts[0] <= self.offset:
                 self.cuts.pop(0)
             available = len(self.pending) // 2
@@ -370,7 +396,19 @@ class StreamingCapture:
 
     def finish(self):
         self.finished = True
+        self.finished_at = time.monotonic()
         self.wake.set()
+
+    def timing_summary(self) -> str:
+        """One log line per dictation: enough to see where time went, no text."""
+        now = time.monotonic()
+        release = f"{now - self.finished_at:.2f}s" if self.finished_at else "not released"
+        return (
+            f"session={self.id} audio={self.samples / self.rate:.2f}s rate={self.rate} "
+            f"wall={now - self.started_at:.2f}s release_to_final={release} "
+            f"peak_backlog={self.peak_backlog:.2f}s degraded={self.degraded_reason or 'no'} "
+            f"refinement_error={'yes' if self.refinement_error else 'no'}"
+        )
 
     def persist(self, db):
         self.archive.close()
