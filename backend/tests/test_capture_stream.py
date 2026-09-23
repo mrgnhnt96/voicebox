@@ -571,3 +571,22 @@ async def test_learned_style_joins_and_finishes_the_way_the_user_writes(tmp_path
     )
     refined = await _dictate(tmp_path, monkeypatch, "learned", ["It might", "But we'll see"])
     assert refined == "It might, but we'll see"
+
+
+@pytest.mark.asyncio
+async def test_finish_keeps_the_ending_the_cleanup_chose(tmp_path, monkeypatch):
+    session, _ = make_session(tmp_path, monkeypatch)
+    session.settings.auto_refine = True
+
+    async def refine(text, flags, model_size=None):
+        return "A list of things to do:\n1. Go to school\n2. Come home\n3. Do chores", "4B"
+
+    monkeypatch.setattr(capture_stream, "refine_transcript", refine)
+    from backend.services import correction_learning
+
+    monkeypatch.setattr(correction_learning, "apply_learned_corrections", lambda text, _: text)
+    await session.accept("A list of things to do. Go to school, come home, do chores.")
+    session.finish()
+    await session.run()
+    session.close()
+    assert session.refined.endswith("3. Do chores")

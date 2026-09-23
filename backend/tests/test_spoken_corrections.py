@@ -67,7 +67,8 @@ async def test_disabled_corrections_skip_deterministic_edit(monkeypatch):
     backend = type("Backend", (), {"model_size": "0.6B", "generate": AsyncMock(return_value=raw)})()
     monkeypatch.setattr("backend.services.refinement.llm_service.get_llm_model", lambda: backend)
     assert (await refine_transcript(raw, RefinementFlags(self_correction=False)))[0] == raw
-    assert backend.generate.call_args.kwargs["prompt"] == raw
+    # Only Whisper's final period is hidden; the retraction reaches the model as said.
+    assert backend.generate.call_args.kwargs["prompt"] == raw.removesuffix(".")
 
 
 @pytest.mark.parametrize(

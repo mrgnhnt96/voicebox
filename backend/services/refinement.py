@@ -371,6 +371,10 @@ def refinement_examples(flags: RefinementFlags, personal: list[tuple[str, str]] 
     return REFINEMENT_EXAMPLES
 
 
+def _without_final_period(text: str) -> str:
+    return re.sub(r"(?<=[\w)\"'\u201d])\.$", "", text.rstrip())
+
+
 async def refine_transcript(
     transcript: str,
     flags: RefinementFlags,
@@ -405,9 +409,12 @@ async def refine_transcript(
         from .personal_examples import closest
 
         personal = closest(cleaned_input, extra=extra_examples)
+    # Whisper ends every transcript with a period. Hide it, in the user's
+    # examples too, so the ending follows how they write ("3. Do chores").
+    personal = [(_without_final_period(said), meant) for said, meant in personal]
     system_prompt = build_refinement_prompt(flags, personal=bool(personal))
     arguments = dict(
-        prompt=cleaned_input,
+        prompt=_without_final_period(cleaned_input),
         system=system_prompt,
         max_tokens=2048,
         temperature=0.2,

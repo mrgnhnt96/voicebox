@@ -113,6 +113,9 @@ class StreamingCapture:
         self.llm_model = None
         self.refinement_error = None
         self.needs_final_refinement = False
+        # Whether the cleanup ended the latest phrase with a period. Pauses
+        # strip it (open_phrase); finish restores it only if it was there.
+        self.cleanup_closed = True
         self.reviews = []
         self.overlap = False
         self.degraded_reason = None
@@ -209,7 +212,7 @@ class StreamingCapture:
             return text
 
     def close_dictation(self, text):
-        closed = close_phrase(text)
+        closed = close_phrase(text) if self.cleanup_closed else text
         # Phrases were styled one at a time; habits like a dropped final period
         # only apply once the whole dictation is joined.
         return apply_learned(closed) if self.flags.punctuation_style == "learned" else closed
@@ -234,6 +237,7 @@ class StreamingCapture:
             _, correction = prepare_refinement(self.raw, self.flags)
             if correction is not None:
                 self.refined = correction
+                self.cleanup_closed = True
                 self.llm_model = self.settings.llm_model
             elif text:
                 revise_previous = (
@@ -249,6 +253,9 @@ class StreamingCapture:
                         prompt, self.flags, model_size=self.settings.llm_model
                     )
                 refined, verdict = guard_phrase_refinement(prompt, refined, self.flags)
+                # A rejected cleanup falls back to the transcript, which is closed
+                # the standard way.
+                self.cleanup_closed = verdict.outcome == "reject" or refined.rstrip().endswith(".")
                 if verdict.outcome != "ok":
                     self.reviews.append(verdict)
                 if (

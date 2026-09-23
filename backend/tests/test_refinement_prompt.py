@@ -34,3 +34,23 @@ def test_standard_style_is_left_out_of_saved_flags():
     assert casual["punctuation_style"] == "casual"
     assert RefinementFlags.from_dict(casual) == RefinementFlags(punctuation_style="casual")
     assert RefinementFlags.from_dict({"punctuation_style": "shouting"}).punctuation_style == "standard"
+
+
+def test_whisper_final_period_is_not_shown_to_the_cleanup(monkeypatch):
+    import asyncio
+
+    from backend.services import personal_examples, refinement
+
+    seen = {}
+
+    class Backend:
+        model_size = "4B"
+
+        async def generate(self, **arguments):
+            seen.update(arguments)
+            return "Done"
+
+    monkeypatch.setattr(personal_examples, "closest", lambda *_, **__: [("Yes.", "Yes")])
+    asyncio.run(refinement.refine_transcript("Go home. Do chores.", RefinementFlags(), backend_override=Backend()))
+    assert seen["prompt"] == "Go home. Do chores"
+    assert ("Yes", "Yes") in seen["examples"]
