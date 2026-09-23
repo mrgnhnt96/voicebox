@@ -194,6 +194,11 @@ class MLXQwenLLMBackend:
         self.model_size = model_size
         self._current_model_size: Optional[str] = None
         self._adapter_path: Optional[str] = None
+        # KV cache of the previous call and the tokens it holds. Refinement
+        # repeats a ~1k-token system prompt and examples on every call;
+        # reusing them keeps a warm 4B dictation cleanup well under a second.
+        self._prompt_cache = None
+        self._cached_tokens: list[int] = []
 
     def is_loaded(self) -> bool:
         return self.model is not None
@@ -266,6 +271,8 @@ class MLXQwenLLMBackend:
         self.model = None
         self.tokenizer = None
         self._current_model_size = None
+        self._prompt_cache = None
+        self._cached_tokens = []
         clear_mlx_cache()
         logger.info("Qwen3 (MLX) unloaded")
 
@@ -298,7 +305,7 @@ class MLXQwenLLMBackend:
         temperature: float,
         examples: Optional[list[tuple[str, str]]] = None,
     ) -> str:
-        from mlx_lm import generate as mlx_generate
+        from mlx_lm import stream_generate
         from mlx_lm.sample_utils import make_sampler
 
         messages = _build_messages(prompt, system, examples)
@@ -310,12 +317,41 @@ class MLXQwenLLMBackend:
         )
 
         sampler = make_sampler(temp=temperature, top_p=0.9) if temperature > 0 else None
-        text = mlx_generate(
+        tokens = self.tokenizer.encode(chat_prompt, add_special_tokens=False)
+        cache = self._reusable_cache(tokens)
+        reused = len(self._cached_tokens)
+        # Only the cache's own tokens are trustworthy; forget them until this
+        # generation finishes in case it fails partway through.
+        self._cached_tokens = []
+        generated: list[int] = []
+        text = ""
+        for response in stream_generate(
             self.model,
             self.tokenizer,
-            prompt=chat_prompt,
+            tokens[reused:],
             max_tokens=max_tokens,
             sampler=sampler,
-            verbose=False,
-        )
+            prompt_cache=cache,
+        ):
+            text += response.text
+            generated.append(response.token)
+        self._cached_tokens = tokens + generated
         return text.strip()
+
+    def _reusable_cache(self, tokens: list[int]):
+        """Trim the previous call's KV cache to the prefix it shares with ``tokens``."""
+        from mlx_lm.models.cache import can_trim_prompt_cache, make_prompt_cache, trim_prompt_cache
+
+        previous = self._cached_tokens
+        # Leave at least one prompt token to feed the model.
+        limit = min(len(previous), len(tokens) - 1)
+        shared = 0
+        while shared < limit and previous[shared] == tokens[shared]:
+            shared += 1
+        if self._prompt_cache is None or not shared or not can_trim_prompt_cache(self._prompt_cache):
+            self._prompt_cache = make_prompt_cache(self.model)
+            self._cached_tokens = []
+            return self._prompt_cache
+        trim_prompt_cache(self._prompt_cache, len(previous) - shared)
+        self._cached_tokens = previous[:shared]
+        return self._prompt_cache

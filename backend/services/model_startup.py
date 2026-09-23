@@ -4,7 +4,7 @@ import logging
 import time
 
 from ..database import session
-from . import llm, settings, transcribe
+from . import llm, refinement, settings, transcribe
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,9 @@ async def load_startup_models() -> None:
         stt_size = saved.stt_model
         llm_size = saved.llm_model
         auto_refine = saved.auto_refine
+        flags = refinement.RefinementFlags(
+            saved.smart_cleanup, saved.self_correction, saved.preserve_technical, saved.punctuation_style
+        )
 
     selected = [("Whisper", transcribe.get_whisper_model, stt_size)]
     if auto_refine:
@@ -34,3 +37,19 @@ async def load_startup_models() -> None:
         except Exception:
             # Keep setup and diagnostics available if an installed model fails.
             logger.exception("Could not load startup %s model %s", name, size)
+
+    if auto_refine:
+        await warm_refinement(flags, llm_size)
+
+
+async def warm_refinement(flags, llm_size: str) -> None:
+    """Run one short cleanup so the first dictation reuses the cached prompt."""
+    backend = llm.get_llm_model()
+    if not backend.is_loaded():
+        return
+    try:
+        started = time.monotonic()
+        await refinement.refine_transcript("okay", flags, model_size=llm_size)
+        logger.info("Refinement prompt warmed in %.3fs", time.monotonic() - started)
+    except Exception:
+        logger.exception("Could not warm the refinement prompt")

@@ -10,11 +10,24 @@ from backend.services import model_startup
 
 @pytest.fixture
 def startup(monkeypatch):
-    saved = SimpleNamespace(stt_model="small", llm_model="1.7B", auto_refine=True)
+    saved = SimpleNamespace(
+        stt_model="small",
+        llm_model="1.7B",
+        auto_refine=True,
+        smart_cleanup=True,
+        self_correction=True,
+        preserve_technical=True,
+        punctuation_style="standard",
+    )
     monkeypatch.setattr(model_startup.session, "SessionLocal", MagicMock())
     monkeypatch.setattr(model_startup.settings, "get_capture_settings", lambda db: saved)
     stt = SimpleNamespace(_is_model_cached=MagicMock(return_value=True), load_model=AsyncMock())
-    llm = SimpleNamespace(_is_model_cached=MagicMock(return_value=True), load_model=AsyncMock())
+    llm = SimpleNamespace(
+        _is_model_cached=MagicMock(return_value=True),
+        load_model=AsyncMock(),
+        is_loaded=MagicMock(return_value=True),
+    )
+    monkeypatch.setattr(model_startup.refinement, "refine_transcript", AsyncMock(return_value=("Okay.", "1.7B")))
     monkeypatch.setattr(model_startup.transcribe, "get_whisper_model", lambda: stt)
     monkeypatch.setattr(model_startup.llm, "get_llm_model", lambda: llm)
     return saved, stt, llm
@@ -57,3 +70,47 @@ async def test_load_failure_does_not_block_other_models(startup, caplog):
     await model_startup.load_startup_models()
     llm.load_model.assert_awaited_once_with("1.7B")
     assert "Could not load startup Whisper model small" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_warms_refinement_prompt_after_loading(startup):
+    await model_startup.load_startup_models()
+    model_startup.refinement.refine_transcript.assert_awaited_once()
+    assert model_startup.refinement.refine_transcript.await_args.kwargs == {"model_size": "1.7B"}
+
+
+@pytest.mark.asyncio
+async def test_warm_up_failure_does_not_block_startup(startup, caplog):
+    model_startup.refinement.refine_transcript.side_effect = RuntimeError("generate failed")
+    await model_startup.load_startup_models()
+    assert "Could not warm the refinement prompt" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_unloaded_refinement_model_is_not_warmed(startup):
+    _, _, llm = startup
+    llm.is_loaded.return_value = False
+    await model_startup.load_startup_models()
+    model_startup.refinement.refine_transcript.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_warms_refinement_prompt_after_loading(startup):
+    await model_startup.load_startup_models()
+    model_startup.refinement.refine_transcript.assert_awaited_once()
+    assert model_startup.refinement.refine_transcript.await_args.kwargs == {"model_size": "1.7B"}
+
+
+@pytest.mark.asyncio
+async def test_warm_up_failure_does_not_block_startup(startup, caplog):
+    model_startup.refinement.refine_transcript.side_effect = RuntimeError("generate failed")
+    await model_startup.load_startup_models()
+    assert "Could not warm the refinement prompt" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_unloaded_refinement_model_is_not_warmed(startup):
+    _, _, llm = startup
+    llm.is_loaded.return_value = False
+    await model_startup.load_startup_models()
+    model_startup.refinement.refine_transcript.assert_not_awaited()
