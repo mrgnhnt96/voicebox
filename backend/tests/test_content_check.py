@@ -52,3 +52,57 @@ def test_summary_takes_the_worst_outcome_and_joins_words():
         "reasons": ["negation"],
     }
     assert summarize_reviews([check("hello", "Hello.")]) is None
+
+
+WALMART = (
+    "Alright, let's create a list of things that we need to do. First, we need to drive home, "
+    "then we need to drive to school, and then we have to go to Walmart."
+)
+
+
+def test_formatting_the_cleanup_adds_is_reviewed_not_rejected():
+    cleaned = (
+        "Alright, let's create a list of things that we need to do:\n"
+        "1. Drive home\n2. Drive to school\n3. Go to Walmart"
+    )
+    verdict = check(WALMART, cleaned)
+    assert verdict.outcome == "review"
+    assert verdict.added == ["1", "2", "3"]
+
+
+def test_a_number_that_was_said_must_survive():
+    verdict = check("buy 2 apples and 3 pears", "1. Buy 2 apples\n2. Buy 4 pears")
+    assert (verdict.outcome, verdict.reason, verdict.missing) == ("reject", "number", ["3"])
+
+
+def test_a_name_that_was_said_must_survive():
+    verdict = check("send the draft to Priya before lunch", "Send the draft to her before lunch.")
+    assert (verdict.outcome, verdict.reason, verdict.missing) == ("reject", "name", ["priya"])
+
+
+def test_sentence_capitals_are_not_names():
+    assert check("Okay. Send the draft. I think it's ready", "Send the draft. It's ready.").reason is None
+
+
+def test_a_technical_term_that_was_said_must_survive():
+    verdict = check("open package.json first", "Open the config file first.")
+    assert (verdict.outcome, verdict.reason) == ("reject", "technical")
+
+
+def test_adding_a_not_is_rejected():
+    verdict = check("ship it today", "Don't ship it today.")
+    assert (verdict.outcome, verdict.reason) == ("reject", "negation")
+
+
+def test_a_retracted_name_may_be_dropped():
+    verdict = check("send it to Bob actually Alice", "Send it to Alice.", allow_retractions=True)
+    assert verdict.outcome != "reject"
+
+
+def test_a_name_said_after_the_correction_must_survive():
+    verdict = check("send it to Bob actually Alice", "Send it to Bob.", allow_retractions=True)
+    assert (verdict.outcome, verdict.reason, verdict.missing) == ("reject", "name", ["alice"])
+
+
+def test_a_capitalized_restart_is_not_a_name():
+    assert check("How does it look now? It might But we'll see", "How does it look now? We'll see.").reason is None

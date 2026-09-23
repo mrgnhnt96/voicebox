@@ -229,6 +229,7 @@
       "reasons": {
         "answered": "The cleanup looked like a reply to what you said, not a cleanup of it.",
         "negation": "The cleanup changed a \"not\" or \"never\", which can flip the meaning.",
+        "name": "The cleanup left out a name you said.",
         "number": "The cleanup changed a number.",
         "technical": "The cleanup changed a technical term, like a file or variable name."
       },

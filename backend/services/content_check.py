@@ -2,16 +2,19 @@
 
 Cleanup may restructure: drop false starts and repeats, reorder a jumbled
 sentence, fix grammar. It must not add ideas, summarize, or leave something
-out. This compares the meaning-carrying words of the transcript and the
-cleanup and returns one of three verdicts:
+out. Three rules, by comparing words (no second model):
 
-- ``ok``: nothing but structure changed.
-- ``review``: content may have been added or left out. The cleanup is kept
-  and the capture is flagged so the user can check it.
-- ``reject``: the cleanup is not safe to paste, so the transcript is used and
-  the capture is flagged. That is when the model answered or obeyed the
-  dictation instead of cleaning it up, or when a negation, a number or a
-  technical term changed, since those flip or break the meaning.
+1. What the speaker said that carries meaning must survive: every number,
+   technical term and name, and whether they said "not". Losing one rejects.
+2. Anything the cleanup added is listed for review, never rejected on its own,
+   except a "not" nobody said. Formatting such as list numbers lands here.
+3. Many added words means the model answered or obeyed the dictation instead
+   of cleaning it up; that rejects.
+
+Verdicts: ``ok`` (only structure changed), ``review`` (the cleanup is kept and
+the capture flagged for the user to check) and ``reject`` (the transcript is
+pasted instead and the capture flagged). New concerns belong in the example
+set of real dictations, not in new rules here.
 """
 
 import re
@@ -84,29 +87,73 @@ def _parts(token: str) -> list[str]:
     return [part for part in re.split(r"[_/.-]+", token) if part]
 
 
+_WORD = re.compile(r"[\w'][\w'.-]*\w|\w")
+
+
+def _names(text: str) -> set[str]:
+    """Words capitalized mid-sentence: names, places, products ("Walmart").
+
+    Whisper capitalizes proper nouns, so this needs no model. A capital at
+    the start of a sentence, and "I", say nothing about the word.
+    """
+    names = set()
+    text = unicodedata.normalize("NFKC", text).replace("\u2019", "'")
+    for match in _WORD.finditer(text):
+        word = match.group()
+        before = text[: match.start()].rstrip()
+        if not word[0].isupper() or not before or before[-1] in ".!?:\n" or re.fullmatch(r"I('\w+)?", word):
+            continue
+        name = word.casefold().strip("'.-")
+        # Whisper also capitalizes a word that restarts a cut-off sentence
+        # ("It might But we'll see"); common words are never names.
+        if name not in _FUNCTION_WORDS and name not in _NEGATIONS:
+            names.add(name)
+    return names
+
+
 def _number(token: str) -> str:
     return token.replace(",", "")
 
 
-def check(said: str, cleaned: str) -> Verdict:
-    """Compare ``cleaned`` against the transcript ``said``."""
+_CORRECTION_CUE = re.compile(r"\b(actually|no wait|no actually|make that|I mean|scratch that)\b", re.I)
+
+
+def _retracted(said: str):
+    """Whether a word was said before the speaker's last correction cue."""
+    cues = list(_CORRECTION_CUE.finditer(said))
+    if not cues:
+        return lambda _: False
+    spoken = unicodedata.normalize("NFKC", said[: cues[-1].start()]).casefold().replace(",", "")
+    return lambda word: bool(re.search(rf"(?<![\w]){re.escape(word.replace(',', ''))}(?![\w])", spoken))
+
+
+def check(said: str, cleaned: str, allow_retractions: bool = False) -> Verdict:
+    """Compare ``cleaned`` against the transcript ``said``.
+
+    With ``allow_retractions``, a number, name or term said before a spoken
+    correction ("Tuesday, actually Wednesday") may be left out.
+    """
+    retracted = _retracted(said) if allow_retractions else lambda _: False
     before = _tokens(said)
     after = _tokens(cleaned)
     heard = set(before)
     heard_parts = heard | {part for token in before for part in _parts(token)}
-
+    kept = set(after)
+    kept_parts = kept | {part for token in after for part in _parts(token)}
     numbers_before = {_number(t) for t in before if _is_number(t)}
     numbers_after = {_number(t) for t in after if _is_number(t)}
-    if numbers_before != numbers_after:
-        return Verdict(
-            "reject",
-            reason="number",
-            added=sorted(numbers_after - numbers_before),
-            missing=sorted(numbers_before - numbers_after),
-        )
+    added_numbers = sorted(numbers_after - numbers_before)
 
+    # Rule 1: what the speaker said that carries meaning must survive.
+    # "index dot tsx" may become "index.tsx", so a said word also survives as
+    # part of a joined technical term.
+    lost_numbers = sorted(n for n in numbers_before - numbers_after if not retracted(n))
+    if lost_numbers:
+        return Verdict("reject", reason="number", added=added_numbers, missing=lost_numbers)
     negations_before = {t for t in before if t in _NEGATIONS}
     negations_after = {t for t in after if t in _NEGATIONS}
+    # "don't" may become "do not"; only losing every negation, or adding one
+    # where none was said, flips the meaning.
     if bool(negations_before) != bool(negations_after):
         return Verdict(
             "reject",
@@ -114,31 +161,31 @@ def check(said: str, cleaned: str) -> Verdict:
             added=sorted(negations_after - negations_before),
             missing=sorted(negations_before - negations_after),
         )
-
-    # "index dot tsx" may become "index.tsx"; a technical term is new only if
-    # one of its parts was never said.
-    for token in after:
-        if _is_technical(token) and token not in heard and not all(p in heard_parts for p in _parts(token)):
-            return Verdict("reject", reason="technical", added=[token])
-    for token in before:
-        if _is_technical(token) and token not in set(after):
-            return Verdict("reject", reason="technical", missing=[token])
+    lost_terms = sorted({t for t in before if _is_technical(t) and t not in kept and not retracted(t)})
+    if lost_terms:
+        return Verdict("reject", reason="technical", missing=lost_terms)
+    lost_names = sorted({name for name in _names(said) if name not in kept_parts and not retracted(name)})
+    if lost_names:
+        return Verdict("reject", reason="name", missing=lost_names)
 
     ignored = _FUNCTION_WORDS | _NEGATIONS | {"no"}
     content_before = [t for t in before if t not in ignored and not _is_number(t)]
     content_after = [t for t in after if t not in ignored and not _is_number(t)]
     said_words = set(content_before) | heard_parts
+    # Rule 2: anything the cleanup added is listed for review, never rejected
+    # on its own. List numbering, "1st", headings are formatting it may add.
     added = sorted({t for t in content_after if t not in said_words and not all(p in said_words for p in _parts(t))})
     missing = sorted(set(content_before) - set(content_after) - {p for t in content_after for p in _parts(t)})
 
+    # Rule 3: many new words means the model answered or obeyed the dictation.
     if len(added) >= max(ANSWERED_WORDS, ANSWERED_SHARE * len(set(content_before))):
         return Verdict("reject", reason="answered", added=added, missing=missing)
+    added = sorted(set(added) | set(added_numbers))
     if added or len(missing) > MISSING_SHARE * len(set(content_before)):
         return Verdict("review", added=added, missing=missing)
     return Verdict("ok")
 
 
-_CORRECTION_CUE = re.compile(r"\b(actually|no wait|no actually|make that|I mean|scratch that)\b", re.I)
 
 
 def check_refinement(said: str, refined: str, flags) -> tuple[str, Verdict]:
@@ -152,7 +199,7 @@ def check_refinement(said: str, refined: str, flags) -> tuple[str, Verdict]:
     cleaned, explicit = prepare_refinement(said, flags)
     if explicit is not None:
         return explicit, Verdict("ok")
-    verdict = check(cleaned, refined)
+    verdict = check(cleaned, refined, allow_retractions=flags.self_correction)
     if verdict.outcome == "review" and not verdict.added and flags.self_correction and _CORRECTION_CUE.search(said):
         # The speaker took words back, so leaving them out is the point.
         verdict = Verdict("ok")
