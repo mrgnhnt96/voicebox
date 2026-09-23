@@ -124,3 +124,15 @@ test('retained terminal errors surface immediately without duplicate capture', a
   Socket.latest.close();
   await expect(result).rejects.toThrow('Recognition failed');
 });
+test('audio arriving faster than real time switches to batch before finish', async () => {
+  Socket.latest.event({ type: 'ready', session_id: 'session' });
+  // A freshly connected audio graph can replay minutes of empty audio at once.
+  for (let second = 0; second < 5; second++) stream.append(new Int16Array(48000).buffer);
+  expect(await stream.finish()).toBeNull();
+});
+test('real-time audio keeps streaming', () => {
+  Socket.latest.event({ type: 'ready', session_id: 'session' });
+  stream.append(new Int16Array(24000).buffer);
+  expect(Socket.latest.sent).toHaveLength(1);
+  expect(Socket.latest.readyState).toBe(1);
+});

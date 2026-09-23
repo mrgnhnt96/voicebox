@@ -8,6 +8,8 @@ export interface StreamingCaptureFinal {
   degraded_reason?: string;
 }
 
+const MAX_AHEAD_OF_CLOCK_S = 1;
+
 /** One socket owns one take. Failure before finish can safely use batch upload. */
 export class CaptureStream {
   private socket: WebSocket;
@@ -31,10 +33,11 @@ export class CaptureStream {
     this.resolveFinal = resolve;
   });
   private handshakeTimer: ReturnType<typeof setTimeout>;
+  private startedAt = performance.now();
 
   constructor(
     private baseUrl: string,
-    sampleRate: number,
+    private sampleRate: number,
     private onFallback?: () => void,
   ) {
     const url = new URL(`${baseUrl.replace(/\/$/, '')}/captures/stream`);
@@ -90,6 +93,14 @@ export class CaptureStream {
     view.setUint32(0, this.sequence++, true);
     view.setUint32(4, this.sampleOffset, true);
     this.sampleOffset += pcm.byteLength / 2;
+    // Speech can't arrive faster than it is spoken. A freshly connected audio
+    // graph in WebKit can replay minutes of empty audio at once, burying the
+    // take; the complete recording is intact, so let it take over.
+    const elapsed = (performance.now() - this.startedAt) / 1000;
+    if (this.sampleOffset > (elapsed + MAX_AHEAD_OF_CLOCK_S) * this.sampleRate) {
+      this.fail();
+      return;
+    }
     new Uint8Array(frame, 8).set(new Uint8Array(pcm));
     if (this.pendingBytes + this.socket.bufferedAmount + frame.byteLength > 1024 * 1024) {
       this.fail();
