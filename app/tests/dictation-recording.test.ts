@@ -141,6 +141,34 @@ test('changing devices retains an active take then opens the selected mic', asyn
   await act(async () => hook.stopRecording());
 });
 
+test('settings arriving during the first microphone request keep that take', async () => {
+  let resolve!: (stream: ReturnType<typeof makeStream>) => void;
+  getUserMedia.mockImplementation(
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  settings = undefined as unknown as typeof settings;
+  await mount();
+  let start!: Promise<void>;
+  await act(async () => {
+    start = hook.startRecording('A');
+  });
+  // The server comes up mid-request: the device setting loads, and the dictate
+  // window re-runs its warm-mic effect, which releases the (unused) warm stream.
+  settings = { input_device_id: null };
+  await act(async () => renderer.update(createElement(Harness)));
+  await act(async () => hook.releaseWarm());
+  await act(async () => {
+    resolve(makeStream());
+    await start;
+  });
+  expect(hook.error).toBeNull();
+  expect(hook.isRecording).toBe(true);
+  await act(async () => hook.stopRecording());
+});
+
 test('each delayed conversion keeps the focus context of its own take', async () => {
   const resolvers: (() => void)[] = [];
   convert.mockImplementation(

@@ -105,15 +105,17 @@ export function useAudioRecording({
   }, []);
 
   const releaseWarmStream = useCallback(() => {
-    // Invalidate any getUserMedia still in flight so its stream is stopped on
-    // resolve rather than adopted as the warm stream.
-    acquireGenRef.current += 1;
     // Don't tear the device out from under an active/starting recording — the
     // warm stream is the one backing it; defer to the onstop path instead.
+    // This includes a take still waiting on getUserMedia: on the first chord
+    // after launch, settings often load mid-request and trigger a release.
     if (isRecordingRef.current || startingRef.current) {
       releaseAfterStopRef.current = true;
       return;
     }
+    // Invalidate any getUserMedia still in flight so its stream is stopped on
+    // resolve rather than adopted as the warm stream.
+    acquireGenRef.current += 1;
     warmStreamRef.current?.getTracks().forEach((track) => {
       track.stop();
     });
