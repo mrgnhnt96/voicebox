@@ -4,7 +4,8 @@
 //! its own thread and the `/captures/stream` socket connects in parallel,
 //! with audio buffered until the server is ready. Chord end calls [`stop`],
 //! which flushes the last frame and sends `finish`. The final capture is
-//! pasted through `paste_final_text` into the target focused at chord start.
+//! pasted through `paste_final_text` into the target focused at chord start,
+//! unless provisional text was already written into it live (see [`live`]).
 //! The dictate webview only renders the pill from `dictation:state` events.
 
 pub mod audio;
@@ -12,6 +13,7 @@ pub mod capture;
 pub mod client;
 pub mod delivery;
 pub mod http;
+pub mod live;
 pub mod protocol;
 pub mod stream;
 pub mod take;
@@ -29,6 +31,7 @@ use crate::focus_capture::FocusSnapshot;
 use crate::DICTATE_WINDOW_LABEL;
 use capture::{CaptureHooks, NativeInputDevice};
 use client::StreamClient;
+use live::{Finish, Live, LiveTarget};
 use stream::{AudioMsg, Recovery, Timeouts};
 use take::{PillEvent, TakeEnv};
 
@@ -93,6 +96,12 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
     let config = state.config.lock().map(|c| c.clone()).unwrap_or_default();
     let take_id = state.next_take.fetch_add(1, Ordering::Relaxed) + 1;
     let focus: Arc<Mutex<Option<FocusSnapshot>>> = Arc::new(Mutex::new(None));
+    let released: Arc<OnceLock<Instant>> = Arc::new(OnceLock::new());
+    let live = Live::new(AxLive {
+        take_id,
+        focus: focus.clone(),
+        released: released.clone(),
+    });
     let env = AppEnv {
         app: app.clone(),
         take_id,
@@ -100,6 +109,7 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
         http: state.http(),
         focus: focus.clone(),
         clipboard: Arc::new(Mutex::new(None)),
+        live: live.clone(),
     };
     env.emit(PillEvent::Preparing);
 
@@ -142,7 +152,6 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
     let done = capture.done;
 
     let (out_tx, in_rx) = transport::spawn(&config.server_url, config.origin.clone());
-    let released: Arc<OnceLock<Instant>> = Arc::new(OnceLock::new());
     let released_for_task = released.clone();
 
     let learning_env = env.clone();
@@ -155,8 +164,9 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
     });
 
     tauri::async_runtime::spawn(async move {
+        let offer = live.clone();
         let outcome = stream::drive(
-            StreamClient::new(MAX_PENDING_BYTES),
+            StreamClient::new(MAX_PENDING_BYTES).with_provisional(move |text| offer.offer(text)),
             out_tx,
             in_rx,
             audio_rx,
@@ -175,6 +185,10 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
         );
         let recorded = async move { done.await.ok().flatten() };
         take::settle(&env, outcome, recorded).await;
+        // A take that ended without a paste must not leave live text behind.
+        if let Finish::Done(result) = live.finish(None).await {
+            eprintln!("[dictation] take {take_id}: live text withdrawn: {result:?}");
+        }
         eprintln!(
             "[dictation] take {take_id}: release→delivered {}",
             since_release(&released_for_task)
@@ -236,6 +250,108 @@ struct AppEnv {
     focus: Arc<Mutex<Option<FocusSnapshot>>>,
     /// Clipboard saved at key-down so paste needn't read it after release.
     clipboard: Arc<Mutex<Option<crate::clipboard::ClipboardSnapshot>>>,
+    live: Arc<Live<AxLive>>,
+}
+
+/// Live text goes into the target's focused field through Accessibility.
+struct AxLive {
+    take_id: u64,
+    focus: Arc<Mutex<Option<FocusSnapshot>>>,
+    released: Arc<OnceLock<Instant>>,
+}
+
+impl AxLive {
+    fn target(&self) -> Option<(i32, Option<String>)> {
+        let focus = self.focus.lock().ok()?.clone()?;
+        Some((focus.pid, focus.bundle_id))
+    }
+
+    fn log(&self, what: std::fmt::Arguments) {
+        let since = self
+            .released
+            .get()
+            .map(|t| format!("{:.0}ms", t.elapsed().as_secs_f64() * 1000.0))
+            .unwrap_or_else(|| "n/a".into());
+        eprintln!(
+            "[dictation] take {}: live {what} release→{since}",
+            self.take_id
+        );
+    }
+}
+
+impl LiveTarget for AxLive {
+    fn eligible(&self) -> bool {
+        // The same preconditions as the paste, plus the target still being in
+        // front: live text never activates another app.
+        let Some((pid, bundle)) = self.target() else {
+            return false;
+        };
+        bundle.as_deref() != Some(crate::VOICEBOX_BUNDLE_ID)
+            && crate::accessibility::is_trusted()
+            && crate::focus_capture::frontmost_pid() == Some(pid)
+    }
+
+    fn begin(&self, text: String) -> impl Future<Output = crate::text_insert::LiveStart> + Send {
+        let target = self.target();
+        async move {
+            let Some((pid, bundle)) = target else {
+                return crate::text_insert::LiveStart::Declined(
+                    crate::text_insert::FallbackReason::NoFocusedElement,
+                );
+            };
+            let outcome = tauri::async_runtime::spawn_blocking(move || {
+                crate::text_insert::begin_live_focused(pid, bundle.as_deref(), &text)
+            })
+            .await
+            .unwrap_or_else(|e| crate::text_insert::LiveStart::Broken(e.to_string()));
+            self.log(format_args!("start {outcome:?}"));
+            outcome
+        }
+    }
+
+    fn extend(
+        &self,
+        owned: crate::text_insert::Owned,
+        text: String,
+    ) -> impl Future<Output = Result<crate::text_insert::Owned, crate::text_insert::LiveError>> + Send
+    {
+        let target = self.target();
+        async move {
+            let Some((pid, _)) = target else {
+                return Err(crate::text_insert::LiveError::Edited);
+            };
+            let outcome = tauri::async_runtime::spawn_blocking(move || {
+                crate::text_insert::extend_live_focused(pid, &owned, &text)
+            })
+            .await
+            .unwrap_or_else(|e| Err(crate::text_insert::LiveError::Uncertain(e.to_string())));
+            if let Err(error) = &outcome {
+                self.log(format_args!("extend {error:?}"));
+            }
+            outcome
+        }
+    }
+
+    fn finish(
+        &self,
+        owned: crate::text_insert::Owned,
+        text: String,
+    ) -> impl Future<Output = Result<(), crate::text_insert::LiveError>> + Send {
+        let target = self.target();
+        async move {
+            let Some((pid, _)) = target else {
+                return Err(crate::text_insert::LiveError::Edited);
+            };
+            let revised = !text.starts_with(owned.text.as_str());
+            let outcome = tauri::async_runtime::spawn_blocking(move || {
+                crate::text_insert::finish_live_focused(pid, &owned, &text)
+            })
+            .await
+            .unwrap_or_else(|e| Err(crate::text_insert::LiveError::Uncertain(e.to_string())));
+            self.log(format_args!("final (revised: {revised}) {outcome:?}"));
+            outcome
+        }
+    }
 }
 
 impl TakeEnv for AppEnv {
@@ -269,7 +385,12 @@ impl TakeEnv for AppEnv {
         let app = self.app.clone();
         let focus = self.focus.lock().ok().and_then(|f| f.clone());
         let prepared = self.clipboard.lock().ok().and_then(|mut c| c.take());
+        let live = self.live.clone();
         async move {
+            // Text already written live is made final in place.
+            if let Finish::Done(result) = live.finish(Some(text.clone())).await {
+                return result;
+            }
             match focus {
                 Some(focus) => crate::paste_final_text_with(app, text, focus, prepared).await,
                 None => Err(delivery::NO_FOCUS_MESSAGE.to_string()),
