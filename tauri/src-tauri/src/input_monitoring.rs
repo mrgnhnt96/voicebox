@@ -21,11 +21,7 @@
 //! `enable_hotkey` calls `request` on first invocation so the prompt fires
 //! from a deterministic, user-initiated point (the Captures toggle) instead
 //! of as a side-effect of keytap's `Tap` creating its CGEventTap.
-//!
-//! Windows / Linux don't gate keyboard taps behind a TCC-style permission,
-//! so those branches return `true`.
 
-#[cfg(target_os = "macos")]
 mod ffi {
     use std::os::raw::c_uint;
 
@@ -58,7 +54,6 @@ mod ffi {
     }
 }
 
-#[cfg(target_os = "macos")]
 pub fn is_trusted() -> bool {
     unsafe { ffi::IOHIDCheckAccess(ffi::REQUEST_TYPE_LISTEN_EVENT) == ffi::ACCESS_TYPE_GRANTED }
 }
@@ -66,17 +61,6 @@ pub fn is_trusted() -> bool {
 /// Fire the Input Monitoring prompt if not already granted. Returns the
 /// current grant state; a `false` here means the prompt was queued and the
 /// user needs to flip the toggle in System Settings before key events flow.
-#[cfg(target_os = "macos")]
 pub fn request() -> bool {
     unsafe { ffi::IOHIDRequestAccess(ffi::REQUEST_TYPE_LISTEN_EVENT) }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn is_trusted() -> bool {
-    true
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn request() -> bool {
-    true
 }

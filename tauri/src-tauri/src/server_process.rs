@@ -1,7 +1,6 @@
 //! Stop the bundled server, including the worker spawned by PyInstaller.
 use std::process::Command;
 
-#[cfg(unix)]
 fn descendants(root: u32, processes: &[(u32, u32)]) -> Vec<u32> {
     let mut result = vec![root];
     let mut index = 0;
@@ -19,48 +18,35 @@ fn descendants(root: u32, processes: &[(u32, u32)]) -> Vec<u32> {
 }
 
 pub fn stop(pid: u32) -> Result<(), String> {
-    #[cfg(unix)]
-    {
-        let output = Command::new("ps")
-            .args(["-axo", "pid=,ppid="])
-            .output()
-            .map_err(|e| e.to_string())?;
-        if !output.status.success() {
-            return Err("Could not inspect the server process tree".into());
-        }
-        let processes: Vec<(u32, u32)> = String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .filter_map(|line| {
-                let mut fields = line.split_whitespace();
-                Some((fields.next()?.parse().ok()?, fields.next()?.parse().ok()?))
-            })
-            .collect();
-        let pids = descendants(pid, &processes);
-        for signal in ["-TERM", "-KILL"] {
-            for child in &pids {
-                let _ = Command::new("kill")
-                    .args([signal, &child.to_string()])
-                    .output();
-            }
-            if signal == "-TERM" {
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            }
-        }
+    let output = Command::new("ps")
+        .args(["-axo", "pid=,ppid="])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err("Could not inspect the server process tree".into());
     }
-    #[cfg(windows)]
-    {
-        let output = Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/T", "/F"])
-            .output()
-            .map_err(|e| e.to_string())?;
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+    let processes: Vec<(u32, u32)> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            Some((fields.next()?.parse().ok()?, fields.next()?.parse().ok()?))
+        })
+        .collect();
+    let pids = descendants(pid, &processes);
+    for signal in ["-TERM", "-KILL"] {
+        for child in &pids {
+            let _ = Command::new("kill")
+                .args([signal, &child.to_string()])
+                .output();
+        }
+        if signal == "-TERM" {
+            std::thread::sleep(std::time::Duration::from_millis(500));
         }
     }
     Ok(())
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
 

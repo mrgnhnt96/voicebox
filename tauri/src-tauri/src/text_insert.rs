@@ -61,7 +61,6 @@ pub enum FallbackReason {
     Unverifiable,
     /// Attempted, and the element is observably unchanged.
     NotInserted,
-    UnsupportedPlatform,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -297,26 +296,15 @@ pub fn insert_into<T: AxTextTarget>(
 /// Insert `text` into the focused element of the app with `pid`, verifying
 /// the result. Blocking: every step is a synchronous AX message to the target.
 pub fn insert_focused(pid: i32, bundle_id: Option<&str>, text: &str) -> Outcome {
-    #[cfg(target_os = "macos")]
-    {
-        match macos::FocusedElement::of_app(pid) {
-            Some(element) => insert_into(&element, bundle_id, text, std::thread::sleep),
-            None => Outcome::UseClipboard(FallbackReason::NoFocusedElement),
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (pid, bundle_id, text);
-        Outcome::UseClipboard(FallbackReason::UnsupportedPlatform)
+    match macos::FocusedElement::of_app(pid) {
+        Some(element) => insert_into(&element, bundle_id, text, std::thread::sleep),
+        None => Outcome::UseClipboard(FallbackReason::NoFocusedElement),
     }
 }
 
 /// [`insert_focused`] off the async runtime, with a log line saying which
 /// path was taken and how long the decision took.
 pub async fn try_insert(pid: i32, bundle_id: Option<String>, text: String) -> Outcome {
-    if cfg!(not(target_os = "macos")) {
-        return Outcome::UseClipboard(FallbackReason::UnsupportedPlatform);
-    }
     let started = std::time::Instant::now();
     let app = bundle_id.clone().unwrap_or_else(|| format!("pid {pid}"));
     let outcome =
@@ -338,7 +326,6 @@ pub async fn try_insert(pid: i32, bundle_id: Option<String>, text: String) -> Ou
 
 /// The Accessibility-backed [`AxTextTarget`]: the target app's
 /// `AXFocusedUIElement`.
-#[cfg(target_os = "macos")]
 mod macos {
     use super::{AxTextTarget, Observation, TextRange};
     use crate::focus_capture::{cf_string_const, cfstring_to_rust};

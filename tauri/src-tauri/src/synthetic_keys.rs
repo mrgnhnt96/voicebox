@@ -12,27 +12,16 @@
 //!   Accessibility permission is load-bearing: without it the system
 //!   swallows the events silently, so callers must gate on
 //!   [`crate::accessibility::is_trusted`].
-//! - **Windows** — Ctrl down, V down, V up, Ctrl up via `SendInput`. No
-//!   permission gate, but UAC/UIPI blocks delivery into elevated target
-//!   windows when we run non-elevated — nothing we can do short of also
-//!   running elevated.
 //!
-//! On macOS the V keycode is resolved per-layout by
+//! The V keycode is resolved per-layout by
 //! [`crate::keyboard_layout`] — Cmd+V is matched against the layout-
 //! translated character via NSMenu key equivalents, so hardcoding
 //! `kVK_ANSI_V` (the QWERTY V position) would fire Cmd+. on Dvorak. The
 //! resolved keycode is read once per paste from an atomic; the cache is
 //! primed at startup and refreshed on layout change.
-//!
-//! Windows hardcodes `VK_V`. `SendInput` with `wVk = VK_V` makes the
-//! target receive `WM_KEYDOWN` with `wParam = VK_V` regardless of the
-//! active layout, and most Windows apps treat that as Ctrl+V (the same
-//! reason `Send "^v"` works in AutoHotkey on Dvorak Windows).
 
-#[cfg(target_os = "macos")]
 use std::ffi::c_void;
 
-#[cfg(target_os = "macos")]
 mod ffi {
     use std::ffi::c_void;
 
@@ -91,7 +80,6 @@ mod ffi {
 /// Returns after the events are queued — there's no completion callback,
 /// so callers should sleep briefly afterwards to let the target app
 /// process the paste before any follow-up (e.g. clipboard restore).
-#[cfg(target_os = "macos")]
 pub fn send_paste() -> Result<(), String> {
     use ffi::*;
 
@@ -152,69 +140,4 @@ pub fn send_paste() -> Result<(), String> {
         drop(guards);
         Ok(())
     }
-}
-
-#[cfg(target_os = "windows")]
-mod win {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{
-        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
-        VIRTUAL_KEY,
-    };
-
-    pub fn make_key(vk: VIRTUAL_KEY, up: bool) -> INPUT {
-        let flags = if up {
-            KEYEVENTF_KEYUP
-        } else {
-            KEYBD_EVENT_FLAGS(0)
-        };
-        INPUT {
-            r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: vk,
-                    wScan: 0,
-                    dwFlags: flags,
-                    time: 0,
-                    dwExtraInfo: 0,
-                },
-            },
-        }
-    }
-}
-
-#[cfg(target_os = "windows")]
-pub fn send_paste() -> Result<(), String> {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, VK_CONTROL, VK_V,
-    };
-
-    // Four-event Ctrl+V sequence. Matches the macOS CGEvent pattern: the
-    // modifier brackets the letter so the target app sees a fully formed
-    // accelerator rather than a lone V. `dwExtraInfo` is zero — we're not
-    // tagging these as "ours" because no consumer in the paste path needs
-    // to distinguish synthetic events from hardware ones.
-    let events = [
-        win::make_key(VK_CONTROL, false),
-        win::make_key(VK_V, false),
-        win::make_key(VK_V, true),
-        win::make_key(VK_CONTROL, true),
-    ];
-
-    unsafe {
-        let sent = SendInput(&events, std::mem::size_of::<INPUT>() as i32);
-        if sent as usize != events.len() {
-            return Err(format!(
-                "SendInput delivered {} of {} events — the input desktop may be locked (secure attention sequence) or a higher-integrity window is intercepting.",
-                sent,
-                events.len()
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub fn send_paste() -> Result<(), String> {
-    Err("synthetic paste is not yet implemented on this platform".into())
 }

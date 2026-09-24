@@ -21,9 +21,8 @@
 //!
 //! Left- and right-hand modifier variants are kept distinct all the way
 //! down to the OS event tap (keytap's core promise). Defaults bind to
-//! right-hand Cmd + right-hand Option on macOS / right-hand Ctrl +
-//! right-hand Shift on Windows so the usual left-hand shortcuts stay
-//! with the OS / app.
+//! right-hand Cmd + right-hand Option so the usual left-hand shortcuts
+//! stay with the OS / app.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -255,10 +254,6 @@ fn apply_effect(app: &AppHandle, effect: Effect, time: Instant) {
                 if let Err(e) = crate::position_dictate_window(&window) {
                     eprintln!("dictate:start: failed to position pill: {e}");
                 }
-                // Skip on Linux: tao's CursorIgnoreEvents handler unwraps
-                // the GdkWindow, which is None until the window is first
-                // shown, aborting the process.
-                #[cfg(not(target_os = "linux"))]
                 let _ = window.set_ignore_cursor_events(false);
                 // Deliberately no set_focus() — taking key focus would yank
                 // it out of whatever app the user was typing in, which is
@@ -266,7 +261,6 @@ fn apply_effect(app: &AppHandle, effect: Effect, time: Instant) {
                 let _ = window.show();
                 // Order the pill into the currently-active Space (incl. a
                 // foreign app's fullscreen Space) — see main.rs.
-                #[cfg(target_os = "macos")]
                 crate::force_order_front(&window);
             }
         }

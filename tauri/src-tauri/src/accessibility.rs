@@ -8,15 +8,7 @@
 //! pipeline can short-circuit with a clear "grant permission" message
 //! instead of running through the full save → write → post → restore dance
 //! with nothing to show for it.
-//!
-//! Windows has no equivalent user-facing permission — `SendInput` and
-//! UIAutomation work for any non-elevated target out of the box. (UAC /
-//! UIPI still blocks sending input *into* an elevated target window from a
-//! non-elevated process, but that's per-target, not a global switch, and
-//! there's no Settings pane to send users to.) So the Windows branch just
-//! returns `true`.
 
-#[cfg(target_os = "macos")]
 mod ffi {
     #[link(name = "ApplicationServices", kind = "framework")]
     extern "C" {
@@ -26,17 +18,6 @@ mod ffi {
     }
 }
 
-#[cfg(target_os = "macos")]
 pub fn is_trusted() -> bool {
     unsafe { ffi::AXIsProcessTrusted() }
-}
-
-#[cfg(target_os = "windows")]
-pub fn is_trusted() -> bool {
-    true
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-pub fn is_trusted() -> bool {
-    false
 }

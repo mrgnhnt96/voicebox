@@ -13,42 +13,28 @@
 //! `kTISNotifySelectedKeyboardInputSourceChanged` distributed notification
 //! (delivered to the main runloop). The hot path ([`paste_keycode_v`])
 //! only reads an [`AtomicU16`], so paste latency is unchanged.
-//!
-//! Windows is intentionally not covered here. `SendInput` with
-//! `wVk = VK_V` delivers `WM_KEYDOWN` to the target with `wParam = VK_V`
-//! regardless of the active layout — most Windows apps treat that as
-//! Ctrl+V. AutoHotkey relies on the same behaviour.
 
-#[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicU16, Ordering};
 
 /// `kVK_ANSI_V` — the keycode for the physical V key on a US QWERTY
 /// layout. Used as the fallback whenever live resolution can't produce a
-/// better answer (no Unicode key layout data, lookup failure, non-macOS).
-#[cfg(target_os = "macos")]
+/// better answer (no Unicode key layout data, lookup failure).
 const FALLBACK_V_KEYCODE: u16 = 9;
 
-#[cfg(target_os = "macos")]
 static V_KEYCODE: AtomicU16 = AtomicU16::new(FALLBACK_V_KEYCODE);
 
 /// Returns the keycode whose current-layout translation is `'v'`. Falls
 /// back to `kVK_ANSI_V` when resolution hasn't run, the active input
 /// source carries no Unicode key layout data, or no keycode in the layout
 /// produces `v`.
-#[cfg(target_os = "macos")]
 pub fn paste_keycode_v() -> u16 {
     V_KEYCODE.load(Ordering::Relaxed)
 }
 
-#[cfg(target_os = "macos")]
 pub fn init() {
     macos::init();
 }
 
-#[cfg(not(target_os = "macos"))]
-pub fn init() {}
-
-#[cfg(target_os = "macos")]
 mod macos {
     use super::{FALLBACK_V_KEYCODE, V_KEYCODE};
     use core_foundation_sys::base::CFRelease;

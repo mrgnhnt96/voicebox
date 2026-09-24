@@ -1,6 +1,3 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 mod accessibility;
 mod clipboard;
 #[cfg(desktop)]
@@ -54,7 +51,6 @@ fn build_dictate_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewW
     position_dictate_window(&window)?;
 
     // Make the pill able to float over other apps' native fullscreen Spaces.
-    #[cfg(target_os = "macos")]
     apply_fullscreen_overlay_behavior(&window);
 
     Ok(window)
@@ -81,7 +77,6 @@ pub(crate) fn position_dictate_window(window: &tauri::WebviewWindow) -> tauri::R
 }
 
 // `object_setClass` — reclass a live object. Not re-exported by `objc`.
-#[cfg(target_os = "macos")]
 extern "C" {
     fn object_setClass(
         obj: *mut objc::runtime::Object,
@@ -94,7 +89,6 @@ extern "C" {
 /// document whose window can never become key — so recording silently fails.
 /// Returning YES restores capture; the panel stays non-activating, so showing
 /// it never steals focus from the app being dictated into.
-#[cfg(target_os = "macos")]
 extern "C" fn pill_panel_can_become_key(
     _this: &objc::runtime::Object,
     _sel: objc::runtime::Sel,
@@ -104,7 +98,6 @@ extern "C" fn pill_panel_can_become_key(
 
 /// Lazily-registered NSPanel subclass for the dictate pill: key-capable (for
 /// WebKit media capture) while remaining a panel (for fullscreen-Space join).
-#[cfg(target_os = "macos")]
 fn pill_panel_class() -> &'static objc::runtime::Class {
     use objc::declare::ClassDecl;
     use objc::runtime::{Class, Object, Sel, BOOL};
@@ -135,7 +128,6 @@ fn pill_panel_class() -> &'static objc::runtime::Class {
 /// NSWindow, so re-classing the live object is safe (the tauri-nspanel plugin
 /// uses the same technique). Idempotent via an `isKindOfClass` guard. Runs on
 /// the main thread because AppKit window mutation is main-thread-only.
-#[cfg(target_os = "macos")]
 pub fn apply_fullscreen_overlay_behavior(window: &tauri::WebviewWindow) {
     let w = window.clone();
     let dispatched = window.run_on_main_thread(move || {
@@ -191,7 +183,6 @@ pub fn apply_fullscreen_overlay_behavior(window: &tauri::WebviewWindow) {
 /// Order the pill front over whatever Space is active. `orderFrontRegardless`
 /// works even though the app is inactive (it always is mid-dictation — the
 /// user is typing in some other app). Called right after `window.show()`.
-#[cfg(target_os = "macos")]
 pub fn force_order_front(window: &tauri::WebviewWindow) {
     let w = window.clone();
     let _ = window.run_on_main_thread(move || {
@@ -219,56 +210,13 @@ pub fn ensure_dictate_window(app: &tauri::AppHandle) {
     }
 }
 
-const LEGACY_PORT: u16 = 8000;
 pub(crate) const SERVER_PORT: u16 = 17493;
-
-/// Find a voicebox-server process listening on a given port (Windows only).
-///
-/// Uses PowerShell `Get-NetTCPConnection` to look up the PID owning the port,
-/// then verifies via `tasklist` that it's a voicebox process. The caller is
-/// responsible for checking port occupancy first (e.g. `TcpStream::connect_timeout`).
-/// Replaces the previous `netstat -ano` approach which failed on systems with
-/// corrupted system DLLs (see #277).
-#[cfg(windows)]
-fn find_voicebox_pid_on_port(port: u16) -> Option<u32> {
-    use std::process::Command;
-
-    // Use PowerShell's Get-NetTCPConnection to find the PID listening on the port.
-    // This is a built-in cmdlet that doesn't depend on netstat.exe.
-    let ps_script = format!(
-        "Get-NetTCPConnection -LocalPort {} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess",
-        port
-    );
-    if let Ok(output) = Command::new("powershell")
-        .args(["-NoProfile", "-Command", &ps_script])
-        .output()
-    {
-        let output_str = String::from_utf8_lossy(&output.stdout);
-        for line in output_str.lines() {
-            if let Ok(pid) = line.trim().parse::<u32>() {
-                // Verify this PID is a voicebox process
-                if let Ok(tasklist_output) = Command::new("tasklist")
-                    .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
-                    .output()
-                {
-                    let tasklist_str = String::from_utf8_lossy(&tasklist_output.stdout);
-                    if tasklist_str.to_lowercase().contains("voicebox") {
-                        return Some(pid);
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
 
 /// Check if a Voicebox server is responding on the given port.
 ///
 /// Sends an HTTP GET to `/health` and returns `true` only if the response
 /// is valid JSON with `status == "healthy"`, which filters out unrelated
 /// services that answer `/health` with something else.
-#[allow(dead_code)] // Used in platform-specific cfg blocks
 fn check_health(port: u16) -> bool {
     let url = format!("http://127.0.0.1:{}/health", port);
     match reqwest::blocking::Client::builder()
@@ -321,7 +269,6 @@ async fn start_server(
 
     // Check if a voicebox server is already running on our port (e.g. one left
     // over from a previous session, or started by hand via `python`/`uvicorn`)
-    #[cfg(unix)]
     {
         use std::process::Command;
         if let Ok(output) = Command::new("lsof")
@@ -360,87 +307,6 @@ async fn start_server(
             }
         }
     }
-    
-    #[cfg(windows)]
-    {
-        use std::net::TcpStream;
-        if TcpStream::connect_timeout(
-            &format!("127.0.0.1:{}", SERVER_PORT).parse().unwrap(),
-            std::time::Duration::from_secs(1),
-        ).is_ok() {
-            // Port is in use — check if it's a voicebox process by name first
-            if let Some(pid) = find_voicebox_pid_on_port(SERVER_PORT) {
-                println!("Found existing voicebox-server on port {} (PID: {}), reusing it", SERVER_PORT, pid);
-                *state.server_pid.lock().unwrap() = Some(pid);
-                return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
-            }
-            // Process name doesn't match — could be an external Python/Docker server.
-            // Verify via HTTP health check before giving up.
-            println!("Port {} in use by unknown process, checking if it's a Voicebox server...", SERVER_PORT);
-            if check_health(SERVER_PORT) {
-                println!("Health check passed — reusing external server on port {}", SERVER_PORT);
-                return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
-            }
-            return Err(format!(
-                "Port {} is already in use by another application. \
-                 Close the other application or change the Voicebox port.",
-                SERVER_PORT
-            ));
-        }
-    }
-
-    // Kill any orphaned voicebox-server from previous session on legacy port 8000
-    // This handles upgrades from older versions that used a fixed port
-    #[cfg(unix)]
-    {
-        use std::process::Command;
-        if let Ok(output) = Command::new("lsof")
-            .args(["-i", &format!(":{}", LEGACY_PORT), "-sTCP:LISTEN"])
-            .output()
-        {
-            let output_str = String::from_utf8_lossy(&output.stdout);
-            for line in output_str.lines().skip(1) {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    let command = parts[0];
-                    let pid_str = parts[1];
-                    
-                    if command.contains("voicebox") {
-                        if let Ok(pid) = pid_str.parse::<i32>() {
-                            println!("Found orphaned voicebox-server on legacy port {} (PID: {}, CMD: {}), killing it...", LEGACY_PORT, pid, command);
-                            let _ = Command::new("kill")
-                                .args(["-9", "--", &format!("-{}", pid)])
-                                .output();
-                            let _ = Command::new("kill")
-                                .args(["-9", &pid.to_string()])
-                                .output();
-                        }
-                    } else {
-                        println!("Legacy port {} is in use by non-voicebox process: {} (PID: {}), not killing", LEGACY_PORT, command, pid_str);
-                    }
-                }
-            }
-        }
-    }
-    
-    #[cfg(windows)]
-    {
-        use std::net::TcpStream;
-        if TcpStream::connect_timeout(
-            &format!("127.0.0.1:{}", LEGACY_PORT).parse().unwrap(),
-            std::time::Duration::from_secs(1),
-        ).is_ok() {
-            if let Some(pid) = find_voicebox_pid_on_port(LEGACY_PORT) {
-                println!("Found orphaned voicebox-server on legacy port {} (PID: {}), killing it...", LEGACY_PORT, pid);
-                let _ = std::process::Command::new("taskkill")
-                    .args(["/PID", &pid.to_string(), "/T", "/F"])
-                    .output();
-            }
-        }
-    }
-    
-    // Brief wait for port to be released
-    std::thread::sleep(std::time::Duration::from_millis(200));
 
     // Get app data directory
     let data_dir = app
@@ -777,15 +643,9 @@ async fn restart_server(
 /// windows. Paste into Voicebox-internal targets is step 6 territory and
 /// goes through a different (JS-side) injection path.
 ///
-/// Value matches what `focus_capture::capture_focus` writes into
-/// `FocusSnapshot::bundle_id` on the current platform — reverse-DNS bundle
-/// id on macOS, lowercased exe basename on Windows/Linux.
-#[cfg(target_os = "macos")]
+/// Value matches the reverse-DNS bundle id `focus_capture::capture_focus`
+/// writes into `FocusSnapshot::bundle_id`.
 const VOICEBOX_BUNDLE_ID: &str = "sh.voicebox.app";
-#[cfg(target_os = "windows")]
-const VOICEBOX_BUNDLE_ID: &str = "voicebox.exe";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-const VOICEBOX_BUNDLE_ID: &str = "voicebox";
 
 /// Milliseconds to wait between activating the target app and firing the
 /// synthetic ⌘V, giving AppKit time to finish re-ordering windows and
@@ -949,22 +809,14 @@ fn update_chord_bindings(
 
 /// Open the Privacy & Security → Accessibility pane in System Settings so
 /// the user can grant the permission. The URL scheme is stable across
-/// macOS 10.14–15; no-op on other platforms.
+/// macOS 10.14–15.
 #[command]
 fn open_accessibility_settings(app: tauri::AppHandle) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
-        app.shell()
-            .open(url, None)
-            .map_err(|e| format!("Failed to open Accessibility settings: {e}"))?;
-        Ok(())
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = app;
-        Err("Accessibility settings pane is only implemented on macOS".into())
-    }
+    let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+    app.shell()
+        .open(url, None)
+        .map_err(|e| format!("Failed to open Accessibility settings: {e}"))?;
+    Ok(())
 }
 
 /// Open the Privacy & Security → Input Monitoring pane in System Settings.
@@ -972,19 +824,11 @@ fn open_accessibility_settings(app: tauri::AppHandle) -> Result<(), String> {
 /// is missing, so the user can flip the system toggle without hunting.
 #[command]
 fn open_input_monitoring_settings(app: tauri::AppHandle) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
-        app.shell()
-            .open(url, None)
-            .map_err(|e| format!("Failed to open Input Monitoring settings: {e}"))?;
-        Ok(())
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = app;
-        Err("Input Monitoring settings pane is only implemented on macOS".into())
-    }
+    let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
+    app.shell()
+        .open(url, None)
+        .map_err(|e| format!("Failed to open Input Monitoring settings: {e}"))?;
+    Ok(())
 }
 
 /// Deliver `text` into the UI that had focus when the chord fired.
@@ -993,10 +837,9 @@ fn open_input_monitoring_settings(app: tauri::AppHandle) -> Result<(), String> {
 /// clipboard → write `text` → fire ⌘V → wait for the target to consume it
 /// → conditionally restore the original clipboard.
 ///
-/// The restore is conditional on `NSPasteboard.changeCount` (or the
-/// Windows sequence number) matching the value captured right after
-/// `write_text`: if something else wrote to the clipboard during the
-/// paste-consume window — the user's own ⌘C in the target app, a
+/// The restore is conditional on `NSPasteboard.changeCount` matching the
+/// value captured right after `write_text`: if something else wrote to the
+/// clipboard during the paste-consume window — the user's own ⌘C in the target app, a
 /// clipboard history tool (Paste, Pastebot, Maccy), Universal Clipboard
 /// sync, 1Password inserting a secret — their newer content takes
 /// priority over our snapshot and is preserved. A
@@ -1005,7 +848,7 @@ fn open_input_monitoring_settings(app: tauri::AppHandle) -> Result<(), String> {
 ///
 /// `send_paste` failure is isolated from the restore decision: we always
 /// attempt the conditional restore before propagating the paste error,
-/// so a failed `CGEventPost` / `SendInput` never leaves the user's
+/// so a failed `CGEventPost` never leaves the user's
 /// clipboard stuck on the transcript.
 ///
 /// Skips (returns `false`) without touching anything when:
@@ -1038,10 +881,7 @@ async fn paste_final_text(
     // and in a fullscreen Space the target never loses frontmost), activation
     // is a no-op; on macOS 26 fullscreen Spaces `activate` returns NO for an
     // already-frontmost app, which would otherwise abort the paste entirely.
-    #[cfg(target_os = "macos")]
     let already_front = focus_capture::frontmost_pid() == Some(focus.pid);
-    #[cfg(not(target_os = "macos"))]
-    let already_front = false;
 
     // Direct insertion into the target's focused field via Accessibility: no
     // clipboard, no keystroke, no pill hide and no settle sleeps. Falls
@@ -1070,9 +910,7 @@ async fn paste_final_text(
     // it holds key focus Spotlight-style — the keystroke would land in the
     // pill instead of the target app. Hidden it can't swallow keys; restored
     // immediately after so the webview never suspends between dictations.
-    #[cfg(target_os = "macos")]
     let pill = app.get_webview_window(DICTATE_WINDOW_LABEL);
-    #[cfg(target_os = "macos")]
     if let Some(ref w) = pill {
         if let Err(e) = w.hide() {
             // Never emit Cmd+V while the key-capable pill may still own focus.
@@ -1091,7 +929,6 @@ async fn paste_final_text(
     let paste_result = synthetic_keys::send_paste();
     tokio::time::sleep(std::time::Duration::from_millis(PASTE_CONSUME_MS)).await;
 
-    #[cfg(target_os = "macos")]
     if let Some(ref w) = pill {
         let _ = w.show();
         force_order_front(w);
@@ -1281,10 +1118,6 @@ pub fn run() {
                 let handle_for_hide = app.handle().clone();
                 app.handle().listen("dictate:hide", move |_event| {
                     if let Some(window) = handle_for_hide.get_webview_window(DICTATE_WINDOW_LABEL) {
-                        // Skip on Linux: aborts if the window was never realized
-                        // (tao unwraps the GdkWindow, which is None until
-                        // the window is first shown).
-                        #[cfg(not(target_os = "linux"))]
                         let _ = window.set_ignore_cursor_events(true);
                         let _ = window.set_position(PhysicalPosition::new(-10_000, -10_000));
                         let _ = window.hide();
@@ -1292,61 +1125,6 @@ pub fn run() {
                 });
 
                 ensure_dictate_window(app.handle());
-            }
-
-            // Hide title bar icon on Windows
-            #[cfg(windows)]
-            {
-                use windows::Win32::Foundation::HWND;
-                use windows::Win32::UI::WindowsAndMessaging::{SetClassLongPtrW, GCLP_HICON, GCLP_HICONSM};
-                
-                if let Some((_, window)) = app.webview_windows().iter().next() {
-                    if let Ok(hwnd) = window.hwnd() {
-                        let hwnd = HWND(hwnd.0);
-                        unsafe {
-                            // Set both small and regular icons to NULL to hide the title bar icon
-                            SetClassLongPtrW(hwnd, GCLP_HICON, 0);
-                            SetClassLongPtrW(hwnd, GCLP_HICONSM, 0);
-                        }
-                    }
-                }
-            }
-
-            // Enable microphone access on Linux (WebKitGTK denies getUserMedia by default)
-            #[cfg(target_os = "linux")]
-            {
-                use tauri::Manager;
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.with_webview(|webview| {
-                        use webkit2gtk::{WebViewExt, SettingsExt, PermissionRequestExt};
-                        use webkit2gtk::glib::ObjectExt;
-                        let wk_webview = webview.inner();
-
-                        // Enable media stream support in WebKitGTK settings
-                        if let Some(settings) = WebViewExt::settings(&wk_webview) {
-                            settings.set_enable_media_stream(true);
-                        }
-
-                        // Auto-grant UserMediaPermissionRequest (microphone access)
-                        // Only for trusted local origins (Tauri dev server or custom protocol)
-                        wk_webview.connect_permission_request(move |webview, request: &webkit2gtk::PermissionRequest| {
-                            if request.is::<webkit2gtk::UserMediaPermissionRequest>() {
-                                let uri = WebViewExt::uri(webview).unwrap_or_default();
-                                let is_trusted = uri.starts_with("tauri://")
-                                    || uri.starts_with("https://tauri.localhost")
-                                    || uri.starts_with("http://localhost")
-                                    || uri.starts_with("http://127.0.0.1");
-                                if is_trusted {
-                                    request.allow();
-                                    return true;
-                                }
-                                request.deny();
-                                return true;
-                            }
-                            false
-                        });
-                    });
-                }
             }
 
             Ok(())
@@ -1421,7 +1199,6 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            let _ = &app; // used on unix
             match &event {
                 RunEvent::Exit => {
                     let state = app.state::<ServerState>();
