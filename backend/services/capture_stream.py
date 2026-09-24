@@ -121,6 +121,8 @@ class StreamingCapture:
         self.peak_backlog = 0.0
         self.started_at = time.monotonic()
         self.finished_at = None
+        # Model time spent after release, the part of the wait we control.
+        self.after_release = {"recognize": 0.0, "refine": 0.0}
         self.abort = False
         self.finished = False
         self.persisted = False
@@ -182,6 +184,10 @@ class StreamingCapture:
             self.silence = 0
         self.wake.set()
 
+    def _spent(self, stage: str, started: float) -> None:
+        if self.finished_at is not None:
+            self.after_release[stage] += time.monotonic() - started
+
     async def recognize(self, pcm):
         # Earlier phrases give Whisper the sentence it is continuing, so a
         # phrase cut at a pause neither trails off with "..." nor restarts
@@ -190,11 +196,15 @@ class StreamingCapture:
         samples = np.frombuffer(pcm, dtype="<i2")
         if not len(samples) or np.max(np.abs(samples.astype(np.int32))) < 250:
             return ""
-        return (
-            await get_whisper_model().transcribe_array(
-                samples, self.rate, self.language, self.stt_model, previous_text=previous_text
-            )
-        ).strip()
+        started = time.monotonic()
+        try:
+            return (
+                await get_whisper_model().transcribe_array(
+                    samples, self.rate, self.language, self.stt_model, previous_text=previous_text
+                )
+            ).strip()
+        finally:
+            self._spent("recognize", started)
 
     def close_dictation(self, text):
         closed = close_phrase(text) if self.cleanup_closed else text
@@ -231,9 +241,11 @@ class StreamingCapture:
                     and bool(re.search(r"\b(actually|no wait|no actually|make that|I mean|scratch that)\b", text, re.I))
                 )
                 prompt = " ".join((self.last_phrase_raw[-4000:], text)) if revise_previous else text
+                started = time.monotonic()
                 refined, self.llm_model = await refine_transcript(
                     prompt, self.flags, model_size=self.settings.llm_model
                 )
+                self._spent("refine", started)
                 refined, verdict = guard_phrase_refinement(prompt, refined, self.flags)
                 # A rejected cleanup falls back to the transcript, which is closed
                 # the standard way.
@@ -339,9 +351,11 @@ class StreamingCapture:
         """Resolve ambiguous spoken corrections with complete session context."""
         if self.settings.auto_refine:
             try:
+                started = time.monotonic()
                 refined, self.llm_model = await refine_transcript(
                     self.raw, self.flags, model_size=self.settings.llm_model
                 )
+                self._spent("refine", started)
                 # The whole dictation was cleaned up again, so earlier phrase
                 # verdicts no longer describe the result.
                 self.refined, verdict = guard_phrase_refinement(self.raw, refined, self.flags)
@@ -366,6 +380,8 @@ class StreamingCapture:
         return (
             f"session={self.id} audio={self.samples / self.rate:.2f}s rate={self.rate} "
             f"wall={now - self.started_at:.2f}s release_to_final={release} "
+            f"after_release_recognize={self.after_release['recognize']:.2f}s "
+            f"after_release_refine={self.after_release['refine']:.2f}s "
             f"peak_backlog={self.peak_backlog:.2f}s degraded={self.degraded_reason or 'no'} "
             f"refinement_error={'yes' if self.refinement_error else 'no'}"
         )

@@ -9,6 +9,7 @@ and STT engines.
 
 import asyncio
 import logging
+import time
 from typing import Optional
 
 from . import LLMBackend, DEFAULT_LLM_MAX_TOKENS, DEFAULT_LLM_TEMPERATURE
@@ -317,6 +318,7 @@ class MLXQwenLLMBackend:
         )
 
         sampler = make_sampler(temp=temperature, top_p=0.9) if temperature > 0 else None
+        started = time.monotonic()
         tokens = self.tokenizer.encode(chat_prompt, add_special_tokens=False)
         cache = self._reusable_cache(tokens)
         reused = len(self._cached_tokens)
@@ -336,6 +338,13 @@ class MLXQwenLLMBackend:
             text += response.text
             generated.append(response.token)
         self._cached_tokens = tokens + generated
+        logger.info(
+            "Qwen3 generate: reused %d/%d prompt tokens, %d generated in %.3fs",
+            reused,
+            len(tokens),
+            len(generated),
+            time.monotonic() - started,
+        )
         return text.strip()
 
     def _reusable_cache(self, tokens: list[int]):
