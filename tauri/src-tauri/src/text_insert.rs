@@ -294,6 +294,318 @@ pub fn insert_into<T: AxTextTarget>(
     }
 }
 
+/// Insert `text` into the focused element of the app with `pid`, verifying
+/// the result. Blocking: every step is a synchronous AX message to the target.
+pub fn insert_focused(pid: i32, bundle_id: Option<&str>, text: &str) -> Outcome {
+    #[cfg(target_os = "macos")]
+    {
+        match macos::FocusedElement::of_app(pid) {
+            Some(element) => insert_into(&element, bundle_id, text, std::thread::sleep),
+            None => Outcome::UseClipboard(FallbackReason::NoFocusedElement),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (pid, bundle_id, text);
+        Outcome::UseClipboard(FallbackReason::UnsupportedPlatform)
+    }
+}
+
+/// [`insert_focused`] off the async runtime, with a log line saying which
+/// path was taken and how long the decision took.
+pub async fn try_insert(pid: i32, bundle_id: Option<String>, text: String) -> Outcome {
+    if cfg!(not(target_os = "macos")) {
+        return Outcome::UseClipboard(FallbackReason::UnsupportedPlatform);
+    }
+    let started = std::time::Instant::now();
+    let app = bundle_id.clone().unwrap_or_else(|| format!("pid {pid}"));
+    let outcome =
+        tokio::task::spawn_blocking(move || insert_focused(pid, bundle_id.as_deref(), &text))
+            .await
+            .unwrap_or_else(|e| {
+                // A panic mid-attempt: we cannot know whether the set happened.
+                Outcome::Uncertain(format!(
+                    "Text insertion stopped unexpectedly ({e}). It was not pasted again; \
+                     copy it from Captures if it is missing."
+                ))
+            });
+    eprintln!(
+        "[voicebox] text insert into {app}: {outcome:?} in {} ms",
+        started.elapsed().as_millis()
+    );
+    outcome
+}
+
+/// The Accessibility-backed [`AxTextTarget`]: the target app's
+/// `AXFocusedUIElement`.
+#[cfg(target_os = "macos")]
+mod macos {
+    use super::{AxTextTarget, Observation, TextRange};
+    use crate::focus_capture::{cf_string_const, cfstring_to_rust};
+    use core_foundation_sys::base::{
+        kCFAllocatorDefault, Boolean, CFGetTypeID, CFIndex, CFRange, CFRelease, CFTypeID,
+        CFTypeRef,
+    };
+    use core_foundation_sys::number::{
+        kCFNumberSInt64Type, CFNumberGetTypeID, CFNumberGetValue, CFNumberRef,
+    };
+    use core_foundation_sys::string::{
+        kCFStringEncodingUTF8, CFStringCreateWithBytes, CFStringGetLength, CFStringGetTypeID,
+        CFStringRef,
+    };
+    use std::ffi::c_void;
+    use std::ptr;
+
+    type AXUIElementRef = CFTypeRef;
+    type AXError = i32;
+    const AX_SUCCESS: AXError = 0;
+    /// `kAXValueTypeCFRange`.
+    const AX_VALUE_CF_RANGE: u32 = 4;
+    /// Upper bound on one AX round trip to the target. The default is about
+    /// 6 s; a hung target should fail over quickly instead.
+    const AX_TIMEOUT_SECS: f32 = 0.25;
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
+        fn AXUIElementGetTypeID() -> CFTypeID;
+        fn AXUIElementSetMessagingTimeout(element: AXUIElementRef, timeout: f32) -> AXError;
+        fn AXUIElementCopyAttributeValue(
+            element: AXUIElementRef,
+            attribute: CFStringRef,
+            value: *mut CFTypeRef,
+        ) -> AXError;
+        fn AXUIElementIsAttributeSettable(
+            element: AXUIElementRef,
+            attribute: CFStringRef,
+            settable: *mut Boolean,
+        ) -> AXError;
+        fn AXUIElementSetAttributeValue(
+            element: AXUIElementRef,
+            attribute: CFStringRef,
+            value: CFTypeRef,
+        ) -> AXError;
+        fn AXUIElementCopyParameterizedAttributeValue(
+            element: AXUIElementRef,
+            attribute: CFStringRef,
+            parameter: CFTypeRef,
+            result: *mut CFTypeRef,
+        ) -> AXError;
+        fn AXValueCreate(value_type: u32, value: *const c_void) -> CFTypeRef;
+        fn AXValueGetTypeID() -> CFTypeID;
+        fn AXValueGetValue(value: CFTypeRef, value_type: u32, out: *mut c_void) -> Boolean;
+    }
+
+    /// An owned (+1) Core Foundation reference, released on drop.
+    struct Cf(CFTypeRef);
+
+    impl Drop for Cf {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                unsafe { CFRelease(self.0) }
+            }
+        }
+    }
+
+    fn key(name: &str) -> Option<Cf> {
+        unsafe { cf_string_const(name).map(|s| Cf(s as CFTypeRef)) }
+    }
+
+    fn copy_attr(element: AXUIElementRef, name: &str) -> Option<Cf> {
+        let key = key(name)?;
+        let mut out: CFTypeRef = ptr::null();
+        let err =
+            unsafe { AXUIElementCopyAttributeValue(element, key.0 as CFStringRef, &mut out) };
+        if err != AX_SUCCESS || out.is_null() {
+            return None;
+        }
+        Some(Cf(out))
+    }
+
+    fn is_type(value: &Cf, type_id: CFTypeID) -> bool {
+        unsafe { CFGetTypeID(value.0) == type_id }
+    }
+
+    fn as_string(value: &Cf) -> Option<String> {
+        if !is_type(value, unsafe { CFStringGetTypeID() }) {
+            return None;
+        }
+        unsafe { cfstring_to_rust(value.0 as CFStringRef) }
+    }
+
+    fn as_range(value: &Cf) -> Option<TextRange> {
+        if !is_type(value, unsafe { AXValueGetTypeID() }) {
+            return None;
+        }
+        let mut range = CFRange {
+            location: 0,
+            length: 0,
+        };
+        let ok = unsafe {
+            AXValueGetValue(
+                value.0,
+                AX_VALUE_CF_RANGE,
+                &mut range as *mut CFRange as *mut c_void,
+            )
+        };
+        (ok != 0).then_some(TextRange {
+            location: range.location as i64,
+            length: range.length as i64,
+        })
+    }
+
+    fn as_i64(value: &Cf) -> Option<i64> {
+        if !is_type(value, unsafe { CFNumberGetTypeID() }) {
+            return None;
+        }
+        let mut n: i64 = 0;
+        let ok = unsafe {
+            CFNumberGetValue(
+                value.0 as CFNumberRef,
+                kCFNumberSInt64Type,
+                &mut n as *mut i64 as *mut c_void,
+            )
+        };
+        ok.then_some(n)
+    }
+
+    /// UTF-16 length of a CFString value (the unit AX counts in).
+    fn string_len(value: &Cf) -> Option<i64> {
+        if !is_type(value, unsafe { CFStringGetTypeID() }) {
+            return None;
+        }
+        Some(unsafe { CFStringGetLength(value.0 as CFStringRef) } as i64)
+    }
+
+    fn cf_string(text: &str) -> Option<Cf> {
+        let s = unsafe {
+            CFStringCreateWithBytes(
+                kCFAllocatorDefault,
+                text.as_ptr(),
+                text.len() as CFIndex,
+                kCFStringEncodingUTF8,
+                0,
+            )
+        };
+        (!s.is_null()).then(|| Cf(s as CFTypeRef))
+    }
+
+    pub struct FocusedElement {
+        element: Cf,
+    }
+
+    impl FocusedElement {
+        /// The focused element of the app with `pid`, if it exposes one.
+        /// Asking the app (not the system-wide element) means the Voicebox
+        /// pill holding key focus cannot redirect the insertion.
+        pub fn of_app(pid: i32) -> Option<Self> {
+            let app = unsafe { AXUIElementCreateApplication(pid) };
+            if app.is_null() {
+                return None;
+            }
+            let app = Cf(app);
+            unsafe { AXUIElementSetMessagingTimeout(app.0, AX_TIMEOUT_SECS) };
+            let element = copy_attr(app.0, "AXFocusedUIElement")?;
+            if !is_type(&element, unsafe { AXUIElementGetTypeID() }) {
+                return None;
+            }
+            unsafe { AXUIElementSetMessagingTimeout(element.0, AX_TIMEOUT_SECS) };
+            Some(Self { element })
+        }
+
+        fn string_attr(&self, name: &str) -> Option<String> {
+            copy_attr(self.element.0, name).as_ref().and_then(as_string)
+        }
+    }
+
+    impl AxTextTarget for FocusedElement {
+        fn role(&self) -> Option<String> {
+            self.string_attr("AXRole")
+        }
+
+        fn subrole(&self) -> Option<String> {
+            self.string_attr("AXSubrole")
+        }
+
+        fn is_selected_text_settable(&self) -> bool {
+            let Some(key) = key("AXSelectedText") else {
+                return false;
+            };
+            let mut settable: Boolean = 0;
+            let err = unsafe {
+                AXUIElementIsAttributeSettable(
+                    self.element.0,
+                    key.0 as CFStringRef,
+                    &mut settable,
+                )
+            };
+            err == AX_SUCCESS && settable != 0
+        }
+
+        fn observe(&self) -> Observation {
+            let selection = copy_attr(self.element.0, "AXSelectedTextRange")
+                .as_ref()
+                .and_then(as_range);
+            let char_count = copy_attr(self.element.0, "AXNumberOfCharacters")
+                .as_ref()
+                .and_then(as_i64)
+                .or_else(|| {
+                    copy_attr(self.element.0, "AXValue")
+                        .as_ref()
+                        .and_then(string_len)
+                });
+            Observation {
+                selection,
+                char_count,
+            }
+        }
+
+        fn set_selected_text(&self, text: &str) -> Result<(), i32> {
+            let key = key("AXSelectedText").ok_or(-1)?;
+            let value = cf_string(text).ok_or(-1)?;
+            let err = unsafe {
+                AXUIElementSetAttributeValue(self.element.0, key.0 as CFStringRef, value.0)
+            };
+            if err == AX_SUCCESS {
+                Ok(())
+            } else {
+                Err(err)
+            }
+        }
+
+        fn string_for_range(&self, range: TextRange) -> Option<String> {
+            let key = key("AXStringForRange")?;
+            let cf_range = CFRange {
+                location: range.location as CFIndex,
+                length: range.length as CFIndex,
+            };
+            let param = unsafe {
+                AXValueCreate(
+                    AX_VALUE_CF_RANGE,
+                    &cf_range as *const CFRange as *const c_void,
+                )
+            };
+            if param.is_null() {
+                return None;
+            }
+            let param = Cf(param);
+            let mut out: CFTypeRef = ptr::null();
+            let err = unsafe {
+                AXUIElementCopyParameterizedAttributeValue(
+                    self.element.0,
+                    key.0 as CFStringRef,
+                    param.0,
+                    &mut out,
+                )
+            };
+            if err != AX_SUCCESS || out.is_null() {
+                return None;
+            }
+            as_string(&Cf(out))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
