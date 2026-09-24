@@ -110,6 +110,14 @@ unsafe fn general_pasteboard() -> Result<Id, String> {
 /// AppKit increments this every time any process writes to the general
 /// pasteboard, so it's a cheap way to detect "did someone clobber my staged
 /// text before the paste landed?".
+/// A snapshot taken earlier (at dictation key-down) that still matches the
+/// clipboard. Reading the clipboard makes the app that copied it render every
+/// format, which can take seconds; taking it while the user speaks keeps that
+/// off the wait after release. Anything copied since makes it stale.
+pub fn reusable(prepared: Option<ClipboardSnapshot>, current: Option<i64>) -> Option<ClipboardSnapshot> {
+    prepared.filter(|snapshot| Some(snapshot.change_count) == current)
+}
+
 pub fn current_change_count() -> Result<i64, String> {
     unsafe {
         let _pool = AutoreleasePool::new();
@@ -241,5 +249,34 @@ pub fn restore_clipboard(snapshot: &ClipboardSnapshot) -> Result<(), String> {
             return Err("NSPasteboard writeObjects: returned NO".into());
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod reuse_tests {
+    use super::*;
+
+    fn snapshot(change_count: i64) -> ClipboardSnapshot {
+        ClipboardSnapshot {
+            items: vec![vec![("public.utf8-plain-text".to_string(), b"copied".to_vec())]],
+            change_count,
+        }
+    }
+
+    #[test]
+    fn a_snapshot_from_key_down_is_reused_when_nothing_was_copied_since() {
+        let reused = reusable(Some(snapshot(7)), Some(7)).expect("reused");
+        assert_eq!(reused.change_count, 7);
+    }
+
+    #[test]
+    fn copying_during_dictation_makes_the_snapshot_stale() {
+        assert!(reusable(Some(snapshot(7)), Some(8)).is_none());
+    }
+
+    #[test]
+    fn no_snapshot_or_unknown_clipboard_means_saving_again() {
+        assert!(reusable(None, Some(7)).is_none());
+        assert!(reusable(Some(snapshot(7)), None).is_none());
     }
 }

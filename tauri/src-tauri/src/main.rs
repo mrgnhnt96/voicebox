@@ -866,6 +866,17 @@ async fn paste_final_text(
     text: String,
     focus: focus_capture::FocusSnapshot,
 ) -> Result<bool, String> {
+    paste_final_text_with(app, text, focus, None).await
+}
+
+/// [`paste_final_text`] with a clipboard snapshot taken earlier, at dictation
+/// key-down, reused when nothing was copied since.
+pub(crate) async fn paste_final_text_with(
+    app: tauri::AppHandle,
+    text: String,
+    focus: focus_capture::FocusSnapshot,
+    prepared: Option<clipboard::ClipboardSnapshot>,
+) -> Result<bool, String> {
     if focus.bundle_id.as_deref() == Some(VOICEBOX_BUNDLE_ID) {
         return Ok(false);
     }
@@ -902,7 +913,14 @@ async fn paste_final_text(
         tokio::time::sleep(std::time::Duration::from_millis(POST_ACTIVATE_SETTLE_MS)).await;
     }
 
-    let snapshot = clipboard::save_clipboard()?;
+    let started = std::time::Instant::now();
+    let reused = clipboard::reusable(prepared, clipboard::current_change_count().ok());
+    let was_reused = reused.is_some();
+    let snapshot = match reused {
+        Some(snapshot) => snapshot,
+        None => clipboard::save_clipboard()?,
+    };
+    let saved_ms = started.elapsed().as_millis();
     let after_write = clipboard::write_text(&text)?;
 
     // Order the pill out for the synthetic ⌘V. The pill is a key-capable
@@ -927,6 +945,11 @@ async fn paste_final_text(
     }
 
     let paste_result = synthetic_keys::send_paste();
+    eprintln!(
+        "[voicebox] clipboard paste: snapshot {} in {saved_ms} ms, ⌘V sent {} ms after start",
+        if was_reused { "reused from key-down" } else { "taken at paste" },
+        started.elapsed().as_millis()
+    );
     tokio::time::sleep(std::time::Duration::from_millis(PASTE_CONSUME_MS)).await;
 
     if let Some(ref w) = pill {

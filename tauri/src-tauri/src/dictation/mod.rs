@@ -99,6 +99,7 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
         server_url: config.server_url.clone(),
         http: state.http(),
         focus: focus.clone(),
+        clipboard: Arc::new(Mutex::new(None)),
     };
     env.emit(PillEvent::Preparing);
 
@@ -126,6 +127,17 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
         }
     };
     let capture = capture::spawn(config.input_device_id.clone(), keydown, audio_tx, hooks);
+
+    // Save the clipboard while the user speaks. Reading it can take seconds
+    // when the copying app renders its data lazily.
+    let clipboard_slot = env.clipboard.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Ok(snapshot) = crate::clipboard::save_clipboard() {
+            if let Ok(mut slot) = clipboard_slot.lock() {
+                *slot = Some(snapshot);
+            }
+        }
+    });
     let stop = capture.stopper();
     let done = capture.done;
 
@@ -222,6 +234,8 @@ struct AppEnv {
     server_url: String,
     http: reqwest::Client,
     focus: Arc<Mutex<Option<FocusSnapshot>>>,
+    /// Clipboard saved at key-down so paste needn't read it after release.
+    clipboard: Arc<Mutex<Option<crate::clipboard::ClipboardSnapshot>>>,
 }
 
 impl TakeEnv for AppEnv {
@@ -254,9 +268,10 @@ impl TakeEnv for AppEnv {
     fn paste(&self, text: String) -> impl Future<Output = Result<bool, String>> + Send {
         let app = self.app.clone();
         let focus = self.focus.lock().ok().and_then(|f| f.clone());
+        let prepared = self.clipboard.lock().ok().and_then(|mut c| c.take());
         async move {
             match focus {
-                Some(focus) => crate::paste_final_text(app, text, focus).await,
+                Some(focus) => crate::paste_final_text_with(app, text, focus, prepared).await,
                 None => Err(delivery::NO_FOCUS_MESSAGE.to_string()),
             }
         }
