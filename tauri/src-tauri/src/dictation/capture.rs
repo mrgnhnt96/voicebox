@@ -138,6 +138,7 @@ fn run(
     };
     let _ = audio_tx.send(AudioMsg::Format(sample_rate));
     if let Err(e) = stream.play() {
+        let _ = stream.pause();
         let _ = audio_tx.send(AudioMsg::Cancel);
         on_error(format!("Microphone unavailable: {e}"));
         return None;
@@ -203,8 +204,12 @@ fn run(
     }
 
     metrics.wall = keydown.elapsed();
-    // Dropping the stream stops the device; every callback has returned by
-    // the time drop completes, so the final drain sees all audio.
+    // Stop the device explicitly: for a chosen (non-default) microphone,
+    // cpal 0.15's disconnect listener keeps the stream alive, so dropping it
+    // alone left the microphone running after every take. Pausing stops the
+    // audio unit, and every callback has returned by then, so the final drain
+    // sees all audio.
+    let _ = stream.pause();
     drop(stream);
     drain(
         &mut consumer,
