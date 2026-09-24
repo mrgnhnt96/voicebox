@@ -15,15 +15,15 @@ def test_microphone_migration_preserves_existing_settings_and_is_idempotent():
         _migrate_capture_settings(engine, inspect(engine), {'capture_settings'})
     with engine.begin() as connection:
         row = connection.execute(text(
-            'SELECT auto_refine, keep_mic_warm, input_device_id FROM capture_settings WHERE id = 1'
+            'SELECT auto_refine, input_device_id FROM capture_settings WHERE id = 1'
         )).one()
-        assert tuple(row) == (0, 0, None)
-        connection.execute(text("UPDATE capture_settings SET input_device_id = 'usb', keep_mic_warm = 1"))
+        assert tuple(row) == (0, None)
+        connection.execute(text("UPDATE capture_settings SET input_device_id = 'usb'"))
     _migrate_capture_settings(engine, inspect(engine), {'capture_settings'})
     with engine.connect() as connection:
         assert tuple(connection.execute(text(
-            'SELECT keep_mic_warm, input_device_id FROM capture_settings WHERE id = 1'
-        )).one()) == (1, 'usb')
+            'SELECT auto_refine, input_device_id FROM capture_settings WHERE id = 1'
+        )).one()) == (0, 'usb')
 
 
 def test_resetting_microphone_is_distinct_from_omitting_the_setting():

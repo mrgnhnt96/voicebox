@@ -115,20 +115,21 @@ test('unmount during microphone acquisition releases the late stream', async () 
         resolve = r;
       }),
   );
-  await mount({ keepWarm: true });
-  let warming!: Promise<void>;
+  await mount();
+  let start!: Promise<void>;
   await act(async () => {
-    warming = hook.prewarm();
+    start = hook.startRecording('A');
   });
   await act(async () => renderer.unmount());
   const stream = makeStream();
   resolve(stream);
-  await warming;
+  await start;
   expect(stream.getTracks()[0].stop).toHaveBeenCalledTimes(1);
+  expect(Recorder.instances).toHaveLength(0);
 });
 
 test('changing devices retains an active take then opens the selected mic', async () => {
-  await mount({ keepWarm: true });
+  await mount();
   await act(async () => hook.startRecording('A'));
   const original = streams[0];
   settings = { input_device_id: 'usb' };
@@ -155,11 +156,9 @@ test('settings arriving during the first microphone request keep that take', asy
   await act(async () => {
     start = hook.startRecording('A');
   });
-  // The server comes up mid-request: the device setting loads, and the dictate
-  // window re-runs its warm-mic effect, which releases the (unused) warm stream.
+  // The server comes up mid-request and the device setting loads.
   settings = { input_device_id: null };
   await act(async () => renderer.update(createElement(Harness)));
-  await act(async () => hook.releaseWarm());
   await act(async () => {
     resolve(makeStream());
     await start;
@@ -200,7 +199,7 @@ test('permission denial is propagated without a second microphone request', asyn
   expect(getUserMedia).toHaveBeenCalledTimes(1);
 });
 
-test('warmup and rapid repeated starts share one acquisition and one recorder', async () => {
+test('rapid repeated starts share one acquisition and one recorder', async () => {
   let resolve!: (stream: ReturnType<typeof makeStream>) => void;
   getUserMedia.mockImplementation(
     () =>
@@ -208,17 +207,15 @@ test('warmup and rapid repeated starts share one acquisition and one recorder', 
         resolve = r;
       }),
   );
-  await mount({ keepWarm: true });
-  let warming!: Promise<void>;
+  await mount();
   let start!: Promise<void>;
   await act(async () => {
-    warming = hook.prewarm();
     start = hook.startRecording('A');
     await hook.startRecording('B');
   });
   await act(async () => {
     resolve(makeStream());
-    await Promise.all([warming, start]);
+    await start;
   });
   expect(getUserMedia).toHaveBeenCalledTimes(1);
   expect(Recorder.instances).toHaveLength(1);
@@ -592,4 +589,15 @@ test('stop does not wait for a late sidecar and retains the full recording', asy
   expect(cancel).toHaveBeenCalledTimes(1);
   expect(stop).not.toHaveBeenCalled();
   expect(complete).toHaveBeenCalledTimes(1);
+});
+
+test('every take releases the microphone when it stops', async () => {
+  await mount();
+  await act(async () => hook.startRecording('A'));
+  await act(async () => hook.stopRecording());
+  expect(streams[0].getTracks()[0].readyState).toBe('ended');
+  await act(async () => hook.startRecording('B'));
+  await act(async () => hook.stopRecording());
+  expect(getUserMedia).toHaveBeenCalledTimes(2);
+  expect(streams[1].getTracks()[0].readyState).toBe('ended');
 });

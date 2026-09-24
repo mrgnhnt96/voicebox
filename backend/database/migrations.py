@@ -265,13 +265,6 @@ def _migrate_capture_settings(engine, inspector, tables: set[str]) -> None:
             "punctuation_style VARCHAR NOT NULL DEFAULT 'standard'",
             "punctuation_style",
         )
-    if "keep_mic_warm" not in columns:
-        _add_column(
-            engine,
-            "capture_settings",
-            "keep_mic_warm BOOLEAN NOT NULL DEFAULT 0",
-            "keep_mic_warm",
-        )
 
 
 def _migrate_mcp_bindings(engine, inspector, tables: set[str]) -> None:

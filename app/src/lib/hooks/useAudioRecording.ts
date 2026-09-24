@@ -14,42 +14,20 @@ interface UseAudioRecordingOptions {
   // recording it came from (the dictate window pairs it with the focus
   // snapshot captured at chord-start).
   onRecordingComplete?: (blob: Blob, duration?: number, context?: unknown) => void;
-  /**
-   * Keep the microphone ``MediaStream`` open between recordings instead of
-   * tearing it down on every stop. This is what removes the "first words get
-   * clipped" problem on push-to-talk dictation: ``getUserMedia`` on macOS can
-   * take several hundred ms — up to a second cold — to hand back a stream, and
-   * ``MediaRecorder`` only starts capturing *after* it resolves, so everything
-   * spoken in that window is lost. With a warm stream already open, the next
-   * ``startRecording`` skips ``getUserMedia`` entirely.
-   *
-   * Off by default: the voice-clone sample recorders release the device
-   * immediately, and the dictation session only opts in when the user enables
-   * the "keep microphone ready" setting. While on, the warm stream stays open —
-   * and the OS mic-in-use indicator stays lit — until it's explicitly released
-   * (dictation disabled or the setting turned off), so the trade-off is visible
-   * and user-controlled rather than a background mic that's always warm.
-   */
-  keepWarm?: boolean;
 }
 
-// Audio constraints for capture. Kept identical to the previous inline value so
-// this change is purely about *when* the stream is opened, not *how*.
+// Audio constraints for capture.
 const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
 };
 
-const streamHasLiveAudio = (stream: MediaStream | null): stream is MediaStream =>
-  !!stream && stream.getAudioTracks().some((t) => t.readyState === 'live');
-
 export function useAudioRecording({
   maxDurationSeconds,
   deviceId,
   onRecordingComplete,
   onRecordingStream,
-  keepWarm = false,
 }: UseAudioRecordingOptions = {}) {
   const mountedRef = useRef(true);
   const platform = usePlatform();
@@ -61,22 +39,15 @@ export function useAudioRecording({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordingStreamRef = useRef<RecordingStream | null>(null);
-  // The stream currently backing the MediaRecorder. When ``keepWarm`` is set
-  // this is the same object as ``warmStreamRef`` and is *not* torn down on
-  // stop; otherwise it's stopped as soon as the recording completes.
+  // The stream backing the current MediaRecorder; each take opens its own and
+  // releases it when capture stops.
   const streamRef = useRef<MediaStream | null>(null);
-  // Persistent pre-opened stream reused across recordings when ``keepWarm``.
-  const warmStreamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const cancelledRef = useRef<boolean>(false);
   // Mirror of ``isRecording`` for reads inside callbacks that would otherwise
   // close over a stale render.
   const isRecordingRef = useRef(false);
-  // A ``getUserMedia`` call in flight, shared so concurrent acquirers (prewarm
-  // plus an immediate chord) coalesce onto one stream instead of each opening —
-  // and orphaning — their own.
-  const acquiringRef = useRef<Promise<MediaStream> | null>(null);
   // True from ``startRecording`` entry until the recorder is actually running
   // (or has failed), so a stop that arrives mid-acquisition can be deferred.
   const startingRef = useRef(false);
@@ -89,46 +60,12 @@ export function useAudioRecording({
   // Bumped per recording so a stale recorder's ``onstop`` can tell it's no
   // longer the active one before it touches the shared stream refs.
   const recordingCounterRef = useRef(0);
-  // Bumped whenever the warm stream is released/aborted so a ``getUserMedia``
-  // still in flight can tell its result is stale and stop it instead of
-  // adopting a live mic after disable/unmount.
-  const acquireGenRef = useRef(0);
-  // Set when a release is requested mid-recording; the onstop path performs the
-  // deferred release once capture finishes rather than yanking the device now.
-  const releaseAfterStopRef = useRef(false);
-
   // Keeps the ref in lockstep with the state so the synchronous stop path reads
   // a fresh value without waiting for a rerender.
   const setRecording = useCallback((next: boolean) => {
     isRecordingRef.current = next;
     setIsRecording(next);
   }, []);
-
-  const releaseWarmStream = useCallback(() => {
-    // Don't tear the device out from under an active/starting recording — the
-    // warm stream is the one backing it; defer to the onstop path instead.
-    // This includes a take still waiting on getUserMedia: on the first chord
-    // after launch, settings often load mid-request and trigger a release.
-    if (isRecordingRef.current || startingRef.current) {
-      releaseAfterStopRef.current = true;
-      return;
-    }
-    // Invalidate any getUserMedia still in flight so its stream is stopped on
-    // resolve rather than adopted as the warm stream.
-    acquireGenRef.current += 1;
-    warmStreamRef.current?.getTracks().forEach((track) => {
-      track.stop();
-    });
-    warmStreamRef.current = null;
-  }, []);
-
-  // Switch devices between takes without interrupting an active recording.
-  const previousDeviceRef = useRef(targetDeviceId);
-  useEffect(() => {
-    if (previousDeviceRef.current === targetDeviceId) return;
-    previousDeviceRef.current = targetDeviceId;
-    releaseWarmStream();
-  }, [targetDeviceId, releaseWarmStream]);
 
   // Assert that getUserMedia is reachable, mirroring the previous inline guard
   // (Tauri webviews occasionally expose ``navigator.mediaDevices`` a beat late).
@@ -148,63 +85,10 @@ export function useAudioRecording({
     }
   }, [platform.metadata.isTauri]);
 
-  // Return a live capture stream, reusing the warm one when available so the
-  // hot path (chord-down → record) never waits on getUserMedia.
   const acquireStream = useCallback(async (): Promise<MediaStream> => {
-    // Captured separately so it stays typed as the full stream after the live
-    // check narrows ``warmStreamRef.current`` itself.
-    const existing = warmStreamRef.current;
-    if (streamHasLiveAudio(warmStreamRef.current)) {
-      return warmStreamRef.current;
-    }
-    // Coalesce concurrent acquirers onto one getUserMedia call so prewarm and
-    // an immediate chord can't open two streams.
-    if (acquiringRef.current) return acquiringRef.current;
-    // A dead warm stream (device unplugged / tracks ended) — drop it and reopen.
-    if (existing) {
-      existing.getTracks().forEach((track) => {
-        track.stop();
-      });
-      warmStreamRef.current = null;
-    }
-    const gen = acquireGenRef.current;
-    const acquisition = (async () => {
-      await assertMediaDevices();
-      const stream = await openAudioInput(targetDeviceId, AUDIO_CONSTRAINTS);
-      // Released / disabled / unmounted while acquiring — this stream is stale,
-      // so stop it instead of leaving a live mic open, and abort the caller.
-      if (gen !== acquireGenRef.current) {
-        stream.getTracks().forEach((track) => {
-          track.stop();
-        });
-        throw new Error('microphone acquisition aborted');
-      }
-      if (keepWarm) warmStreamRef.current = stream;
-      return stream;
-    })();
-    acquiringRef.current = acquisition;
-    try {
-      return await acquisition;
-    } finally {
-      if (acquiringRef.current === acquisition) acquiringRef.current = null;
-    }
-  }, [assertMediaDevices, keepWarm, targetDeviceId]);
-
-  /**
-   * Open the microphone ahead of the first recording so the initial dictation
-   * doesn't clip. No-op unless ``keepWarm`` is set. Safe to call repeatedly and
-   * safe to fail (e.g. permission not yet granted) — ``startRecording`` still
-   * surfaces a real error if capture is genuinely unavailable.
-   */
-  const prewarm = useCallback(async () => {
-    if (!keepWarm) return;
-    try {
-      await acquireStream();
-    } catch {
-      // Permission missing / device busy / aborted — recording will report a
-      // real error if capture is genuinely unavailable.
-    }
-  }, [keepWarm, acquireStream]);
+    await assertMediaDevices();
+    return openAudioInput(targetDeviceId, AUDIO_CONSTRAINTS);
+  }, [assertMediaDevices, targetDeviceId]);
 
   const startRecording = useCallback(
     async (context?: unknown) => {
@@ -219,8 +103,6 @@ export function useAudioRecording({
         return;
       startingRef.current = true;
       pendingStopRef.current = false;
-      // A new recording supersedes any release deferred from a prior take.
-      releaseAfterStopRef.current = false;
       const recordingId = ++recordingCounterRef.current;
       try {
         setError(null);
@@ -228,7 +110,6 @@ export function useAudioRecording({
         cancelledRef.current = false;
         setDuration(0);
 
-        // Reuse the warm stream when present (instant); otherwise open one now.
         const stream = await acquireStream();
         streamRef.current = stream;
 
@@ -275,26 +156,12 @@ export function useAudioRecording({
 
           const webmBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
 
-          // Release the device unless we're keeping it warm for the next capture.
-          // Act on this recorder's own stream; only touch the shared refs when
-          // this is still the current recording.
-          if (keepWarm) {
-            if (isCurrent) {
-              streamRef.current = null;
-              // A release requested mid-recording (dictation disabled) is
-              // honored now that capture has finished; otherwise the warm
-              // stream stays open for the next take.
-              if (releaseAfterStopRef.current) {
-                releaseAfterStopRef.current = false;
-                releaseWarmStream();
-              }
-            }
-          } else {
-            stream.getTracks().forEach((track) => {
-              track.stop();
-            });
-            if (isCurrent) streamRef.current = null;
-          }
+          // Release the device. Act on this recorder's own stream; only touch
+          // the shared refs when this is still the current recording.
+          stream.getTracks().forEach((track) => {
+            track.stop();
+          });
+          if (isCurrent) streamRef.current = null;
 
           if (isCurrent) recordingStreamRef.current = null;
           if (wasCancelled) recordingStream?.cancel();
@@ -389,14 +256,11 @@ export function useAudioRecording({
           err instanceof Error
             ? err.message
             : 'Failed to access microphone. Please check permissions.';
-        // A fresh (non-warm) stream opened before the failure must be released
-        // so the mic doesn't stay lit; a warm stream is reusable, so it's kept.
-        if (!keepWarm) {
-          streamRef.current?.getTracks().forEach((track) => {
-            track.stop();
-          });
-          streamRef.current = null;
-        }
+        // Release a stream opened before the failure so the mic doesn't stay lit.
+        streamRef.current?.getTracks().forEach((track) => {
+          track.stop();
+        });
+        streamRef.current = null;
         recordingStreamRef.current?.cancel();
         recordingStreamRef.current = null;
         startingRef.current = false;
@@ -411,8 +275,6 @@ export function useAudioRecording({
       onRecordingComplete,
       onRecordingStream,
       acquireStream,
-      keepWarm,
-      releaseWarmStream,
       setRecording,
     ],
   );
@@ -454,35 +316,24 @@ export function useAudioRecording({
       pendingStopRef.current = true;
     }
 
-    // Keep the device warm for the next capture when opted in; otherwise stop
-    // the tracks so the mic is released immediately.
-    if (keepWarm) {
-      streamRef.current = null;
-      if (releaseAfterStopRef.current) {
-        releaseAfterStopRef.current = false;
-        releaseWarmStream();
-      }
-    } else {
-      streamRef.current?.getTracks().forEach((track) => {
-        track.stop();
-      });
-      streamRef.current = null;
-    }
+    // Release the mic immediately.
+    streamRef.current?.getTracks().forEach((track) => {
+      track.stop();
+    });
+    streamRef.current = null;
 
     if (timerRef.current !== null) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-  }, [keepWarm, releaseWarmStream, setRecording]);
+  }, [setRecording]);
 
-  // Cleanup on unmount — always fully release the device, warm or not.
+  // Cleanup on unmount — always fully release the device. A stream still being
+  // acquired is stopped by startRecording once it sees the hook unmounted.
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      // Invalidate any in-flight acquisition so a stream resolving after unmount
-      // stops itself instead of leaking a live mic.
-      acquireGenRef.current += 1;
       cancelledRef.current = true;
       recordingStreamRef.current?.cancel();
       if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
@@ -490,9 +341,6 @@ export function useAudioRecording({
         clearInterval(timerRef.current);
       }
       streamRef.current?.getTracks().forEach((track) => {
-        track.stop();
-      });
-      warmStreamRef.current?.getTracks().forEach((track) => {
         track.stop();
       });
     };
@@ -507,7 +355,5 @@ export function useAudioRecording({
     startRecording,
     stopRecording,
     cancelRecording,
-    prewarm,
-    releaseWarm: releaseWarmStream,
   };
 }

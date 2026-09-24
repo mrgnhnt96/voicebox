@@ -56,9 +56,6 @@ const SHORT_RECORDING_MESSAGE = 'Recording too short, canceled';
 export type CapturePillState = PillState | 'hidden';
 
 export interface UseCaptureRecordingSessionOptions {
-  /** Keep the microphone stream open between dictations when explicitly
-   * enabled. Off by default so normal recorders release the device. */
-  keepMicWarm?: boolean;
   /**
    * Fired after a capture row is created on the server. Callers can use this
    * to select the new capture or emit a Tauri event to a sibling window.
@@ -96,8 +93,6 @@ export interface UseCaptureRecordingSessionResult {
   dismissError: () => void;
   uploadFile: (file: File, source: CaptureSource) => void;
   refine: (captureId: string) => void;
-  prewarm: () => Promise<void>;
-  releaseWarm: () => void;
 }
 
 /**
@@ -311,10 +306,7 @@ export function useCaptureRecordingSession(
     canStartRecording,
     stopRecording,
     error: recordError,
-    prewarm,
-    releaseWarm,
   } = useAudioRecording({
-    keepWarm: options.keepMicWarm ?? false,
     onRecordingStream: async (stream, context) => {
       const take = context as RecordingTake;
       try {
@@ -506,7 +498,5 @@ export function useCaptureRecordingSession(
     dismissError,
     uploadFile,
     refine,
-    prewarm,
-    releaseWarm,
   };
 }

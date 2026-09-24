@@ -35,12 +35,7 @@ export function DictateWindow() {
     };
   }, []);
 
-  // Mirrored from the main window: true only when dictation is armed and the
-  // user opted into keeping the microphone ready.
-  const [micWarm, setMicWarm] = useState(false);
-
   const session = useCaptureRecordingSession({
-    keepMicWarm: micWarm,
     onFinalText: async (text, _capture, allowAutoPaste, context) => {
       // Focus is the snapshot taken at chord-start and threaded through as this
       // take's context, so it survives the 1–2 s transcribe + refine window and
@@ -84,9 +79,6 @@ export function DictateWindow() {
         // Forward stops that arrive while getUserMedia is still resolving.
         sessionRef.current.stopRecording();
       }),
-      listen<boolean>('dictate:warm', (event) => {
-        setMicWarm(Boolean(event.payload));
-      }),
     ];
     Promise.all(registrations)
       .then((registered) => {
@@ -95,7 +87,6 @@ export function DictateWindow() {
           return;
         }
         unlistens.push(...registered);
-        emit('dictate:warm-request').catch(() => {});
       })
       .catch((err) => console.warn('[dictate] event listener registration failed:', err));
     return () => {
@@ -103,11 +94,6 @@ export function DictateWindow() {
       for (const unlisten of unlistens) unlisten();
     };
   }, []);
-
-  useEffect(() => {
-    if (micWarm) void session.prewarm();
-    else session.releaseWarm();
-  }, [micWarm, session.prewarm, session.releaseWarm]);
 
   // --- Agent-speak cycle ---------------------------------------------------
 
