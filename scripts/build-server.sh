@@ -1,12 +1,12 @@
 #!/bin/bash
-# Build Python server binary for all platforms
+# Build the Python server binary and copy it into the Tauri sidecar directory
 
 set -e
 
 # Determine platform
 PLATFORM=$(rustc --print host-tuple 2>/dev/null || echo "unknown")
 
-echo "Building Voicebox sidecars for platform: $PLATFORM"
+echo "Building Voicebox server sidecar for platform: $PLATFORM"
 
 # Build Python binary
 # Resolve PATH to absolute paths before changing directory
@@ -40,8 +40,5 @@ copy_sidecar() {
 
 python build_binary.py
 copy_sidecar voicebox-server
-
-python build_binary.py --shim
-copy_sidecar voicebox-mcp
 
 echo "Build complete!"
