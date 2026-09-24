@@ -16,11 +16,9 @@ import logging
 import os
 import re
 import struct
-import tempfile
 import time
 import uuid
 import wave
-from pathlib import Path
 
 import numpy as np
 
@@ -192,19 +190,11 @@ class StreamingCapture:
         samples = np.frombuffer(pcm, dtype="<i2")
         if not len(samples) or np.max(np.abs(samples.astype(np.int32))) < 250:
             return ""
-        # Keep each temporary window alive until inference actually completes.
-        with tempfile.TemporaryDirectory(prefix="voicebox-stream-") as directory:
-            path = Path(directory) / "window.wav"
-            with wave.open(str(path), "wb") as audio:
-                audio.setnchannels(1)
-                audio.setsampwidth(2)
-                audio.setframerate(self.rate)
-                audio.writeframes(pcm)
-            return (
-                await get_whisper_model().transcribe(
-                    str(path), self.language, self.stt_model, previous_text=previous_text
-                )
-            ).strip()
+        return (
+            await get_whisper_model().transcribe_array(
+                samples, self.rate, self.language, self.stt_model, previous_text=previous_text
+            )
+        ).strip()
 
     def close_dictation(self, text):
         closed = close_phrase(text) if self.cleanup_closed else text

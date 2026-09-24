@@ -69,7 +69,7 @@ async def test_unpaused_speech_is_recognized_once_at_finish(tmp_path, monkeypatc
 async def test_no_speculative_work_while_speaking(tmp_path, monkeypatch):
     session, _ = make_session(tmp_path, monkeypatch)
     session.settings.auto_refine = True
-    stt = type("STT", (), {"transcribe": AsyncMock(return_value="hello world")})()
+    stt = type("STT", (), {"transcribe_array": AsyncMock(return_value="hello world")})()
     monkeypatch.setattr(capture_stream, "get_whisper_model", lambda: stt)
     refine = AsyncMock(return_value=("Hello world.", "0.6B"))
     monkeypatch.setattr(capture_stream, "refine_transcript", refine)
@@ -80,11 +80,11 @@ async def test_no_speculative_work_while_speaking(tmp_path, monkeypatch):
     for _ in range(7):
         append(session, 1)
         await asyncio.sleep(0)
-    stt.transcribe.assert_not_awaited()
+    stt.transcribe_array.assert_not_awaited()
     refine.assert_not_awaited()
     session.finish()
     await worker
-    stt.transcribe.assert_awaited_once()
+    stt.transcribe_array.assert_awaited_once()
     refine.assert_awaited_once()
     assert session.refined == "Hello world."
     session.close()
@@ -224,27 +224,29 @@ async def test_forced_boundary_finalizes_with_full_audio(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_silence_does_not_invoke_whisper(tmp_path, monkeypatch):
     session, _ = make_session(tmp_path, monkeypatch)
-    stt = type("STT", (), {"transcribe": AsyncMock()})()
+    stt = type("STT", (), {"transcribe_array": AsyncMock()})()
     monkeypatch.setattr(capture_stream, "get_whisper_model", lambda: stt)
     append(session, 2, amplitude=0)
     session.finish()
     await session.run()
     assert session.raw == ""
-    stt.transcribe.assert_not_awaited()
+    stt.transcribe_array.assert_not_awaited()
     session.close()
 
 
 @pytest.mark.asyncio
 async def test_each_phrase_is_recognized_in_context_of_earlier_phrases(tmp_path, monkeypatch):
     session, _ = make_session(tmp_path, monkeypatch)
-    stt = type("STT", (), {"transcribe": AsyncMock(side_effect=["How", "much is it?"])})()
+    stt = type("STT", (), {"transcribe_array": AsyncMock(side_effect=["How", "much is it?"])})()
     monkeypatch.setattr(capture_stream, "get_whisper_model", lambda: stt)
     append(session, 2)
     append(session, 1, amplitude=0)
     append(session, 2)
     session.finish()
     await session.run()
-    assert [call.kwargs["previous_text"] for call in stt.transcribe.await_args_list] == ["", "How"]
+    assert [call.kwargs["previous_text"] for call in stt.transcribe_array.await_args_list] == ["", "How"]
+    # Phrases go to Whisper in memory, at the stream's own sample rate.
+    assert all(call.args[1] == session.rate for call in stt.transcribe_array.await_args_list)
     assert session.raw == "How much is it?"
     session.close()
 
