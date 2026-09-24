@@ -153,9 +153,7 @@
     "tabs": {
       "general": "常规",
       "captures": "捕获",
-      "logs": "日志",
-      "changelog": "更新日志",
-      "about": "关于"
+      "logs": "日志"
     },
     "language": {
       "label": "语言",
@@ -385,17 +383,6 @@
       "clear": "清除",
       "empty": "暂无日志输出。",
       "devHint": "仅当应用管理服务器进程(生产构建)时才会捕获服务器日志。"
-    },
-    "changelog": {
-      "devBadge": "开发版",
-      "showLess": "收起",
-      "showMore": "展开"
-    },
-    "about": {
-      "tagline": "适用于 macOS 的本地听写。随处说话,即可得到保留您原话、可直接发送的整洁文本——全部在您的本地机器上运行。",
-      "createdBy": "创建者",
-      "buyCoffee": "请我喝杯咖啡",
-      "license": "采用 <link>MIT</link> 协议"
     }
   },
   "models": {

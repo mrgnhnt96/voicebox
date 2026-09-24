@@ -226,9 +226,7 @@
     "tabs": {
       "general": "General",
       "captures": "Captures",
-      "logs": "Logs",
-      "changelog": "Changelog",
-      "about": "About"
+      "logs": "Logs"
     },
     "language": {
       "label": "Language",
@@ -478,17 +476,6 @@
       "clear": "Clear",
       "empty": "No log output yet.",
       "devHint": "Server logs are only captured when the app manages the server process (production builds)."
-    },
-    "changelog": {
-      "devBadge": "dev",
-      "showLess": "Show less",
-      "showMore": "Show more"
-    },
-    "about": {
-      "tagline": "Local dictation for macOS. Speak anywhere and get clean, ready-to-send text in your own words — all running on your machine.",
-      "createdBy": "Created by",
-      "buyCoffee": "Buy me a coffee",
-      "license": "Licensed under <link>MIT</link>"
     }
   },
   "models": {

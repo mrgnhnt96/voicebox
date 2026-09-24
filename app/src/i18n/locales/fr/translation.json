@@ -153,9 +153,7 @@
     "tabs": {
       "general": "Général",
       "captures": "Captures",
-      "logs": "Journaux",
-      "changelog": "Notes de version",
-      "about": "À propos"
+      "logs": "Journaux"
     },
     "language": {
       "label": "Langue",
@@ -385,17 +383,6 @@
       "clear": "Effacer",
       "empty": "Aucune sortie de journal pour le moment.",
       "devHint": "Les journaux du serveur ne sont capturés que lorsque l'application gère le processus serveur (builds de production)."
-    },
-    "changelog": {
-      "devBadge": "dev",
-      "showLess": "Afficher moins",
-      "showMore": "Afficher plus"
-    },
-    "about": {
-      "tagline": "La dictée locale pour macOS. Parlez n'importe où et obtenez un texte propre, prêt à envoyer, avec vos propres mots — le tout en local sur votre machine.",
-      "createdBy": "Créé par",
-      "buyCoffee": "Offrez-moi un café",
-      "license": "Sous licence <link>MIT</link>"
     }
   },
   "models": {

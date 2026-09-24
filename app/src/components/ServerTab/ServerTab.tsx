@@ -6,12 +6,7 @@ import { usePlatform } from '@/platform/PlatformContext';
 interface SettingsTab {
   labelKey?: string;
   label?: string;
-  path:
-    | '/settings'
-    | '/settings/captures'
-    | '/settings/logs'
-    | '/settings/changelog'
-    | '/settings/about';
+  path: '/settings' | '/settings/captures' | '/settings/logs';
   tauriOnly?: boolean;
 }
 
@@ -19,8 +14,6 @@ const tabs: SettingsTab[] = [
   { labelKey: 'settings.tabs.general', path: '/settings' },
   { labelKey: 'settings.tabs.captures', path: '/settings/captures' },
   { labelKey: 'settings.tabs.logs', path: '/settings/logs', tauriOnly: true },
-  { labelKey: 'settings.tabs.changelog', path: '/settings/changelog' },
-  { labelKey: 'settings.tabs.about', path: '/settings/about' },
 ];
 
 export function SettingsLayout() {

@@ -153,9 +153,7 @@
     "tabs": {
       "general": "一般",
       "captures": "擷取",
-      "logs": "日誌",
-      "changelog": "更新日誌",
-      "about": "關於"
+      "logs": "日誌"
     },
     "language": {
       "label": "語言",
@@ -385,17 +383,6 @@
       "clear": "清除",
       "empty": "尚無日誌輸出。",
       "devHint": "僅當應用程式管理伺服器程序(正式版建置)時才會擷取伺服器日誌。"
-    },
-    "changelog": {
-      "devBadge": "開發版",
-      "showLess": "收合",
-      "showMore": "展開"
-    },
-    "about": {
-      "tagline": "適用於 macOS 的本機聽寫。隨處說話,就能得到保留您原話、可直接送出的整潔文字——全部在您的本機執行。",
-      "createdBy": "作者",
-      "buyCoffee": "請我喝杯咖啡",
-      "license": "採用 <link>MIT</link> 授權"
     }
   },
   "models": {

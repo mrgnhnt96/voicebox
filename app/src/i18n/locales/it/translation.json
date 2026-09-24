@@ -153,9 +153,7 @@
     "tabs": {
       "general": "Generali",
       "captures": "Acquisizioni",
-      "logs": "Log",
-      "changelog": "Registro modifiche",
-      "about": "Informazioni"
+      "logs": "Log"
     },
     "language": {
       "label": "Lingua",
@@ -385,17 +383,6 @@
       "clear": "Svuota",
       "empty": "Ancora nessun log disponibile.",
       "devHint": "I log del server vengono acquisiti solo quando l'app gestisce il processo del server (build di produzione)."
-    },
-    "changelog": {
-      "devBadge": "sviluppo",
-      "showLess": "Mostra meno",
-      "showMore": "Mostra di più"
-    },
-    "about": {
-      "tagline": "Dettatura locale per macOS. Parla ovunque e ottieni un testo pulito, pronto da inviare, con le tue parole — tutto eseguito localmente sul tuo computer.",
-      "createdBy": "Creato da",
-      "buyCoffee": "Offrimi un caffè",
-      "license": "Rilasciato sotto licenza <link>MIT</link>"
     }
   },
   "models": {

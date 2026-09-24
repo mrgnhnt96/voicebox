@@ -153,9 +153,7 @@
     "tabs": {
       "general": "일반",
       "captures": "캡처",
-      "logs": "로그",
-      "changelog": "변경 내역",
-      "about": "정보"
+      "logs": "로그"
     },
     "language": {
       "label": "언어",
@@ -385,17 +383,6 @@
       "clear": "지우기",
       "empty": "아직 로그 출력이 없습니다.",
       "devHint": "서버 로그는 앱이 서버 프로세스를 관리할 때만 캡처됩니다 (프로덕션 빌드)."
-    },
-    "changelog": {
-      "devBadge": "개발",
-      "showLess": "간략히",
-      "showMore": "더 보기"
-    },
-    "about": {
-      "tagline": "macOS용 로컬 받아쓰기. 어디서든 말하면 내 말투 그대로 바로 보낼 수 있는 깔끔한 텍스트가 됩니다 — 모두 기기에서 로컬로 실행됩니다.",
-      "createdBy": "만든 사람",
-      "buyCoffee": "커피 한 잔 사주기",
-      "license": "<link>MIT</link> 라이선스"
     }
   },
   "models": {

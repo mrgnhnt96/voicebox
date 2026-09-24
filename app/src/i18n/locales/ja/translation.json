@@ -153,9 +153,7 @@
     "tabs": {
       "general": "一般",
       "captures": "キャプチャ",
-      "logs": "ログ",
-      "changelog": "変更履歴",
-      "about": "このアプリについて"
+      "logs": "ログ"
     },
     "language": {
       "label": "言語",
@@ -385,17 +383,6 @@
       "clear": "クリア",
       "empty": "まだログ出力はありません。",
       "devHint": "サーバーログはアプリがサーバープロセスを管理している場合(本番ビルド)にのみ記録されます。"
-    },
-    "changelog": {
-      "devBadge": "開発版",
-      "showLess": "折りたたむ",
-      "showMore": "もっと見る"
-    },
-    "about": {
-      "tagline": "macOS 向けのローカル音声入力。どこで話しても、あなた自身の言葉のまま送信できる整ったテキストになります。すべてローカル環境で実行されます。",
-      "createdBy": "作者",
-      "buyCoffee": "コーヒーをおごる",
-      "license": "<link>MIT</link> ライセンス"
     }
   },
   "models": {

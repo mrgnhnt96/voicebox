@@ -153,9 +153,7 @@
     "tabs": {
       "general": "General",
       "captures": "Capturas",
-      "logs": "Registros",
-      "changelog": "Cambios",
-      "about": "Acerca de"
+      "logs": "Registros"
     },
     "language": {
       "label": "Idioma",
@@ -385,17 +383,6 @@
       "clear": "Limpiar",
       "empty": "Aún no hay salida de registro.",
       "devHint": "Los registros del servidor solo se capturan cuando la app gestiona el proceso del servidor (compilaciones de producción)."
-    },
-    "changelog": {
-      "devBadge": "dev",
-      "showLess": "Mostrar menos",
-      "showMore": "Mostrar más"
-    },
-    "about": {
-      "tagline": "Dictado local para macOS. Habla en cualquier lugar y obtén texto limpio y listo para enviar, con tus propias palabras, todo ejecutándose en tu equipo.",
-      "createdBy": "Creado por",
-      "buyCoffee": "Invítame a un café",
-      "license": "Con licencia <link>MIT</link>"
     }
   },
   "models": {

@@ -8,9 +8,7 @@ import {
 import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { CapturesTab } from '@/components/CapturesTab/CapturesTab';
 import { ModelsTab } from '@/components/ModelsTab/ModelsTab';
-import { AboutPage } from '@/components/ServerTab/AboutPage';
 import { CapturesPage } from '@/components/ServerTab/CapturesPage';
-import { ChangelogPage } from '@/components/ServerTab/ChangelogPage';
 import { GeneralPage } from '@/components/ServerTab/GeneralPage';
 import { LogsPage } from '@/components/ServerTab/LogsPage';
 import { SettingsLayout } from '@/components/ServerTab/ServerTab';
@@ -124,22 +122,10 @@ const settingsCapturesRoute = createRoute({
   component: CapturesPage,
 });
 
-const settingsChangelogRoute = createRoute({
-  getParentRoute: () => settingsRoute,
-  path: '/changelog',
-  component: ChangelogPage,
-});
-
 const settingsLogsRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: '/logs',
   component: LogsPage,
-});
-
-const settingsAboutRoute = createRoute({
-  getParentRoute: () => settingsRoute,
-  path: '/about',
-  component: AboutPage,
 });
 
 // Redirect old /server path to /settings
@@ -160,8 +146,6 @@ const routeTree = rootRoute.addChildren([
     settingsGeneralRoute,
     settingsCapturesRoute,
     settingsLogsRoute,
-    settingsChangelogRoute,
-    settingsAboutRoute,
   ]),
   serverRedirectRoute,
 ]);

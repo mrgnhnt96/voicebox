@@ -153,9 +153,7 @@
     "tabs": {
       "general": "Geral",
       "captures": "Capturas",
-      "logs": "Logs",
-      "changelog": "Novidades",
-      "about": "Sobre"
+      "logs": "Logs"
     },
     "language": {
       "label": "Idioma",
@@ -385,17 +383,6 @@
       "clear": "Limpar",
       "empty": "Nenhuma saída de log ainda.",
       "devHint": "Os logs do servidor só são capturados quando o app gerencia o processo do servidor (builds de produção)."
-    },
-    "changelog": {
-      "devBadge": "dev",
-      "showLess": "Mostrar menos",
-      "showMore": "Mostrar mais"
-    },
-    "about": {
-      "tagline": "Ditado local para macOS. Fale em qualquer lugar e receba um texto limpo, pronto para enviar, com suas próprias palavras — tudo rodando na sua máquina.",
-      "createdBy": "Criado por",
-      "buyCoffee": "Me pague um café",
-      "license": "Licenciado sob a <link>MIT</link>"
     }
   },
   "models": {
