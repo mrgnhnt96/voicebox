@@ -77,17 +77,26 @@ def is_model_cached(
 _ELLIPSIS_TOKEN_IDS: dict[tuple[str, int], Tuple[int, ...]] = {}
 
 
-def ellipsis_token_ids(model_key: str, decode: Callable[[List[int]], str], vocab_size: int) -> Tuple[int, ...]:
+def ellipsis_token_ids(
+    model_key: str,
+    decode: Callable[[List[int]], str],
+    vocab_size: int,
+    decode_batch: Optional[Callable[[List[List[int]]], List[str]]] = None,
+) -> Tuple[int, ...]:
     """Whisper token ids whose text contains an ellipsis ("..." or "…").
 
     Whisper writes an ellipsis wherever audio trails off into silence, so a
     dictation phrase cut at a pause would otherwise end with one.
+
+    Computed once per process. Decoding Whisper's 50k tokens one call at a
+    time takes ~0.45 s; ``decode_batch``, when given, decodes them all in one
+    call (a fraction of that) and must agree with ``decode`` token by token.
     """
     key = (model_key, vocab_size)
     if key not in _ELLIPSIS_TOKEN_IDS:
-        _ELLIPSIS_TOKEN_IDS[key] = tuple(
-            token for token in range(vocab_size) if ".." in (text := decode([token])) or "…" in text
-        )
+        single_tokens = [[token] for token in range(vocab_size)]
+        texts = decode_batch(single_tokens) if decode_batch else map(decode, single_tokens)
+        _ELLIPSIS_TOKEN_IDS[key] = tuple(token for token, text in enumerate(texts) if ".." in text or "…" in text)
     return _ELLIPSIS_TOKEN_IDS[key]
 
 
