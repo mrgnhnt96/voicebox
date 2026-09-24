@@ -5,6 +5,8 @@ mod accessibility;
 mod audio_capture;
 mod audio_output;
 mod clipboard;
+#[cfg(desktop)]
+mod dictation;
 mod focus_capture;
 #[cfg(desktop)]
 mod hotkey_monitor;
