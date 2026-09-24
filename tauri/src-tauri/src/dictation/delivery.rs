@@ -55,7 +55,10 @@ pub fn plan_final(event: &Value) -> Delivery {
 pub fn paste_failure(result: Result<bool, String>) -> Option<(String, bool)> {
     match result {
         Ok(true) => None,
-        Ok(false) => Some((format!("{SAVED_PREFIX} {TARGET_UNAVAILABLE_MESSAGE}"), false)),
+        Ok(false) => Some((
+            format!("{SAVED_PREFIX} {TARGET_UNAVAILABLE_MESSAGE}"),
+            false,
+        )),
         Err(message) => {
             let accessibility = message.to_lowercase().contains("accessibility");
             Some((format!("{SAVED_PREFIX} {message}"), accessibility))
@@ -66,7 +69,10 @@ pub fn paste_failure(result: Result<bool, String>) -> Option<(String, bool)> {
 /// A batch-upload error, translated to what the pill should say.
 pub fn upload_failure(message: &str) -> String {
     let lower = message.to_lowercase();
-    if lower.contains("could not decode") || lower.contains("empty or corrupt") {
+    if lower.contains("could not decode")
+        || lower.contains("could not open/decode")
+        || lower.contains("empty or corrupt")
+    {
         SHORT_RECORDING_MESSAGE.to_string()
     } else if message.is_empty() {
         "Upload failed".to_string()
@@ -114,7 +120,10 @@ mod tests {
             Delivery::Error("Text saved in Captures. LLM failed".into())
         );
         // An empty error string is no error.
-        assert_eq!(plan(&capture, true, Some("")), Delivery::Paste("hello".into()));
+        assert_eq!(
+            plan(&capture, true, Some("")),
+            Delivery::Paste("hello".into())
+        );
     }
 
     #[test]
@@ -144,18 +153,35 @@ mod tests {
         assert_eq!(paste_failure(Ok(true)), None);
         assert_eq!(
             paste_failure(Ok(false)),
-            Some((format!("{SAVED_PREFIX} {TARGET_UNAVAILABLE_MESSAGE}"), false))
+            Some((
+                format!("{SAVED_PREFIX} {TARGET_UNAVAILABLE_MESSAGE}"),
+                false
+            ))
         );
         let (message, accessibility) =
             paste_failure(Err("Accessibility permission required".into())).unwrap();
-        assert_eq!(message, "Text saved in Captures. Accessibility permission required");
+        assert_eq!(
+            message,
+            "Text saved in Captures. Accessibility permission required"
+        );
         assert!(accessibility);
     }
 
     #[test]
     fn undecodable_uploads_read_as_too_short() {
-        assert_eq!(upload_failure("Could not decode audio"), SHORT_RECORDING_MESSAGE);
-        assert_eq!(upload_failure("File is empty or corrupt"), SHORT_RECORDING_MESSAGE);
+        assert_eq!(
+            upload_failure("Could not decode audio"),
+            SHORT_RECORDING_MESSAGE
+        );
+        assert_eq!(
+            upload_failure("File is empty or corrupt"),
+            SHORT_RECORDING_MESSAGE
+        );
+        // Seen from the WAV fast path on a real server.
+        assert_eq!(
+            upload_failure("could not open/decode file"),
+            SHORT_RECORDING_MESSAGE
+        );
         assert_eq!(upload_failure("Model not loaded"), "Model not loaded");
         assert_eq!(upload_failure(""), "Upload failed");
     }

@@ -8,7 +8,8 @@
 //!   1. Build a `ChordMatcher` from the user's saved PTT + Toggle chords.
 //!   2. Translate `ChordEvent` → voicebox's [`Effect`] on a dispatcher
 //!      thread.
-//!   3. Fan [`Effect`]s out into Tauri events + dictate-window show/hide.
+//!   3. Fan [`Effect`]s out into native dictation (microphone + streaming,
+//!      see `dictation/`) and dictate-window show.
 //!
 //! The [`Effect::RestartRecording`] signal is emitted when keytap fires
 //! `End(PTT)` and `Start(Toggle)` with the *same* [`Instant`] — which
@@ -28,12 +29,13 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use keytap::chord::{Chord, ChordEvent, ChordMatcher};
 use keytap::{Key, RecvTimeoutError};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
+use crate::dictation;
 use crate::focus_capture;
 use crate::DICTATE_WINDOW_LABEL;
 
@@ -194,8 +196,8 @@ fn process_event(
     event: ChordEvent<ChordAction>,
 ) {
     match event {
-        ChordEvent::Start { id, .. } => {
-            apply_effect(app, Effect::StartRecording(id));
+        ChordEvent::Start { id, time } => {
+            apply_effect(app, Effect::StartRecording(id), time);
         }
         ChordEvent::End { id: end_id, time: end_time } => {
             // Peek for an immediately-following Start. keytap emits
@@ -208,10 +210,10 @@ fn process_event(
                 Ok(ChordEvent::Start { id: start_id, time: start_time })
                     if start_time == end_time =>
                 {
-                    apply_effect(app, Effect::RestartRecording(start_id));
+                    apply_effect(app, Effect::RestartRecording(start_id), start_time);
                 }
                 Ok(other) => {
-                    apply_effect(app, Effect::StopRecording(end_id));
+                    apply_effect(app, Effect::StopRecording(end_id), end_time);
                     // The peeked event wasn't a transition partner;
                     // process it in its own right. Recursion depth is
                     // bounded by the number of back-to-back chord
@@ -219,7 +221,7 @@ fn process_event(
                     process_event(app, matcher, other);
                 }
                 Err(_) => {
-                    apply_effect(app, Effect::StopRecording(end_id));
+                    apply_effect(app, Effect::StopRecording(end_id), end_time);
                 }
             }
         }
@@ -230,14 +232,22 @@ fn process_event(
 // Effect → Tauri
 // ========================================================================
 
-fn apply_effect(app: &AppHandle, effect: Effect) {
+fn apply_effect(app: &AppHandle, effect: Effect, time: Instant) {
     match effect {
         Effect::StartRecording(_) => {
+            // Open the microphone before anything else: every word from
+            // key-down must be captured. `time` is the key event's own
+            // timestamp, so the logged latency includes our dispatch.
+            let take = dictation::start(app, time);
+
             // Snapshot focus BEFORE we touch the window — any AppKit
             // reshuffle triggered by set_position / show could in principle
             // steal key focus and poison the reading. In practice those
             // calls leave keyWindow alone, but capturing first is free.
             let focus = focus_capture::capture_focus().ok();
+            if let Some(take) = take {
+                dictation::set_focus(app, take, focus);
+            }
 
             if let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) {
                 // Restore bottom-center placement after the hide path parks
@@ -257,19 +267,12 @@ fn apply_effect(app: &AppHandle, effect: Effect) {
                 // foreign app's fullscreen Space) — see main.rs.
                 #[cfg(target_os = "macos")]
                 crate::force_order_front(&window);
-                let payload = serde_json::json!({ "focus": focus });
-                let _ = window.emit("dictate:start", payload);
             }
         }
-        Effect::StopRecording(_) => {
-            if let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) {
-                let _ = window.emit("dictate:stop", ());
-            }
-        }
+        Effect::StopRecording(_) => dictation::stop(app),
         Effect::RestartRecording(_) => {
-            if let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) {
-                let _ = window.emit("dictate:restart", ());
-            }
+            // PTT upgraded to hands-free mid-hold: keep the same take
+            // recording (it was never interrupted) until the toggle ends it.
         }
     }
 }

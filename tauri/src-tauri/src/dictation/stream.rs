@@ -173,7 +173,11 @@ pub const INTERRUPTED_MESSAGE: &str =
     "Streaming finalization interrupted. Check Captures before recording again.";
 
 /// Poll for a finished session's result. Never re-uploads audio.
-pub async fn recover<F, Fut>(mut fetch: F, attempts: usize, delay: Duration) -> Result<Value, String>
+pub async fn recover<F, Fut>(
+    mut fetch: F,
+    attempts: usize,
+    delay: Duration,
+) -> Result<Value, String>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Recovery>,
@@ -253,7 +257,9 @@ mod tests {
         h.incoming.send(Incoming::Open).unwrap();
         assert_eq!(next_text(&mut h).await["type"], "start");
         h.incoming
-            .send(Incoming::Text(r#"{"type":"ready","session_id":"s1"}"#.into()))
+            .send(Incoming::Text(
+                r#"{"type":"ready","session_id":"s1"}"#.into(),
+            ))
             .unwrap();
         let mut binary = 0;
         loop {
@@ -296,7 +302,9 @@ mod tests {
         h.audio.send(AudioMsg::Format(16_000)).unwrap();
         h.incoming.send(Incoming::Open).unwrap();
         h.incoming
-            .send(Incoming::Text(r#"{"type":"ready","session_id":"s1"}"#.into()))
+            .send(Incoming::Text(
+                r#"{"type":"ready","session_id":"s1"}"#.into(),
+            ))
             .unwrap();
         h.audio.send(AudioMsg::Frame(vec![1; 1600])).unwrap();
         h.audio.send(AudioMsg::End).unwrap();
@@ -317,7 +325,9 @@ mod tests {
         h.audio.send(AudioMsg::Format(16_000)).unwrap();
         h.incoming.send(Incoming::Open).unwrap();
         h.incoming
-            .send(Incoming::Text(r#"{"type":"ready","session_id":"s1"}"#.into()))
+            .send(Incoming::Text(
+                r#"{"type":"ready","session_id":"s1"}"#.into(),
+            ))
             .unwrap();
         h.audio.send(AudioMsg::Cancel).unwrap();
         assert_eq!(next_text(&mut h).await["type"], "start");
@@ -338,7 +348,9 @@ mod tests {
         h.audio.send(AudioMsg::Format(16_000)).unwrap();
         h.incoming.send(Incoming::Open).unwrap();
         h.incoming
-            .send(Incoming::Text(r#"{"type":"ready","session_id":"s1"}"#.into()))
+            .send(Incoming::Text(
+                r#"{"type":"ready","session_id":"s1"}"#.into(),
+            ))
             .unwrap();
         h.audio.send(AudioMsg::Frame(vec![1; 1600])).unwrap();
         h.audio.send(AudioMsg::End).unwrap();
@@ -371,7 +383,11 @@ mod tests {
             Recovery::Pending
         );
         assert_eq!(
-            classify_recovery(Some(202), Some(&serde_json::json!({"type": "pending"})), "s1"),
+            classify_recovery(
+                Some(202),
+                Some(&serde_json::json!({"type": "pending"})),
+                "s1"
+            ),
             Recovery::Pending
         );
         assert_eq!(classify_recovery(Some(404), None, "s1"), Recovery::Pending);

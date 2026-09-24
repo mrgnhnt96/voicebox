@@ -48,7 +48,9 @@ pub fn cancel_message() -> String {
 /// A server message, reduced to what the client acts on.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServerEvent {
-    Ready { session_id: String },
+    Ready {
+        session_id: String,
+    },
     /// The raw `final` event; validate it with [`is_valid_final`].
     Final(Value),
     Error(String),
@@ -94,10 +96,7 @@ pub fn parse_server_event(text: &str) -> ServerEvent {
 pub fn is_valid_final(event: &Value, session_id: &str) -> bool {
     event.get("type").and_then(Value::as_str) == Some("final")
         && event.get("refinement_complete") == Some(&Value::Bool(true))
-        && event
-            .pointer("/capture/id")
-            .and_then(Value::as_str)
-            == Some(session_id)
+        && event.pointer("/capture/id").and_then(Value::as_str) == Some(session_id)
         && event
             .pointer("/capture/transcript_raw")
             .map(Value::is_string)

@@ -21,10 +21,19 @@ pub fn f32_to_i16(sample: f32) -> i16 {
 }
 
 /// Average interleaved channels into mono s16, calling `emit` per frame.
-pub fn downmix(data: &[f32], channels: usize, mut emit: impl FnMut(i16)) {
+/// Runs on the realtime audio thread: no allocation.
+#[inline]
+pub fn downmix<T>(data: &[T], channels: usize, mut emit: impl FnMut(i16))
+where
+    T: cpal::Sample,
+    f32: cpal::FromSample<T>,
+{
     let channels = channels.max(1);
     for frame in data.chunks_exact(channels) {
-        let sum: f32 = frame.iter().sum();
+        let mut sum = 0.0f32;
+        for &sample in frame {
+            sum += sample.to_sample::<f32>();
+        }
         emit(f32_to_i16(sum / channels as f32));
     }
 }
@@ -199,11 +208,14 @@ mod tests {
     #[test]
     fn downmix_averages_channels() {
         let mut out = Vec::new();
-        downmix(&[1.0, 0.0, -1.0, -1.0], 2, |s| out.push(s));
+        downmix(&[1.0f32, 0.0, -1.0, -1.0], 2, |s| out.push(s));
         assert_eq!(out, vec![f32_to_i16(0.5), -i16::MAX]);
         let mut mono = Vec::new();
-        downmix(&[0.5, -0.5], 1, |s| mono.push(s));
+        downmix(&[0.5f32, -0.5], 1, |s| mono.push(s));
         assert_eq!(mono, vec![f32_to_i16(0.5), f32_to_i16(-0.5)]);
+        let mut ints = Vec::new();
+        downmix(&[i16::MAX, 0i16], 2, |s| ints.push(s));
+        assert!((ints[0] - i16::MAX / 2).abs() <= 1);
     }
 
     #[test]
@@ -222,9 +234,15 @@ mod tests {
     #[test]
     fn saved_native_device_is_found_and_anything_else_means_default() {
         let names = vec!["MacBook Pro Microphone".to_string(), "AirPods".to_string()];
-        assert_eq!(pick_device(&names, Some(&native_device_id("AirPods"))), Some(1));
+        assert_eq!(
+            pick_device(&names, Some(&native_device_id("AirPods"))),
+            Some(1)
+        );
         assert_eq!(pick_device(&names, None), None);
-        assert_eq!(pick_device(&names, Some(&native_device_id("Unplugged"))), None);
+        assert_eq!(
+            pick_device(&names, Some(&native_device_id("Unplugged"))),
+            None
+        );
         // A legacy WebKit media device id.
         assert_eq!(pick_device(&names, Some("3f9a0c1d")), None);
         assert_eq!(pick_device(&names, Some("AirPods")), None);

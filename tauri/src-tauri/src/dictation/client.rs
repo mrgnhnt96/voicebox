@@ -79,10 +79,6 @@ impl StreamClient {
         self.finish_sent
     }
 
-    pub fn session_id(&self) -> Option<&str> {
-        self.session_id.as_deref()
-    }
-
     pub fn outcome(&self) -> Option<&Outcome> {
         self.outcome.as_ref()
     }
@@ -102,7 +98,12 @@ impl StreamClient {
     }
 
     fn maybe_start(&mut self) -> Vec<Action> {
-        match (self.outcome.is_none(), self.opened, self.start_sent, self.sample_rate) {
+        match (
+            self.outcome.is_none(),
+            self.opened,
+            self.start_sent,
+            self.sample_rate,
+        ) {
             (true, true, false, Some(rate)) => {
                 self.start_sent = true;
                 vec![Action::Text(protocol::start_message(rate))]
@@ -159,8 +160,7 @@ impl StreamClient {
                 self.ready = true;
                 self.session_id = Some(session_id);
                 self.pending_bytes = 0;
-                let mut actions: Vec<Action> =
-                    self.pending.drain(..).map(Action::Binary).collect();
+                let mut actions: Vec<Action> = self.pending.drain(..).map(Action::Binary).collect();
                 if self.finish_requested {
                     self.finish_sent = true;
                     actions.push(Action::Text(protocol::finish_message()));

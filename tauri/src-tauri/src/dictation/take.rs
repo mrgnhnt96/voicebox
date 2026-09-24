@@ -27,10 +27,15 @@ pub enum PillEvent {
     Preparing,
     /// The microphone is delivering sound.
     Recording,
-    Transcribing { elapsed_ms: u64 },
+    Transcribing {
+        elapsed_ms: u64,
+    },
     Refining,
     Done,
-    Error { message: String, visible_ms: u64 },
+    Error {
+        message: String,
+        visible_ms: u64,
+    },
 }
 
 impl PillEvent {
@@ -115,7 +120,9 @@ where
                 env.emit(PillEvent::error(delivery::SHORT_RECORDING_MESSAGE));
                 return;
             }
-            eprintln!("[dictation] streaming unavailable ({reason}); transcribing the complete recording");
+            eprintln!(
+                "[dictation] streaming unavailable ({reason}); transcribing the complete recording"
+            );
             batch(env, recorded).await;
         }
         Outcome::Cancelled => {
@@ -169,7 +176,11 @@ async fn batch<E: TakeEnv>(env: &E, recorded: Recorded) {
         .get("auto_refine")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let Some(id) = capture.get("id").and_then(Value::as_str).map(str::to_string) else {
+    let Some(id) = capture
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    else {
         return env.emit(PillEvent::error("Upload returned no capture"));
     };
     if !auto_refine {
@@ -223,7 +234,12 @@ mod tests {
         }
         fn paste(&self, text: String) -> impl Future<Output = Result<bool, String>> + Send {
             self.pasted.lock().unwrap().push(text);
-            let result = self.paste_result.lock().unwrap().clone().unwrap_or(Ok(true));
+            let result = self
+                .paste_result
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or(Ok(true));
             async move { result }
         }
         fn fetch_result(&self, _session_id: String) -> impl Future<Output = Recovery> + Send {
@@ -246,7 +262,10 @@ mod tests {
                 .unwrap_or_else(|| Err("no upload configured".into()));
             async move { result }
         }
-        fn refine(&self, _capture_id: String) -> impl Future<Output = Result<Value, String>> + Send {
+        fn refine(
+            &self,
+            _capture_id: String,
+        ) -> impl Future<Output = Result<Value, String>> + Send {
             let result = self
                 .refine_result
                 .lock()
@@ -311,7 +330,9 @@ mod tests {
         assert_eq!(*env.accessibility.lock().unwrap(), 1);
         assert_eq!(
             env.events(),
-            vec![PillEvent::error("Text saved in Captures. Accessibility permission required")]
+            vec![PillEvent::error(
+                "Text saved in Captures. Accessibility permission required"
+            )]
         );
     }
 
@@ -379,11 +400,9 @@ mod tests {
             "id": "c1", "transcript_raw": "hello", "transcript_refined": null,
             "auto_refine": false, "allow_auto_paste": true
         })));
-        settle(
-            &env,
-            Outcome::FailedBeforeFinish("closed".into()),
-            async { Some(recorded(1.0)) },
-        )
+        settle(&env, Outcome::FailedBeforeFinish("closed".into()), async {
+            Some(recorded(1.0))
+        })
         .await;
         let uploads = env.uploads.lock().unwrap().clone();
         assert_eq!(uploads.len(), 1);
@@ -404,11 +423,9 @@ mod tests {
         *env.refine_result.lock().unwrap() = Some(Ok(json!({
             "id": "c1", "transcript_raw": "hello", "transcript_refined": "Hello."
         })));
-        settle(
-            &env,
-            Outcome::FailedBeforeFinish("closed".into()),
-            async { Some(recorded(1.0)) },
-        )
+        settle(&env, Outcome::FailedBeforeFinish("closed".into()), async {
+            Some(recorded(1.0))
+        })
         .await;
         assert_eq!(env.events(), vec![PillEvent::Refining, PillEvent::Done]);
         assert_eq!(*env.updated.lock().unwrap(), vec!["c1".to_string()]);
@@ -419,11 +436,9 @@ mod tests {
     async fn batch_upload_errors_are_translated() {
         let env = FakeEnv::default();
         *env.upload_result.lock().unwrap() = Some(Err("Could not decode audio".into()));
-        settle(
-            &env,
-            Outcome::FailedBeforeFinish("closed".into()),
-            async { Some(recorded(1.0)) },
-        )
+        settle(&env, Outcome::FailedBeforeFinish("closed".into()), async {
+            Some(recorded(1.0))
+        })
         .await;
         assert_eq!(
             env.events(),
@@ -435,11 +450,9 @@ mod tests {
     async fn short_take_is_canceled_with_a_brief_notice() {
         let env = FakeEnv::default();
         settle(&env, Outcome::Cancelled, async { Some(recorded(0.2)) }).await;
-        settle(
-            &env,
-            Outcome::FailedBeforeFinish("closed".into()),
-            async { Some(recorded(0.2)) },
-        )
+        settle(&env, Outcome::FailedBeforeFinish("closed".into()), async {
+            Some(recorded(0.2))
+        })
         .await;
         assert!(env.uploads.lock().unwrap().is_empty());
         let brief = PillEvent::Error {
@@ -453,7 +466,10 @@ mod tests {
     async fn cancelled_take_without_audio_stays_silent() {
         let env = FakeEnv::default();
         settle(&env, Outcome::Cancelled, async { None }).await;
-        settle(&env, Outcome::FailedBeforeFinish("x".into()), async { None }).await;
+        settle(&env, Outcome::FailedBeforeFinish("x".into()), async {
+            None
+        })
+        .await;
         assert!(env.events().is_empty());
     }
 
