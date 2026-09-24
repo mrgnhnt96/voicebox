@@ -244,11 +244,12 @@ _PERSONAL = """The earlier conversation shows how this speaker wants their dicta
 - Never copy words from the examples that the speaker did not say in this transcript."""
 
 
-def build_refinement_prompt(flags: RefinementFlags, personal: bool = False) -> str:
+def build_refinement_prompt(flags: RefinementFlags, personal: bool = False, notes: str | None = None) -> str:
     """Assemble the system prompt for a given flag combination.
 
     ``personal`` is set when the user's own examples go with the transcript;
-    they allow restructuring that the default prompt forbids.
+    they allow restructuring that the default prompt forbids. ``notes`` are
+    rules summarized from the user's older examples.
     """
     learned = None
     if flags.punctuation_style == "learned":
@@ -278,6 +279,8 @@ def build_refinement_prompt(flags: RefinementFlags, personal: bool = False) -> s
 
     if personal:
         sections.append(_PERSONAL)
+    if notes:
+        sections.append(notes)
 
     if len(sections) == 1:
         # No refinement toggles enabled — nothing meaningful to do, but the
@@ -385,8 +388,11 @@ async def refine_transcript(
     use_personal_model: bool = True,
     use_personal_examples: bool = True,
     extra_examples: list[tuple[str, str]] | None = None,
+    correction_notes: list[str] | None = None,
 ) -> tuple[str, str]:
     """Run the transcript through the LLM with the built system prompt.
+
+    ``correction_notes`` replaces the saved notes, for checking a new version.
 
     Returns:
         (refined_text, llm_model_size) — so callers can persist which model
@@ -404,15 +410,17 @@ async def refine_transcript(
 
         adapter_path = active_adapter(resolved_size, flags.to_dict())
     options = {"adapter_path": adapter_path} if adapter_path else {}
-    personal = []
+    personal, notes = [], None
     if use_personal_examples:
+        from .correction_notes import prompt_section as notes_section
         from .personal_examples import for_prompt
 
         personal = for_prompt(extra=extra_examples)
+        notes = notes_section(correction_notes)
     # Whisper ends every transcript with a period. Hide it, in the user's
     # examples too, so the ending follows how they write ("3. Do chores").
     personal = [(_without_final_period(said), meant) for said, meant in personal]
-    system_prompt = build_refinement_prompt(flags, personal=bool(personal))
+    system_prompt = build_refinement_prompt(flags, personal=bool(personal), notes=notes)
     arguments = dict(
         prompt=_without_final_period(cleaned_input),
         system=system_prompt,
