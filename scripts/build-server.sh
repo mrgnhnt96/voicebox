@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the Python server binary and copy it into the Tauri sidecar directory
+# Build the Python server folder and copy it where the Tauri bundle picks it up
 
 set -e
 
@@ -22,20 +22,16 @@ fi
 # Create binaries directory if it doesn't exist
 mkdir -p ../tauri/src-tauri/binaries
 
-copy_sidecar() {
-    local name="$1"
-
-    if [ -f "dist/${name}" ]; then
-        cp "dist/${name}" "../tauri/src-tauri/binaries/${name}-${PLATFORM}"
-        chmod +x "../tauri/src-tauri/binaries/${name}-${PLATFORM}"
-        echo "Built ${name}-${PLATFORM}"
-    else
-        echo "Error: ${name} binary not found in dist/"
-        exit 1
-    fi
-}
-
+# The server is a PyInstaller folder (executable plus _internal/). Tauri copies
+# it into Voicebox.app/Contents/Resources (see bundle.macOS.files).
 python build_binary.py
-copy_sidecar voicebox-server
+rm -rf ../tauri/src-tauri/binaries/voicebox-server ../tauri/src-tauri/binaries/voicebox-server-*
+if [ ! -x dist/voicebox-server/voicebox-server ]; then
+    echo "Error: dist/voicebox-server/voicebox-server not found"
+    exit 1
+fi
+# ditto keeps the symlinks PyInstaller creates between bundled libraries.
+ditto dist/voicebox-server ../tauri/src-tauri/binaries/voicebox-server
+echo "Built voicebox-server for ${PLATFORM}"
 
 echo "Build complete!"

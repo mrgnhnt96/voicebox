@@ -322,10 +322,14 @@ async fn start_server(
     println!("Starting voicebox-server sidecar");
     println!("Data directory: {:?}", data_dir);
 
-    let sidecar_result = app.shell().sidecar("voicebox-server");
+    let sidecar_result = app
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())
+        .and_then(|dir| server_process::bundled_executable(&dir));
 
     let mut sidecar = match sidecar_result {
-        Ok(s) => s,
+        Ok(path) => app.shell().command(path),
         Err(e) => {
             eprintln!("Failed to get sidecar: {}", e);
 

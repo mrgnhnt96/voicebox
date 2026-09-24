@@ -21,7 +21,11 @@ def is_apple_silicon():
 
 
 def build_server():
-    """Build the Python server as a standalone onefile binary (Apple Silicon only)."""
+    """Build the Python server as a folder bundle (Apple Silicon only).
+
+    A one-file build unpacks every library to a temp dir on each launch,
+    which cost several seconds of app startup. The folder build runs in place.
+    """
     if not is_apple_silicon():
         raise SystemExit("voicebox-server builds on Apple Silicon (arm64 macOS) only.")
 
@@ -30,7 +34,9 @@ def build_server():
 
     args = [
         "server.py",  # Use server.py as entry point instead of main.py
-        "--onefile",
+        "--onedir",
+        # Nothing to decompress at launch, and UPX would break code signatures.
+        "--noupx",
         "--name",
         binary_name,
         # Include service packages used by optional flows and subprocess workers.
@@ -196,7 +202,7 @@ def build_server():
 
     PyInstaller.__main__.run(args)
 
-    logger.info("Binary built in %s", backend_dir / "dist" / binary_name)
+    logger.info("Server built in %s", backend_dir / "dist" / binary_name / binary_name)
 
 
 if __name__ == "__main__":
