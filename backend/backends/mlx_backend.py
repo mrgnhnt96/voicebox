@@ -24,7 +24,7 @@ from .base import (
     model_load_progress,
 )
 from ..services.mlx_thread import run_on_mlx_thread, clear_mlx_cache
-from . import whisper_audio
+from . import mlx_whisper_loader, whisper_audio
 from ..utils.cache import get_cache_key, get_cached_voice_prompt, cache_voice_prompt
 
 
@@ -332,12 +332,12 @@ class MLXSTTBackend:
         is_cached = self._is_model_cached(model_size)
 
         with model_load_progress(progress_model_name, is_cached):
-            from mlx_audio.stt import load
-
             model_name = WHISPER_HF_REPOS.get(model_size, f"openai/whisper-{model_size}")
             logger.info("Loading MLX Whisper model %s...", model_size)
 
-            self.model = load(model_name)
+            # mlx_audio.stt.load, minus imports Whisper never uses; they were
+            # most of the packaged server's startup load time.
+            self.model = mlx_whisper_loader.load_whisper(model_name)
 
         self.model_size = model_size
         logger.info("MLX Whisper model %s loaded successfully", model_size)

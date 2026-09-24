@@ -111,3 +111,17 @@ async def test_empty_samples_are_rejected_before_inference(stt):
     with pytest.raises(ValueError):
         await stt.transcribe_array(np.zeros(0, dtype=np.int16), 16000, "en", "turbo")
     assert stt.model.calls == []
+
+
+def test_load_goes_through_the_lean_whisper_loader(monkeypatch):
+    from backend.backends import mlx_backend, mlx_whisper_loader
+
+    loaded = []
+    monkeypatch.setattr(mlx_whisper_loader, "load_whisper", lambda repo: loaded.append(repo) or FakeWhisper())
+    backend = mlx_backend.MLXSTTBackend("base")
+
+    backend._load_model_sync("turbo")
+
+    assert loaded == ["openai/whisper-large-v3-turbo"]
+    assert isinstance(backend.model, FakeWhisper)
+    assert backend.model_size == "turbo"
