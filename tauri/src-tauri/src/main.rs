@@ -15,6 +15,7 @@ mod keyboard_layout;
 mod speak_monitor;
 mod server_process;
 mod synthetic_keys;
+mod text_insert;
 
 use std::sync::Mutex;
 use tauri::{command, State, Manager, WindowEvent, Emitter, Listener, RunEvent, WebviewUrl, WebviewWindowBuilder, PhysicalPosition};
