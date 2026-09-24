@@ -69,6 +69,8 @@ struct ActiveTake {
 #[derive(Default)]
 pub struct DictationState {
     config: Mutex<Config>,
+    /// Where the chosen microphone is remembered between launches.
+    device_file: OnceLock<std::path::PathBuf>,
     active: Mutex<Option<ActiveTake>>,
     next_take: AtomicU64,
     http: OnceLock<reqwest::Client>,
@@ -290,14 +292,65 @@ pub fn dictation_configure(
     server_url: Option<String>,
     origin: Option<String>,
     input_device_id: Option<String>,
+    device_known: Option<bool>,
 ) -> Result<(), String> {
     let mut config = state.config.lock().map_err(|e| e.to_string())?;
     config.server_url = server_url
         .filter(|u| !u.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_SERVER_URL.to_string());
     config.origin = origin.filter(|o| !o.is_empty() && o != "null");
-    config.input_device_id = input_device_id.filter(|id| !id.is_empty());
+    let known = device_known.unwrap_or(true);
+    let device = next_device(
+        config.input_device_id.clone(),
+        known,
+        input_device_id.filter(|id| !id.is_empty()),
+    );
+    if known && device != config.input_device_id {
+        if let Some(path) = state.device_file.get() {
+            save_device(path, device.as_deref());
+        }
+    }
+    config.input_device_id = device;
     Ok(())
+}
+
+/// Remember the chosen microphone across launches. The webview only learns
+/// the setting once the server is up (~30 s after launch); without this the
+/// first take after launch used the macOS default input instead.
+pub fn restore(app: &AppHandle) {
+    let Ok(dir) = app.path().app_config_dir() else { return };
+    let path = dir.join("dictation-device.txt");
+    let state = app.state::<DictationState>();
+    if let Ok(mut config) = state.config.lock() {
+        config.input_device_id = load_device(&path);
+    }
+    let _ = state.device_file.set(path);
+}
+
+fn load_device(path: &std::path::Path) -> Option<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+}
+
+fn save_device(path: &std::path::Path, id: Option<&str>) {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Err(e) = std::fs::write(path, id.unwrap_or("")) {
+        eprintln!("[dictation] could not remember the microphone: {e}");
+    }
+}
+
+/// The microphone to use after a configure call. Settings that haven't loaded
+/// yet say nothing about the device, so the saved choice stands.
+fn next_device(current: Option<String>, known: bool, sent: Option<String>) -> Option<String> {
+    if known {
+        sent
+    } else {
+        current
+    }
 }
 
 /// Stop the current take (the pill's stop button).
@@ -312,4 +365,56 @@ pub async fn list_input_devices() -> Result<Vec<NativeInputDevice>, String> {
     tauri::async_runtime::spawn_blocking(capture::list_input_devices)
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod saved_device_tests {
+    use super::*;
+
+    #[test]
+    fn a_saved_microphone_is_restored_at_launch() {
+        let dir = tempfile_dir();
+        let path = dir.join("dictation-device.txt");
+        save_device(&path, Some("native:MacBook Pro Microphone"));
+        assert_eq!(load_device(&path), Some("native:MacBook Pro Microphone".to_string()));
+    }
+
+    #[test]
+    fn the_system_default_is_saved_as_no_device() {
+        let dir = tempfile_dir();
+        let path = dir.join("dictation-device.txt");
+        save_device(&path, Some("native:AirPods"));
+        save_device(&path, None);
+        assert_eq!(load_device(&path), None);
+    }
+
+    #[test]
+    fn a_missing_file_means_the_system_default() {
+        let dir = tempfile_dir();
+        assert_eq!(load_device(&dir.join("missing.txt")), None);
+    }
+
+    #[test]
+    fn settings_that_have_not_loaded_keep_the_saved_microphone() {
+        let saved = Some("native:MacBook Pro Microphone".to_string());
+        assert_eq!(next_device(saved.clone(), false, None), saved);
+        assert_eq!(next_device(saved.clone(), true, None), None);
+        assert_eq!(
+            next_device(saved, true, Some("native:AirPods".to_string())),
+            Some("native:AirPods".to_string())
+        );
+    }
+
+    fn tempfile_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "voicebox-device-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 }

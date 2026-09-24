@@ -1577,6 +1577,7 @@ pub fn run() {
         .manage(audio_output::AudioOutputState::new())
         .manage(dictation::DictationState::default())
         .setup(|app| {
+            dictation::restore(app.handle());
             #[cfg(desktop)]
             {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;

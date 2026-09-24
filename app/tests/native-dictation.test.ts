@@ -73,6 +73,18 @@ test('pushes the server, origin and saved native microphone to Rust', async () =
     serverUrl: 'http://127.0.0.1:17493',
     origin: 'tauri://localhost',
     inputDeviceId: 'native:AirPods',
+    deviceKnown: true,
+  });
+});
+
+test('does not replace the remembered microphone before settings load', async () => {
+  settings = undefined as unknown as typeof settings;
+  await mount();
+  expect(invoke).toHaveBeenCalledWith('dictation_configure', {
+    serverUrl: 'http://127.0.0.1:17493',
+    origin: 'tauri://localhost',
+    inputDeviceId: null,
+    deviceKnown: false,
   });
 });
 
