@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/icon-dark.webp" alt="Voicebox" width="120" height="120" />
+  <img src="docs/assets/icon-dark.webp" alt="Voicebox" width="120" height="120" />
 </p>
 
 <h1 align="center">Voicebox</h1>
@@ -106,8 +106,6 @@ Full API documentation is at `http://127.0.0.1:17493/docs` while the server is r
 ---
 
 ## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full setup.
 
 ### Quick Start
 
