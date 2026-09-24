@@ -26,7 +26,9 @@ mock.module('../src/stores/serverStore', () => ({
   ),
 }));
 
-const { useNativeDictationSession } = await import('../src/lib/hooks/useNativeDictationSession');
+const { SLOW_MICROPHONE_MS, useNativeDictationSession } = await import(
+  '../src/lib/hooks/useNativeDictationSession'
+);
 
 let hook: ReturnType<typeof useNativeDictationSession>;
 let renderer: ReturnType<typeof create> | undefined;
@@ -90,7 +92,7 @@ test('follows the native take through the pill states', async () => {
   await mount();
   expect(hook.pillState).toBe('hidden');
   await send({ take: 1, state: 'preparing' });
-  expect(hook.pillState).toBe('preparing');
+  expect(hook.pillState).toBe('recording');
   expect(hook.isRecording).toBe(true);
   await send({ take: 1, state: 'recording' });
   expect(hook.pillState).toBe('recording');
@@ -144,4 +146,33 @@ test('unmount releases the event listener', async () => {
   await act(async () => renderer?.unmount());
   renderer = undefined;
   expect(unlisten).toHaveBeenCalled();
+});
+
+const wait = (ms: number) => act(async () => new Promise((resolve) => setTimeout(resolve, ms)));
+
+test('shows recording at key-down when the microphone answers quickly', async () => {
+  await mount();
+  await send({ take: 1, state: 'preparing' });
+  expect(hook.pillState).toBe('recording');
+  await send({ take: 1, state: 'recording' });
+  await wait(SLOW_MICROPHONE_MS + 50);
+  // Sound arrived in time, so the pill never flashed "Opening microphone".
+  expect(hook.pillState).toBe('recording');
+});
+
+test('says the microphone is opening only while a slow device is silent', async () => {
+  await mount();
+  await send({ take: 1, state: 'preparing' });
+  await wait(SLOW_MICROPHONE_MS + 50);
+  expect(hook.pillState).toBe('preparing');
+  await send({ take: 1, state: 'recording' });
+  expect(hook.pillState).toBe('recording');
+});
+
+test('a take that ends before the device answers does not flip back to opening', async () => {
+  await mount();
+  await send({ take: 1, state: 'preparing' });
+  await send({ take: 1, state: 'transcribing', elapsed_ms: 200 });
+  await wait(SLOW_MICROPHONE_MS + 50);
+  expect(hook.pillState).toBe('transcribing');
 });

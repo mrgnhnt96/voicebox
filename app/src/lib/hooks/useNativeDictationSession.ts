@@ -33,6 +33,9 @@ const ELAPSED_TICK_MS = 250;
  * the pill and tells Rust where the server is and which microphone to use.
  * The webview never opens browser audio for dictation.
  */
+/** How long a microphone may stay silent before the pill says it's opening. */
+export const SLOW_MICROPHONE_MS = 300;
+
 export function useNativeDictationSession(): NativeDictationSession {
   const serverUrl = useServerStore((state) => state.serverUrl);
   const { settings } = useCaptureSettings();
@@ -45,11 +48,16 @@ export function useNativeDictationSession(): NativeDictationSession {
   const startedAtRef = useRef<number | null>(null);
   const currentTakeRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const slowMicrophoneRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
+    }
+    if (slowMicrophoneRef.current !== null) {
+      clearTimeout(slowMicrophoneRef.current);
+      slowMicrophoneRef.current = null;
     }
   }, []);
 
@@ -76,7 +84,14 @@ export function useNativeDictationSession(): NativeDictationSession {
           setLiveElapsedMs(0);
           setFrozenElapsedMs(0);
           setErrorMessage(null);
-          setPillState('preparing');
+          // Most microphones deliver sound within ~0.1 s, so show recording
+          // right away; only a device still silent after SLOW_MICROPHONE_MS
+          // (e.g. a Bluetooth headset switching to call mode) says it's opening.
+          setPillState('recording');
+          slowMicrophoneRef.current = setTimeout(() => {
+            slowMicrophoneRef.current = null;
+            setPillState('preparing');
+          }, SLOW_MICROPHONE_MS);
           break;
         case 'recording':
           setPillState('recording');
