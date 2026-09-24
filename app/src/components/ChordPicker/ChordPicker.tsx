@@ -1,6 +1,6 @@
-import { Keyboard } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ChordKeys } from '@/components/Settings/ChordKeys';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,13 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  canonicalKeyFromEvent,
-  displayLabelForKey,
-  modifierSideHint,
-  sortChordKeys,
-} from '@/lib/utils/keyCodes';
-import { cn } from '@/lib/utils/cn';
+import { canonicalKeyFromEvent, sortChordKeys } from '@/lib/utils/keyCodes';
 
 interface ChordPickerProps {
   open: boolean;
@@ -27,6 +21,8 @@ interface ChordPickerProps {
   initialKeys: string[];
   onSave: (keys: string[]) => void;
   onCancel: () => void;
+  /** Extra notes under the capture area, such as a related shortcut. */
+  children?: ReactNode;
 }
 
 /**
@@ -47,6 +43,7 @@ export function ChordPicker({
   initialKeys,
   onSave,
   onCancel,
+  children,
 }: ChordPickerProps) {
   const { t } = useTranslation();
   // Currently held set, peak set captured this session, and "is the user
@@ -142,68 +139,54 @@ export function ChordPicker({
         if (!next) onCancel();
       }}
     >
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description ? <DialogDescription>{description}</DialogDescription> : null}
+      <DialogContent className="gap-[18px] sm:max-w-[480px]">
+        <DialogHeader className="space-y-1.5">
+          <DialogTitle className="text-lg">{title}</DialogTitle>
+          {description ? (
+            <DialogDescription className="text-[13px] leading-normal">
+              {description}
+            </DialogDescription>
+          ) : null}
         </DialogHeader>
 
         <div
           ref={captureRef}
           tabIndex={-1}
-          className="rounded-lg border border-border bg-muted/30 p-6 outline-none focus:ring-2 focus:ring-accent"
+          aria-live="polite"
+          className="flex min-h-[110px] flex-col items-center justify-center gap-3 rounded-[10px] border border-dashed border-accent bg-accent/5 px-4 py-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Keyboard className="h-3.5 w-3.5" />
-              {pressed.size > 0 ? t('captures.chord.capturing') : t('captures.chord.pressShortcut')}
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-1.5 min-h-[2.5rem]">
-              {displayKeys.length === 0 ? (
-                <span className="text-sm text-muted-foreground italic">
-                  {t('captures.chord.noKeys')}
-                </span>
-              ) : (
-                displayKeys.map((k) => <ChordKey key={k} name={k} />)
-              )}
-            </div>
-            {unsupportedAttempt ? (
-              <p className="text-xs text-destructive">
-                {t('captures.chord.unsupported', { key: unsupportedAttempt })}
-              </p>
-            ) : null}
-          </div>
+          {displayKeys.length === 0 ? (
+            <span className="font-mono text-sm text-muted-foreground">
+              {t('captures.chord.noKeys')}
+            </span>
+          ) : (
+            <ChordKeys keys={displayKeys} size="lg" />
+          )}
+          <span className="font-mono text-[11px] text-accent">
+            {pressed.size > 0
+              ? t('captures.chord.capturing')
+              : captured.length > 0 && captured !== initialKeys
+                ? t('captures.chord.captured')
+                : t('captures.chord.pressShortcut')}
+          </span>
+          {unsupportedAttempt ? (
+            <p className="text-xs text-destructive">
+              {t('captures.chord.unsupported', { key: unsupportedAttempt })}
+            </p>
+          ) : null}
         </div>
 
-        <DialogFooter>
+        {children}
+
+        <DialogFooter className="gap-2 sm:space-x-0">
           <Button variant="outline" onClick={onCancel}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={() => onSave(captured)} disabled={!canSave}>
-            {t('common.save')}
+          <Button className="font-semibold" onClick={() => onSave(captured)} disabled={!canSave}>
+            {t('captures.chord.save')}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function ChordKey({ name }: { name: string }) {
-  const side = modifierSideHint(name);
-  return (
-    <span
-      className={cn(
-        'relative inline-flex items-center justify-center h-8 min-w-[2rem] px-2',
-        'rounded-md border border-border bg-background font-mono text-sm font-medium',
-        'shadow-sm text-foreground',
-      )}
-    >
-      {displayLabelForKey(name)}
-      {side ? (
-        <span className="absolute -top-1 -right-1 h-3.5 min-w-[0.875rem] px-0.5 rounded-sm bg-accent text-[8px] font-bold leading-none flex items-center justify-center text-accent-foreground">
-          {side}
-        </span>
-      ) : null}
-    </span>
   );
 }

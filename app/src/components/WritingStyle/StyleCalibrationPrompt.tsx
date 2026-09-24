@@ -37,7 +37,7 @@ export function StyleCalibrationPrompt({ hasCaptures }: { hasCaptures: boolean }
   return (
     <>
       {show && (
-        <div className="mx-1 mb-3 rounded-lg border border-accent/30 bg-accent/5 p-3 space-y-2">
+        <div className="mx-1 mb-3 space-y-2 rounded-lg border border-accent/20 bg-accent/[0.04] p-3.5">
           <p className="text-sm font-medium">{t('writingStyle.prompt.title')}</p>
           <p className="text-xs text-muted-foreground">{t('writingStyle.prompt.description')}</p>
           <div className="flex gap-2">

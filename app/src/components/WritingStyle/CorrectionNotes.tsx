@@ -59,21 +59,25 @@ export function CorrectionNotes() {
               {t('writingStyle.settings.notes.dialogDescription')}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          <ul className="space-y-2">
             {notes.map((note) => (
-              <div key={note.id} className="flex items-center gap-2 rounded-md border p-3 text-sm">
+              <li
+                key={note.id}
+                className="flex items-center gap-2 rounded-lg border border-border bg-card p-3.5 text-[13px]"
+              >
                 <p className="flex-1">{note.text}</p>
                 <Button
                   size="sm"
                   variant="ghost"
+                  className="h-7 px-2 text-xs text-muted-foreground"
                   disabled={remove.isPending}
                   onClick={() => remove.mutate(note.id)}
                 >
                   {t('writingStyle.settings.notes.remove')}
                 </Button>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </DialogContent>
       </Dialog>
     </SettingRow>

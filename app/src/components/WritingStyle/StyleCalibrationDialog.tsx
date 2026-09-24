@@ -3,28 +3,18 @@ import { Loader2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { apiClient } from '@/lib/api/client';
 import type { WritingStyleCalibrationResult, WritingStyleCalibrationStep } from '@/lib/api/types';
-import { WRITING_STYLE_KEY } from '@/lib/hooks/useWritingStyle';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
+import { WRITING_STYLE_KEY } from '@/lib/hooks/useWritingStyle';
+import { CalibrationStepView } from './CalibrationStepView';
+import { CalibrationSummary } from './CalibrationSummary';
 import { PERSONAL_EXAMPLES_KEY } from './PersonalExamples';
-import { WritingStyleHabits } from './WritingStyleHabits';
 
 /** What calibration learns from; each has a line on the start screen. */
 const CALIBRATION_CHANGES = ['falseStarts', 'order', 'grammar', 'punctuation'] as const;
-
-/** A later paragraph that still needed this much change means another run will help. */
-const SETTLED_CHANGE = 0.1;
 
 type Stage =
   | { kind: 'intro' }
@@ -105,154 +95,73 @@ export function StyleCalibrationDialog({
   };
 
   const busy = start.isPending || submit.isPending || finish.isPending;
-  const switchToLearned = () => {
-    update({ punctuation_style: 'learned' });
-    close();
-  };
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent
+        className={
+          stage.kind === 'step'
+            ? 'gap-0 p-0 sm:max-w-[760px]'
+            : 'max-h-[90vh] gap-0 overflow-y-auto p-0 sm:max-w-[660px]'
+        }
+      >
         {stage.kind === 'intro' && (
           <>
-            <DialogHeader>
-              <DialogTitle>{t('writingStyle.calibration.title')}</DialogTitle>
-              <DialogDescription>{t('writingStyle.calibration.intro')}</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-2 text-sm">
-              <p className="font-medium">{t('writingStyle.calibration.changesTitle')}</p>
-              <ul className="list-disc pl-5 space-y-0.5 text-muted-foreground">
+            <div className="space-y-2 border-b border-border px-7 pt-6 pb-[18px]">
+              <DialogTitle className="text-lg">{t('writingStyle.calibration.title')}</DialogTitle>
+              <DialogDescription className="text-[13px] leading-normal">
+                {t('writingStyle.calibration.intro')}
+              </DialogDescription>
+            </div>
+            <div className="space-y-2 px-7 py-5 text-[13px]">
+              <p className="font-mono text-[11px] uppercase text-muted-foreground">
+                {t('writingStyle.calibration.changesTitle')}
+              </p>
+              <ul className="list-disc space-y-1 pl-5 text-foreground/85">
                 {CALIBRATION_CHANGES.map((change) => (
                   <li key={change}>{t(`writingStyle.calibration.changes.${change}`)}</li>
                 ))}
               </ul>
-              <p className="text-xs text-muted-foreground">
+              <p className="pt-1 text-xs text-muted-foreground">
                 {t('writingStyle.calibration.wordsNote')}
               </p>
             </div>
-            <DialogFooter>
-              <Button variant="ghost" onClick={close}>
+            <div className="flex items-center justify-end gap-2 border-t border-border px-7 py-4">
+              <Button variant="ghost" className="text-muted-foreground" onClick={close}>
                 {t('writingStyle.calibration.notNow')}
               </Button>
-              <Button onClick={() => start.mutate()} disabled={busy}>
-                {start.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              <Button className="font-semibold" onClick={() => start.mutate()} disabled={busy}>
+                {start.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                 {t('writingStyle.calibration.start')}
               </Button>
-            </DialogFooter>
+            </div>
           </>
         )}
 
         {stage.kind === 'step' && (
-          <>
-            <DialogHeader>
-              <DialogTitle>
-                {t('writingStyle.calibration.progress', {
-                  current: stage.step.step + 1,
-                  total: stage.step.total,
-                })}
-              </DialogTitle>
-              <DialogDescription>{t('writingStyle.calibration.instructions')}</DialogDescription>
-            </DialogHeader>
-            {stage.step.said && (
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {t('writingStyle.calibration.said')}
-                </p>
-                <p className="rounded-md bg-muted/40 p-3 text-sm text-muted-foreground">
-                  {stage.step.said}
-                </p>
-              </div>
-            )}
-            <div className="space-y-1">
-              <label
-                htmlFor="calibration-draft"
-                className="text-xs font-medium text-muted-foreground"
-              >
-                {t('writingStyle.calibration.paragraphLabel')}
-              </label>
-              <Textarea
-                id="calibration-draft"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                disabled={busy}
-                className="min-h-[140px] text-sm leading-relaxed"
-                autoFocus
-              />
-              {submit.isPending && (
-                <p className="text-xs text-muted-foreground">
-                  {t('writingStyle.calibration.cleaning')}
-                </p>
-              )}
-            </div>
-            {stage.step.habits.length > 0 && (
-              <div className="text-xs text-muted-foreground space-y-1">
-                <p className="font-medium">{t('writingStyle.calibration.pickedUp')}</p>
-                <WritingStyleHabits habits={stage.step.habits} />
-              </div>
-            )}
-            <DialogFooter>
-              {/* Submits the box as it stands, edited or not. */}
-              <Button
-                disabled={busy || !draft.trim()}
-                onClick={() => submit.mutate({ sessionId: stage.step.session_id, written: draft })}
-              >
-                {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                {t('writingStyle.calibration.looksLikeMe')}
-              </Button>
-            </DialogFooter>
-          </>
+          <CalibrationStepView
+            step={stage.step}
+            draft={draft}
+            onDraftChange={setDraft}
+            busy={busy}
+            submitting={submit.isPending}
+            onSubmit={(written) => submit.mutate({ sessionId: stage.step.session_id, written })}
+          />
         )}
 
         {stage.kind === 'summary' && (
-          <>
-            <DialogHeader>
-              <DialogTitle>{t('writingStyle.summary.title')}</DialogTitle>
-              <DialogDescription>
-                {stage.changes.slice(-2).some((change) => change > SETTLED_CHANGE)
-                  ? t('writingStyle.summary.runAgain')
-                  : t('writingStyle.summary.settled')}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 text-sm">
-              <p>{t('writingStyle.summary.examplesSaved')}</p>
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {t('writingStyle.summary.habitsTitle')}
-                </p>
-                {stage.result.status.habits.length > 0 ? (
-                  <WritingStyleHabits habits={stage.result.status.habits} />
-                ) : (
-                  <p className="text-muted-foreground">{t('writingStyle.summary.noHabits')}</p>
-                )}
-              </div>
-              {stage.result.before !== stage.result.after && (
-                <div className="grid gap-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {t('writingStyle.summary.before')}
-                  </p>
-                  <p className="rounded-md border p-3 text-muted-foreground">
-                    {stage.result.before}
-                  </p>
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {t('writingStyle.summary.after')}
-                  </p>
-                  <p className="rounded-md border border-accent/40 p-3">{stage.result.after}</p>
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              {settings?.punctuation_style === 'learned' ? (
-                <Button onClick={close}>{t('writingStyle.summary.done')}</Button>
-              ) : (
-                <>
-                  <Button variant="ghost" onClick={close}>
-                    {t('writingStyle.summary.keepCurrent')}
-                  </Button>
-                  <Button onClick={switchToLearned}>{t('writingStyle.summary.useLearned')}</Button>
-                </>
-              )}
-            </DialogFooter>
-          </>
+          <CalibrationSummary
+            changes={stage.changes}
+            result={stage.result}
+            learnedStyleOn={settings?.punctuation_style === 'learned'}
+            restarting={start.isPending}
+            onRunAgain={() => start.mutate()}
+            onUseLearned={() => {
+              update({ punctuation_style: 'learned' });
+              close();
+            }}
+            onClose={close}
+          />
         )}
       </DialogContent>
     </Dialog>

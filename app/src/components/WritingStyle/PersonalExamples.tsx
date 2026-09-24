@@ -15,17 +15,20 @@ import { apiClient } from '@/lib/api/client';
 
 export const PERSONAL_EXAMPLES_KEY = ['personal-examples'] as const;
 
-/** The "what you said, what you meant" examples cleanup learns from. */
-export function PersonalExamples() {
-  const { t } = useTranslation();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const examples = useQuery({
+/** Every "what you said, what you meant" example, from calibration and corrections. */
+export function usePersonalExamples() {
+  return useQuery({
     queryKey: PERSONAL_EXAMPLES_KEY,
     queryFn: () => apiClient.listPersonalExamples(),
   });
-  const remove = useMutation({
+}
+
+/** Removes one example so cleanup stops learning from it. */
+export function useRemovePersonalExample() {
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  return useMutation({
     mutationFn: (id: string) => apiClient.removePersonalExample(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: PERSONAL_EXAMPLES_KEY }),
     onError: (error: Error) =>
@@ -35,6 +38,14 @@ export function PersonalExamples() {
         variant: 'destructive',
       }),
   });
+}
+
+/** The "what you said, what you meant" examples cleanup learns from. */
+export function PersonalExamples() {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const examples = usePersonalExamples();
+  const remove = useRemovePersonalExample();
   const count = examples.data?.length ?? 0;
 
   return (
@@ -59,11 +70,14 @@ export function PersonalExamples() {
               {t('writingStyle.settings.examples.dialogDescription')}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <ul className="space-y-2">
             {examples.data?.map((example) => (
-              <div key={example.id} className="rounded-md border p-3 space-y-2 text-sm">
+              <li
+                key={example.id}
+                className="space-y-2.5 rounded-lg border border-border bg-card p-3.5 text-[13px]"
+              >
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
+                  <span className="font-mono text-[11px] uppercase text-muted-foreground">
                     {example.source === 'correction'
                       ? t('writingStyle.settings.examples.fromCorrection')
                       : t('writingStyle.settings.examples.fromCalibration')}
@@ -72,27 +86,30 @@ export function PersonalExamples() {
                   <Button
                     size="sm"
                     variant="ghost"
+                    className="h-7 px-2 text-xs text-muted-foreground"
                     disabled={remove.isPending}
                     onClick={() => remove.mutate(example.id)}
                   >
                     {t('writingStyle.settings.examples.remove')}
                   </Button>
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {t('writingStyle.settings.examples.said')}
-                  </p>
-                  <p className="whitespace-pre-wrap text-muted-foreground">{example.said}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <p className="font-mono text-[11px] text-muted-foreground">
+                      {t('writingStyle.settings.examples.said')}
+                    </p>
+                    <p className="whitespace-pre-wrap text-muted-foreground">{example.said}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="font-mono text-[11px] text-accent">
+                      {t('writingStyle.settings.examples.meant')}
+                    </p>
+                    <p className="whitespace-pre-wrap">{example.meant}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {t('writingStyle.settings.examples.meant')}
-                  </p>
-                  <p className="whitespace-pre-wrap">{example.meant}</p>
-                </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </DialogContent>
       </Dialog>
     </SettingRow>

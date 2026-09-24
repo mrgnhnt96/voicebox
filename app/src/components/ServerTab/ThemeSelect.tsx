@@ -15,7 +15,7 @@ export function ThemeSelect() {
 
   return (
     <Select value={theme} onValueChange={(value) => setTheme(value as Theme)}>
-      <SelectTrigger className="h-9 w-[180px]">
+      <SelectTrigger className="h-8 w-[200px]" aria-label={t('settings.theme.label')}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -95,36 +95,34 @@ export function AccessibilityNotice() {
   if (!needsPermission) return null;
 
   return (
-    <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-3">
-      <div className="flex items-start gap-3">
-        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
-        <div className="flex-1 min-w-0 space-y-1">
-          <p className="text-sm font-medium text-foreground">
-            {t('captures.permissions.accessibility.title')}
-          </p>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            <Trans
-              i18nKey="captures.permissions.accessibility.body"
-              components={{ path: <span /> }}
-            />
-          </p>
-          <div className="flex items-center gap-2 pt-1.5">
-            <Button size="sm" onClick={openSettings} className="gap-1.5">
-              <ExternalLink className="h-3.5 w-3.5" />
-              {t('captures.permissions.accessibility.openSettings')}
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleRecheck} disabled={checking}>
-              {checking
-                ? t('captures.permissions.accessibility.rechecking')
-                : t('captures.permissions.accessibility.recheck')}
-            </Button>
-          </div>
-          {stillMissing && !checking && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 pt-1">
-              {t('captures.permissions.accessibility.stillMissing')}
-            </p>
-          )}
+    <div className="mt-3 flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/[0.06] px-3.5 py-3">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="text-[13px] font-medium text-foreground">
+          {t('captures.permissions.accessibility.title')}
+        </p>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          <Trans
+            i18nKey="captures.permissions.accessibility.body"
+            components={{ path: <span className="font-mono text-foreground/85" /> }}
+          />
+        </p>
+        <div className="flex items-center gap-2 pt-2">
+          <Button size="sm" onClick={openSettings}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            {t('captures.permissions.accessibility.openSettings')}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleRecheck} disabled={checking}>
+            {checking
+              ? t('captures.permissions.accessibility.rechecking')
+              : t('captures.permissions.accessibility.recheck')}
+          </Button>
         </div>
+        {stillMissing && !checking && (
+          <p className="pt-1 text-xs text-warning">
+            {t('captures.permissions.accessibility.stillMissing')}
+          </p>
+        )}
       </div>
     </div>
   );
