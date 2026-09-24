@@ -33,6 +33,22 @@ MLX_HF_REPOS = {
 }
 
 
+def _reuse_detokenizer(tokenizer) -> None:
+    """Build mlx-lm's streaming detokenizer once and reset it for each call.
+
+    mlx-lm builds a new one per generation, mapping all ~151k vocabulary
+    entries (~75 ms) before the first token. Generation runs one call at a
+    time on the MLX worker, so a single reset instance is safe to share.
+    """
+    shared = tokenizer._detokenizer_class(tokenizer)
+
+    def reused(_wrapper):
+        shared.reset()
+        return shared
+
+    tokenizer._detokenizer_class = reused
+
+
 def _progress_name(model_size: str) -> str:
     return f"qwen3-{model_size.lower()}"
 
@@ -132,6 +148,7 @@ class MLXQwenLLMBackend:
         # (model, tokenizer, config) when return_config=True.
         self.model = loaded[0]
         self.tokenizer = loaded[1]
+        _reuse_detokenizer(self.tokenizer)
 
         self._current_model_size = model_size
         self.model_size = model_size
