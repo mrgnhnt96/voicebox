@@ -13,6 +13,8 @@ Thank you for your interest in contributing to Voicebox! This document provides 
 
 ### Prerequisites
 
+Voicebox is a macOS app for Apple Silicon. You need an Apple Silicon Mac with [Xcode](https://developer.apple.com/xcode/) installed.
+
 - **[Bun](https://bun.sh)** - Fast JavaScript runtime and package manager
   ```bash
   curl -fsSL https://bun.sh/install | bash
@@ -27,13 +29,13 @@ Thank you for your interest in contributing to Voicebox! This document provides 
   ```bash
   rustc --version  # Check if installed
   ```
-- **[Tauri Prerequisites](https://v2.tauri.app/start/prerequisites)** - Tauri-specific system dependencies (varies by OS).
+- **[Tauri Prerequisites](https://v2.tauri.app/start/prerequisites)** - Tauri-specific system dependencies.
 
 - **Git** - Version control
 
 ### Development Setup
 
-Install [just](https://github.com/casey/just) (`brew install just`, `cargo install just`, or `winget install Casey.Just`), then:
+Install [just](https://github.com/casey/just) (`brew install just` or `cargo install just`), then:
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/voicebox.git
@@ -45,8 +47,7 @@ just dev     # starts backend + desktop app
 
 `just setup` handles everything automatically, including:
 - Creating a Python virtual environment
-- Installing Python dependencies (with CUDA PyTorch on Windows if an NVIDIA GPU is detected)
-- Installing MLX dependencies on Apple Silicon
+- Installing Python dependencies, including MLX
 - Installing JavaScript dependencies
 
 `just dev` starts the backend and desktop app together. If a backend is already running (e.g. from `just dev-backend` in another terminal), it detects it and only starts the frontend.
@@ -54,7 +55,6 @@ just dev     # starts backend + desktop app
 Other useful commands:
 
 ```bash
-just dev-web       # backend + web app (no Tauri/Rust build)
 just dev-backend   # backend only
 just dev-frontend  # Tauri app only (backend must be running)
 just kill          # stop all dev processes
@@ -65,55 +65,30 @@ just --list        # see all available commands
 > **Note:** In dev mode, the app connects to a manually-started Python server.
 > The bundled server binary is only used in production builds.
 
-#### Windows Notes
-
-The justfile works natively on Windows via PowerShell. No WSL or Git Bash required. On Windows with an NVIDIA GPU, `just setup` automatically installs CUDA-enabled PyTorch for GPU acceleration.
-
 ### Model Downloads
 
 Models are automatically downloaded from HuggingFace Hub on first use:
-- **Whisper** (transcription): Auto-downloads on first transcription
-- **Qwen3-TTS** (voice cloning): Auto-downloads on first generation (~2-4GB)
+- **Whisper** (transcription): downloads the first time you transcribe
+- **Qwen3** (refinement LLM): downloads the first time you refine
 
 First-time usage will be slower due to model downloads, but subsequent runs will use cached models.
 
 ### Building
 
-**Build production app:**
+**Build the app:**
 
 ```bash
-just build        # Build CPU server binary + Tauri installer
+just build        # Build the server sidecar binary + Tauri app
 ```
 
-On Windows, to build with CUDA support for local testing:
-
-```bash
-just build-local  # Build CPU + CUDA server binaries + Tauri installer
-```
-
-This builds the CPU sidecar (bundled with the app), the CUDA binary (placed in `%APPDATA%/sh.voicebox.app/backends/` for runtime GPU switching), and the installable Tauri app.
-
-Creates platform-specific installers (`.dmg`, `.msi`, `.AppImage`) in `tauri/src-tauri/target/release/bundle/`.
+The app bundle is written to `tauri/src-tauri/target/release/bundle/`. Voicebox is built and installed locally; there are no hosted downloads.
 
 **Individual build targets:**
 
 ```bash
-just build-server       # CPU server binary only
-just build-server-cuda  # CUDA server binary only (Windows)
+just build-server       # Server sidecar binary only
 just build-tauri        # Tauri desktop app only
-just build-web          # Web app only
 ```
-
-**Building with local Qwen3-TTS development version:**
-
-If you're actively developing or modifying the Qwen3-TTS library, set the `QWEN_TTS_PATH` environment variable to point to your local clone:
-
-```bash
-export QWEN_TTS_PATH=~/path/to/your/Qwen3-TTS
-just build-server
-```
-
-This makes PyInstaller use your local qwen-tts version instead of the pip-installed package.
 
 ### Generate OpenAPI Client
 
@@ -123,25 +98,6 @@ After starting the backend server:
 ```
 This downloads the OpenAPI schema and generates the TypeScript client in `app/src/lib/api/`
 
-### Convert Assets to Web Formats
-
-To optimize images and videos for the web, run:
-```bash
-bun run convert:assets
-```
-
-This script:
-- Converts PNG → WebP (better compression, same quality)
-- Converts MOV → WebM (VP9 codec, smaller file size)
-- Processes files in `landing/public/` and `docs/public/`
-- **Deletes original files** after successful conversion
-
-**Requirements:** Install `webp` and `ffmpeg`:
-```bash
-brew install webp ffmpeg
-```
-
-> **Note:** Run this before committing new images or videos to keep the repository size small.
 
 ## Development Workflow
 
@@ -172,8 +128,8 @@ git checkout -b fix/your-bug-fix
 Write clear, descriptive commit messages:
 
 ```bash
-git commit -m "Add feature: voice profile export"
-git commit -m "Fix: audio playback stops after 30 seconds"
+git commit -m "Add feature: capture export"
+git commit -m "Fix: paste lands in the wrong window"
 ```
 
 ### 5. Push and Create Pull Request
@@ -199,12 +155,12 @@ Then create a pull request on GitHub with:
 
 ```typescript
 // Good
-export function ProfileCard({ profile }: { profile: Profile }) {
-  return <div>{profile.name}</div>;
+export function CaptureCard({ capture }: { capture: Capture }) {
+  return <div>{capture.transcript}</div>;
 }
 
 // Avoid
-export const ProfileCard = (props) => { ... }
+export const CaptureCard = (props) => { ... }
 ```
 
 ### Python
@@ -216,12 +172,12 @@ export const ProfileCard = (props) => { ... }
 
 ```python
 # Good
-async def create_profile(name: str, language: str) -> Profile:
-    """Create a new voice profile."""
+async def create_capture(audio_path: str, language: str) -> Capture:
+    """Store a new capture."""
     ...
 
 # Avoid
-def create_profile(name, language):
+def create_capture(audio_path, language):
     ...
 ```
 
@@ -242,11 +198,11 @@ voicebox/
 │       ├── lib/          # Utilities and API client
 │       └── hooks/        # React hooks
 ├── backend/          # Python FastAPI server
-│   ├── main.py       # API routes
-│   ├── tts.py        # Voice synthesis
+│   ├── routes/       # API routes
+│   ├── services/     # Transcription, refinement, captures, learning
 │   └── ...
 ├── tauri/            # Desktop app wrapper
-│   └── src-tauri/    # Rust backend
+│   └── src-tauri/    # Rust: native audio capture, hotkey, paste
 └── scripts/          # Build scripts
 ```
 
@@ -260,7 +216,7 @@ voicebox/
 
 ### ✨ New Features
 
-- Check the roadmap in README.md and the engineering status in [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) before proposing work — it lists prioritized tasks (Tier 1 → 3), known architectural bottlenecks, and candidate TTS engines already under evaluation (including why some have been backlogged)
+- Check the engineering status in [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) before proposing work
 - Discuss major features in an issue first
 - Keep features focused and well-scoped
 
@@ -289,7 +245,7 @@ voicebox/
 
 When adding new API endpoints:
 
-1. **Add route in `backend/main.py`**
+1. **Add a route in `backend/routes/`**
 2. **Create Pydantic models in `backend/models.py`**
 3. **Implement business logic in appropriate module**
 4. **Update OpenAPI schema** (automatic with FastAPI)
@@ -301,11 +257,9 @@ When adding new API endpoints:
 
 ## Testing
 
-Currently, testing is primarily manual. When adding tests:
-
-- **Backend**: Use pytest for Python tests
-- **Frontend**: Use Vitest for React component tests
-- **E2E**: Use Playwright for end-to-end tests (future)
+- **Backend**: pytest, in `backend/tests/` (`just test`)
+- **Frontend**: `bun test`, in `app/tests/` (`bun run test:dictation`)
+- **Rust**: `cargo test` in `tauri/src-tauri/`
 
 ## Pull Request Process
 
@@ -355,11 +309,9 @@ Releases are managed by maintainers:
    git push --tags
    ```
 
-4. **GitHub Actions builds and releases** automatically when tags are pushed
+4. **Build locally** with `just build`
 
 ## Troubleshooting
-
-See [docs/content/docs/overview/troubleshooting.mdx](docs/content/docs/overview/troubleshooting.mdx) for common issues and solutions.
 
 **Quick fixes:**
 
@@ -372,14 +324,12 @@ See [docs/content/docs/overview/troubleshooting.mdx](docs/content/docs/overview/
 - Open an issue for bugs or feature requests
 - Check existing issues and discussions
 - Review the codebase to understand patterns
-- See [docs/content/docs/overview/troubleshooting.mdx](docs/content/docs/overview/troubleshooting.mdx) for common issues
 
 ## Additional Resources
 
 - [README.md](README.md) - Project overview
 - [backend/README.md](backend/README.md) - API documentation
-- [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) - Living engineering roadmap: architecture, shipped vs in-flight work, prioritized open issues, candidate TTS engines under evaluation, architectural bottlenecks. Keep this updated when you ship significant features, close or backlog a model integration, or identify new bottlenecks.
-- [docs/AUTOUPDATER_QUICKSTART.md](docs/AUTOUPDATER_QUICKSTART.md) - Auto-updater setup
+- [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) - Engineering status and history
 - [SECURITY.md](SECURITY.md) - Security policy
 - [CHANGELOG.md](CHANGELOG.md) - Version history
 

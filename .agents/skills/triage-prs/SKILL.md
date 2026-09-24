@@ -253,11 +253,10 @@ You can delete the triage doc after the release ships, or keep it in version his
 - **`main..HEAD` on a stale branch lies.** It shows everything main gained since the branch split as deletions. Always review via `git show HEAD` for the PR's actual commit.
 - **Squash-merging an unrebased branch reverts in-between work.** The squash computes `diff(PR-head, merge-base)`. Rebase moves the merge-base forward.
 - **`mergeable=UNKNOWN`** is transient — GitHub is recomputing after a push. Just try the merge.
-- **Route ordering matters (FastAPI and similar):** `DELETE /history/failed` must be registered *before* `DELETE /history/{id}`, or the parameterized path will consume `"failed"` as an ID.
+- **Route ordering matters (FastAPI and similar):** a fixed path like `DELETE /captures/failed` must be registered *before* `DELETE /captures/{id}`, or the parameterized path will consume `"failed"` as an ID.
 - **Apple's `-weak_framework` overrides `-framework`** for the same framework, regardless of order — use it via `cargo:rustc-link-arg=-Wl,-weak_framework,Name` when a dependency hard-links something optional.
 - **Dependency version floors constrain what you can apply.** Before accepting a kwarg rename like `torch_dtype=` → `dtype=`, check the min-version pin supports it. Sometimes the right move is to cherry-pick half the PR.
 - **`cpal::Stream` and similar `!Send` audio types** can't cross `await` points or `spawn_blocking`. Sometimes a "not-ideal but correct" sync wait is the best available fix; flag but don't block.
-- **PyTorch nightly builds are not shippable for releases** — non-deterministic, can regress between runs. If a PR suggests switching to nightly to fix a GPU issue, prefer `TORCH_CUDA_ARCH_LIST=...+PTX` or wait for stable support instead.
 
 ## Canonical commands reference
 
