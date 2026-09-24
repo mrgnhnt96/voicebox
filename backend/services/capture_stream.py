@@ -7,6 +7,12 @@ Only work the final result uses runs: phrases cut at pauses, then the rest at
 finish. There are no provisional previews or speculative cleanups. No client
 shows them, they were rarely reused, and model work can't be interrupted, so
 one still running when the key comes up only delays the final text.
+
+A client that asks for it (``"provisional": true`` in start) also gets
+``provisional`` events after release: the part of the final text that is
+unlikely to change, while the last phrase is still being cleaned up. It is a
+prediction, not a promise; ``final`` is the only authoritative text
+(docs/plans/STREAMING_INSERTION.md).
 """
 
 import asyncio
@@ -23,15 +29,19 @@ import wave
 import numpy as np
 
 from .. import config, models
+from ..backends.qwen_llm_backend import generation_listener
 from ..database import Capture
 from .captures import _to_response
 from .content_check import Verdict, check_refinement, summarize_reviews
 from .phrase_seams import close_phrase, join_phrases, open_phrase
 from .refinement import RefinementFlags, prepare_refinement, refine_transcript
 from .transcribe import get_whisper_model
-from .writing_style import apply_learned
+from .writing_style import apply_learned, apply_style, habits, is_ready
 
 logger = logging.getLogger(__name__)
+# Words held back while learned corrections are active: a rule replaces up to
+# three words and needs the word after them as context.
+CORRECTION_HOLDBACK = 4
 MAX_FRAME_BYTES = 65536
 MAX_SECONDS = 3600
 # Whisper keeps at most ~224 prompt tokens; this stays comfortably inside it.
@@ -49,6 +59,25 @@ def join_overlap(prefix: str, tail: str) -> str:
         if [key(w) for w in left[-count:]] == [key(w) for w in right[:count]]:
             return " ".join(left + right[count:])
     return " ".join(part for part in (prefix, tail) if part)
+
+
+def _has_corrections() -> bool:
+    from . import correction_learning
+
+    return bool(correction_learning._compiled)
+
+
+def stable_prefix(text: str, holdback: int) -> str:
+    """The start of ``text`` minus its last ``holdback`` words and the punctuation before them.
+
+    Those can still change: the model may be mid-word, and seam punctuation,
+    learned habits and learned corrections all look at the following word.
+    """
+    words = list(re.finditer(r"\S+", text))
+    if len(words) < holdback or (holdback and len(words) == holdback):
+        return ""
+    kept = text[: words[-holdback].start()] if holdback else text
+    return re.sub(r"[^\w\s]+$", "", kept.rstrip()).rstrip()
 
 
 def guard_phrase_refinement(raw: str, refined: str, flags: RefinementFlags) -> tuple[str, Verdict]:
@@ -71,6 +100,9 @@ class StreamingCapture:
             raise ValueError("sample_rate must be between 16000 and 48000")
         if start.get("channels") != 1 or start.get("encoding") != "pcm_s16le":
             raise ValueError("Audio must be mono pcm_s16le")
+        # Protocol addition: the client can show provisional cleaned text.
+        self.provisional = start.get("provisional") is True
+        self.shown = ""
         self.source = start.get("source", "dictation")
         if not isinstance(self.source, str) or self.source not in {"dictation", "recording"}:
             raise ValueError("Invalid streaming capture source")
@@ -206,20 +238,113 @@ class StreamingCapture:
         finally:
             self._spent("recognize", started)
 
-    def close_dictation(self, text):
-        closed = close_phrase(text) if self.cleanup_closed else text
+    def close_dictation(self, text, closed=None, learned=None):
+        closed = self.cleanup_closed if closed is None else closed
+        closed = close_phrase(text) if closed else text
         # Phrases were styled one at a time; habits like a dropped final period
         # only apply once the whole dictation is joined.
-        return apply_learned(closed) if self.flags.punctuation_style == "learned" else closed
+        return (learned or apply_learned)(closed) if self.flags.punctuation_style == "learned" else closed
 
-    def join(self, previous, phrase, raw_phrase):
+    def join(self, previous, phrase, raw_phrase, learned=None):
         if self.overlap:
             return join_overlap(previous, phrase)
         if self.flags.punctuation_style == "learned":
             # Join like Standard, then let the user's habits decide what each
             # sentence break becomes (comma, nothing, lowercase start...).
-            return apply_learned(join_phrases(previous, phrase, raw_phrase, "standard"))
+            return (learned or apply_learned)(join_phrases(previous, phrase, raw_phrase, "standard"))
         return join_phrases(previous, phrase, raw_phrase, self.flags.punctuation_style)
+
+    # --- Provisional text ------------------------------------------------------
+
+    def offers_provisional(self) -> bool:
+        return (
+            self.provisional
+            and self.finished
+            and self.settings.auto_refine
+            and self.settings.allow_auto_paste
+            and not self.overlap
+            and not self.degraded_reason
+            and not self.backlogged
+            and not self.needs_final_refinement
+            and not self.refinement_error
+        )
+
+    async def show(self, text: str, holdback: int) -> None:
+        """Offer the client the part of ``text`` that should survive to the final."""
+        if not self.offers_provisional():
+            return
+        stable = stable_prefix(text, holdback)
+        if len(stable) > len(self.shown):
+            self.shown = stable
+            await self.emit("provisional", text=stable)
+
+    async def show_cleaned_so_far(self) -> None:
+        await self.show(self.close_dictation(self.refined), 0)
+
+    def _projection(self, prompt: str):
+        """What finish would deliver if the cleanup of ``prompt`` ended now and passed the check.
+
+        Mirrors refine_transcript's post-processing, then ``accept`` and
+        ``close_dictation``. Habits are read once, not per token.
+        """
+        from .correction_learning import apply_learned_corrections
+
+        learned = (lambda text, h=habits(): apply_style(text, h)) if is_ready() else (lambda text: text)
+        prefix = self.refined
+
+        def project(partial: str) -> str:
+            refined = partial.strip()
+            if self.flags.punctuation_style == "learned":
+                refined = learned(refined)
+            joined = self.join(prefix, open_phrase(refined, prompt), prompt, learned)
+            text = apply_learned_corrections(joined, self.language)
+            return self.close_dictation(text, refined.rstrip().endswith("."), learned)
+
+        return project
+
+    @contextlib.asynccontextmanager
+    async def streaming_cleanup(self, prompt: str):
+        """Offer provisional text while the cleanup of the final phrase generates."""
+        if not self.offers_provisional():
+            yield
+            return
+        loop = asyncio.get_running_loop()
+        latest = [None]
+        changed = asyncio.Event()
+        done = [False]
+
+        def update(partial):
+            if not done[0]:
+                latest[0] = partial
+                changed.set()
+
+        def listener(partial):  # MLX worker thread
+            with contextlib.suppress(RuntimeError):
+                loop.call_soon_threadsafe(update, partial)
+
+        async def relay():
+            # Built on the first token, while the model generates, so reading
+            # the habits (~2 ms) never delays the cleanup itself.
+            project = None
+            while not done[0]:
+                await changed.wait()
+                changed.clear()
+                if done[0] or latest[0] is None:
+                    return
+                project = project or self._projection(prompt)
+                # Learned corrections may span a few words; hold them back too.
+                await self.show(project(latest[0]), CORRECTION_HOLDBACK if _has_corrections() else 1)
+
+        relay_task = asyncio.create_task(relay())
+        token = generation_listener.set(listener)
+        try:
+            yield
+        finally:
+            generation_listener.reset(token)
+            done[0] = True
+            changed.set()
+            # Only waits for a send already in progress; never cancels one.
+            await relay_task
 
     async def accept(self, text):
         self.raw = self.join(self.raw, text, text)
@@ -242,9 +367,11 @@ class StreamingCapture:
                 )
                 prompt = " ".join((self.last_phrase_raw[-4000:], text)) if revise_previous else text
                 started = time.monotonic()
-                refined, self.llm_model = await refine_transcript(
-                    prompt, self.flags, model_size=self.settings.llm_model
-                )
+                # A revision replaces earlier text; only plain appends are offered.
+                async with contextlib.nullcontext() if revise_previous else self.streaming_cleanup(prompt):
+                    refined, self.llm_model = await refine_transcript(
+                        prompt, self.flags, model_size=self.settings.llm_model
+                    )
                 self._spent("refine", started)
                 refined, verdict = guard_phrase_refinement(prompt, refined, self.flags)
                 # A rejected cleanup falls back to the transcript, which is closed
@@ -306,11 +433,18 @@ class StreamingCapture:
                 await self.reconcile_full_audio()
                 return
             size = self.rate * 20 if forced else cut
+            offer = None
             if size is None and self.finished:
                 size = available
+                if size:
+                    # Released: what was cleaned while speaking is offered
+                    # while the last phrase is recognized, not before it.
+                    offer = asyncio.create_task(self.show_cleaned_so_far())
             if size:
                 pcm = bytes(self.pending[: size * 2])
                 text = await self.recognize(pcm)
+                if offer is not None:
+                    await offer
                 if self.abort:
                     return
                 # Keep one second of context only for forced (unpaused) cuts.
