@@ -1,0 +1,20 @@
+[package]
+name = "llbench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone benchmark, not part of the app workspace.
+[workspace]
+
+[features]
+# Also link whisper-rs, to check both ggml copies can live in one binary.
+with-whisper = ["dep:whisper-rs"]
+
+[dependencies]
+llama-cpp-2 = { version = "=0.1.157", features = ["metal"] }
+whisper-rs = { version = "0.16", features = ["metal"], optional = true }
+libc = "0.2"
+encoding_rs = "0.8"
+llama-cpp-sys-2 = "=0.1.157"
+serde_json = "1"
