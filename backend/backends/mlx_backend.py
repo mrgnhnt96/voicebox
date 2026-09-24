@@ -24,6 +24,7 @@ from .base import (
     model_load_progress,
 )
 from ..services.mlx_thread import run_on_mlx_thread, clear_mlx_cache
+from . import whisper_audio
 from ..utils.cache import get_cache_key, get_cached_voice_prompt, cache_voice_prompt
 
 
@@ -357,7 +358,7 @@ class MLXSTTBackend:
         previous_text: Optional[str] = None,
     ) -> str:
         """
-        Transcribe audio to text.
+        Transcribe an audio file to text.
 
         Args:
             audio_path: Path to audio file
@@ -368,10 +369,44 @@ class MLXSTTBackend:
         Returns:
             Transcribed text
         """
+        # Decoded here rather than by mlx-audio, whose resampler would import
+        # scipy.signal on the first file that is not 16 kHz.
+        return await self._transcribe(
+            lambda: whisper_audio.read_audio_file(audio_path), language, model_size, previous_text
+        )
+
+    async def transcribe_array(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        language: Optional[str] = None,
+        model_size: Optional[str] = None,
+        previous_text: Optional[str] = None,
+    ) -> str:
+        """
+        Transcribe in-memory audio to text, without a temporary file.
+
+        Args:
+            samples: Mono int16 PCM, or float audio scaled to [-1, 1]; shape
+                (n,) or (n, channels)
+            sample_rate: Sample rate of ``samples`` in Hz (resampled to 16 kHz)
+            language: Optional language hint
+            model_size: Optional model size override
+            previous_text: Earlier dictation text when transcribing one phrase
+
+        Returns:
+            Transcribed text, identical to ``transcribe`` of the same audio
+            written to a WAV file
+        """
+        samples = np.asarray(samples)
+        if samples.size == 0:
+            raise ValueError("No audio samples to transcribe")
+        return await self._transcribe(
+            lambda: whisper_audio.prepare_samples(samples, sample_rate), language, model_size, previous_text
+        )
+
+    async def _transcribe(self, prepare_audio, language, model_size, previous_text) -> str:
         def _transcribe_sync():
-            """Run synchronous transcription in thread pool."""
-            # MLX Whisper transcription using generate method
-            # The generate method accepts audio path directly
             decode_options = {}
             if language:
                 decode_options["language"] = language
@@ -384,7 +419,7 @@ class MLXSTTBackend:
             # Inference runs with the process's default HF_HUB_OFFLINE
             # state — see the comment in MLXTTSBackend.generate for the
             # regression this revert fixes (issue #462).
-            result = self.model.generate(str(audio_path), **decode_options)
+            result = self.model.generate(prepare_audio(), **decode_options)
 
             # Extract text from result
             if isinstance(result, str):

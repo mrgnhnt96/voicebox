@@ -160,6 +160,25 @@ class STTBackend(Protocol):
         """
         ...
 
+    async def transcribe_array(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        language: Optional[str] = None,
+        model_size: Optional[str] = None,
+        previous_text: Optional[str] = None,
+    ) -> str:
+        """
+        Transcribe in-memory audio, as ``transcribe`` does for a file.
+
+        ``samples`` is mono int16 PCM, or float audio scaled to [-1, 1], at
+        ``sample_rate`` Hz. No temporary file is written.
+
+        Returns:
+            Transcribed text
+        """
+        ...
+
     def unload_model(self) -> None:
         """Unload model to free memory."""
         ...
