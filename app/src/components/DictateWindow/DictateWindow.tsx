@@ -5,6 +5,11 @@ import { CapturePill } from '@/components/CapturePill/CapturePill';
 import { apiClient } from '@/lib/api/client';
 import type { FocusSnapshot } from '@/lib/api/types';
 import { useCaptureRecordingSession } from '@/lib/hooks/useCaptureRecordingSession';
+import {
+  type NativeDictationSession,
+  useNativeDictationSession,
+} from '@/lib/hooks/useNativeDictationSession';
+import { usePlatform } from '@/platform/PlatformContext';
 
 /**
  * Floating dictate surface shown in a separate transparent Tauri window.
@@ -12,8 +17,10 @@ import { useCaptureRecordingSession } from '@/lib/hooks/useCaptureRecordingSessi
  * this branch and renders the full app shell.
  *
  * The pill surfaces for two independent cycles:
- *   1. User dictation — driven by ``dictate:start`` / ``dictate:stop``
- *      from the Rust hotkey monitor.
+ *   1. User dictation. In the desktop app Rust owns the whole take —
+ *      microphone, streaming, paste (``tauri/src-tauri/src/dictation``) —
+ *      and reports ``dictation:state``; this webview never opens browser
+ *      audio for it. The web build keeps the browser recording path.
  *   2. Agent speech — driven by ``dictate:speak-start`` / ``dictate:speak-end``
  *      from the Rust ``speak_monitor`` (which owns the backend SSE stream).
  *      On speak-start we subscribe to this single generation's status SSE,
@@ -22,19 +29,17 @@ import { useCaptureRecordingSession } from '@/lib/hooks/useCaptureRecordingSessi
  *      ``dictate:hide`` so Rust tucks the window away.
  */
 export function DictateWindow() {
-  // Force the host document chrome to be transparent so the Tauri window
-  // takes on the pill's own shape.
-  useEffect(() => {
-    const prevHtml = document.documentElement.style.background;
-    const prevBody = document.body.style.background;
-    document.documentElement.style.background = 'transparent';
-    document.body.style.background = 'transparent';
-    return () => {
-      document.documentElement.style.background = prevHtml;
-      document.body.style.background = prevBody;
-    };
-  }, []);
+  const platform = usePlatform();
+  return platform.metadata.isTauri ? <NativeDictateWindow /> : <BrowserDictateWindow />;
+}
 
+function NativeDictateWindow() {
+  const session = useNativeDictationSession();
+  return <DictateSurface session={session} />;
+}
+
+/** Web build: dictation through browser audio, driven by chord events. */
+function BrowserDictateWindow() {
   const session = useCaptureRecordingSession({
     onFinalText: async (text, _capture, allowAutoPaste, context) => {
       // Focus is the snapshot taken at chord-start and threaded through as this
@@ -62,9 +67,9 @@ export function DictateWindow() {
     },
   });
 
-  // Route the chord events emitted from Rust into the session hook. Using a
-  // ref so the `listen` effect only subscribes once — rebinding every render
-  // would thrash the Tauri event bridge.
+  // Route chord events into the session hook. Using a ref so the `listen`
+  // effect only subscribes once — rebinding every render would thrash the
+  // event bridge.
   const sessionRef = useRef(session);
   sessionRef.current = session;
 
@@ -95,8 +100,63 @@ export function DictateWindow() {
     };
   }, []);
 
-  // --- Agent-speak cycle ---------------------------------------------------
+  return <DictateSurface session={session} />;
+}
 
+/** The pill, shared by both dictation paths and agent speech. */
+function DictateSurface({ session }: { session: NativeDictationSession }) {
+  // Force the host document chrome to be transparent so the Tauri window
+  // takes on the pill's own shape.
+  useEffect(() => {
+    const prevHtml = document.documentElement.style.background;
+    const prevBody = document.body.style.background;
+    document.documentElement.style.background = 'transparent';
+    document.body.style.background = 'transparent';
+    return () => {
+      document.documentElement.style.background = prevHtml;
+      document.body.style.background = prevBody;
+    };
+  }, []);
+
+  const { speaking, speakElapsed } = useAgentSpeech();
+
+  // --- Effective pill state -----------------------------------------------
+
+  const isSpeaking = Boolean(speaking);
+  const effectiveState = isSpeaking ? 'speaking' : session.pillState;
+  const effectiveElapsed = isSpeaking ? speakElapsed : session.pillElapsedMs;
+
+  // When the pill cycle ends (no capture AND no speak), tell Rust to tuck
+  // the window away. Rust owns the hide + park-off-screen + click-through
+  // combo because calling hide() directly from JS has been unreliable for
+  // transparent always-on-top windows on macOS.
+  useEffect(() => {
+    if (effectiveState === 'hidden') {
+      emit('dictate:hide').catch(() => {});
+    }
+  }, [effectiveState]);
+
+  return (
+    <div
+      className="h-screen w-screen flex items-center justify-center px-3"
+      style={{ background: 'transparent' }}
+    >
+      {effectiveState !== 'hidden' ? (
+        <CapturePill
+          state={effectiveState}
+          elapsedMs={effectiveElapsed}
+          errorMessage={session.errorMessage}
+          onDismiss={session.dismissError}
+          onStop={session.isRecording ? session.stopRecording : undefined}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// --- Agent-speak cycle -----------------------------------------------------
+
+function useAgentSpeech() {
   const [speaking, setSpeaking] = useState<{
     generationId: string;
     // Null while the backend is still generating audio; set to the
@@ -267,36 +327,5 @@ export function DictateWindow() {
     return () => window.clearInterval(iv);
   }, [speaking?.generationId, speaking?.startedAt]);
 
-  // --- Effective pill state -----------------------------------------------
-
-  const isSpeaking = Boolean(speaking);
-  const effectiveState = isSpeaking ? 'speaking' : session.pillState;
-  const effectiveElapsed = isSpeaking ? speakElapsed : session.pillElapsedMs;
-
-  // When the pill cycle ends (no capture AND no speak), tell Rust to tuck
-  // the window away. Rust owns the hide + park-off-screen + click-through
-  // combo because calling hide() directly from JS has been unreliable for
-  // transparent always-on-top windows on macOS.
-  useEffect(() => {
-    if (effectiveState === 'hidden') {
-      emit('dictate:hide').catch(() => {});
-    }
-  }, [effectiveState]);
-
-  return (
-    <div
-      className="h-screen w-screen flex items-center justify-center px-3"
-      style={{ background: 'transparent' }}
-    >
-      {effectiveState !== 'hidden' ? (
-        <CapturePill
-          state={effectiveState}
-          elapsedMs={effectiveElapsed}
-          errorMessage={session.errorMessage}
-          onDismiss={session.dismissError}
-          onStop={session.isRecording ? session.stopRecording : undefined}
-        />
-      ) : null}
-    </div>
-  );
+  return { speaking, speakElapsed };
 }

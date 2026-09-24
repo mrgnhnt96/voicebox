@@ -5,6 +5,8 @@ mod accessibility;
 mod audio_capture;
 mod audio_output;
 mod clipboard;
+#[cfg(desktop)]
+mod dictation;
 mod focus_capture;
 #[cfg(desktop)]
 mod hotkey_monitor;
@@ -1573,6 +1575,7 @@ pub fn run() {
         })
         .manage(audio_capture::AudioCaptureState::new())
         .manage(audio_output::AudioOutputState::new())
+        .manage(dictation::DictationState::default())
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -1710,7 +1713,10 @@ pub fn run() {
             paste_final_text,
             enable_hotkey,
             disable_hotkey,
-            update_chord_bindings
+            update_chord_bindings,
+            dictation::dictation_configure,
+            dictation::dictation_stop,
+            dictation::list_input_devices
         ])
         .on_window_event({
             let closing = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));

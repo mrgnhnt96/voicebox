@@ -26,6 +26,7 @@ import { Toggle } from '@/components/ui/toggle';
 import { WritingStyleSettings } from '@/components/WritingStyle/WritingStyleSettings';
 import { useToast } from '@/components/ui/use-toast';
 import { useAudioInputDevices } from '@/lib/hooks/useAudioInputDevices';
+import { inputDevicePickerValue, useNativeInputDevices } from '@/lib/hooks/useNativeInputDevices';
 import { useDictationReadiness } from '@/lib/hooks/useDictationReadiness';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
 import { useWritingStyle } from '@/lib/hooks/useWritingStyle';
@@ -144,7 +145,15 @@ export function CapturesPage() {
   const defaultVoiceId = settings?.default_playback_voice_id ?? null;
   const hotkeyEnabled = settings?.hotkey_enabled ?? false;
   const inputDeviceId = settings?.input_device_id ?? null;
-  const { devices: inputDevices } = useAudioInputDevices();
+  // The desktop app captures dictation natively, so it lists native devices
+  // and saves their stable ids; the web build keeps browser device ids.
+  const isTauri = platform.metadata.isTauri;
+  const { devices: browserInputDevices } = useAudioInputDevices();
+  const { devices: nativeInputDevices } = useNativeInputDevices(isTauri);
+  const inputDevices = isTauri ? nativeInputDevices : browserInputDevices;
+  const inputDeviceValue = isTauri
+    ? inputDevicePickerValue(inputDeviceId, inputDevices)
+    : (inputDeviceId ?? 'default');
   const pushToTalkKeys = settings?.chord_push_to_talk_keys ?? defaultChordKeys('push');
   const toggleToTalkKeys = settings?.chord_toggle_to_talk_keys ?? defaultChordKeys('toggle');
 
@@ -233,7 +242,7 @@ export function CapturesPage() {
             description={t('settings.captures.dictation.inputDevice.description')}
             action={
               <Select
-                value={inputDeviceId ?? 'default'}
+                value={inputDeviceValue}
                 onValueChange={(v) => update({ input_device_id: v === 'default' ? null : v })}
               >
                 <SelectTrigger className="w-[240px]">

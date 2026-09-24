@@ -1,3 +1,5 @@
+const NATIVE_DEVICE_PREFIX = 'native:';
+
 /** Open a selected microphone, falling back only when that device is unavailable. */
 export async function openAudioInput(
   deviceId?: string | null,
@@ -17,6 +19,17 @@ export async function openAudioInput(
       'Microphone permission is not granted. Enable Voicebox in System Settings → Privacy & Security → Microphone.',
       'NotAllowedError',
     );
+  }
+  // The desktop app saves native microphone ids (``native:<name>``) for
+  // dictation; browser recording finds the same microphone by its label.
+  if (deviceId?.startsWith(NATIVE_DEVICE_PREFIX)) {
+    const name = deviceId.slice(NATIVE_DEVICE_PREFIX.length);
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      deviceId = devices.find((d) => d.kind === 'audioinput' && d.label === name)?.deviceId;
+    } catch {
+      deviceId = undefined;
+    }
   }
   if (deviceId) {
     try {
