@@ -8,14 +8,12 @@
     "confirm": "Confirm",
     "loading": "Loading…",
     "error": "Error",
-    "unknown": "Unknown",
     "unknownError": "Unknown error"
   },
   "nav": {
     "captures": "Captures",
     "models": "Models",
-    "settings": "Settings",
-    "updateBadge": "Update"
+    "settings": "Settings"
   },
   "captures": {
     "feedback": {
@@ -228,10 +226,6 @@
       "captures": "Captures",
       "logs": "Logs"
     },
-    "language": {
-      "label": "Language",
-      "description": "Choose the display language for Voicebox."
-    },
     "theme": {
       "label": "Theme",
       "description": "Match your system, or pick a fixed light or dark appearance.",
@@ -242,70 +236,14 @@
       }
     },
     "general": {
-      "serverUrl": {
-        "title": "Server URL",
-        "description": "The address of your voicebox backend server.",
-        "invalidUrl": "Please enter a valid URL",
-        "updatedTitle": "Server URL updated",
-        "updatedDescription": "Connected to {{url}}"
-      },
-      "keepServerRunning": {
-        "title": "Keep server running when app closes",
-        "description": "The server will continue running in the background after closing the app.",
-        "failedTitle": "Failed to update setting",
-        "failedDescription": "Could not sync setting to backend.",
-        "updatedTitle": "Setting updated",
-        "runningDescription": "Server will continue running when app closes",
-        "stoppedDescription": "Server will stop when app closes"
-      },
-      "networkAccess": {
-        "title": "Allow network access",
-        "description": "Makes the server accessible from other devices on your network. Restart the app after changing.",
-        "updatedTitle": "Setting updated",
-        "enabled": "Network access enabled. Restart the app to apply.",
-        "disabled": "Network access disabled. Restart the app to apply."
+      "server": {
+        "title": "Local server",
+        "description": "The dictation server bundled with Voicebox, running on this Mac."
       },
       "connection": {
         "connecting": "Connecting",
         "offline": "Offline",
         "online": "Online"
-      },
-      "updates": {
-        "title": "App Updates",
-        "devSuffix": " (dev)",
-        "devMode": {
-          "title": "Development mode",
-          "description": "Auto-updates are disabled in development mode."
-        },
-        "check": {
-          "title": "Check for updates",
-          "available": "Version {{version}} available",
-          "checking": "Checking…",
-          "upToDate": "You're up to date",
-          "button": "Check"
-        },
-        "error": "Update error",
-        "download": {
-          "title": "Update to {{version}}",
-          "description": "Download and install the latest version.",
-          "button": "Download"
-        },
-        "downloading": "Downloading update…",
-        "ready": {
-          "title": "Update ready to install",
-          "description": "Version {{version}} has been downloaded. Restart to complete.",
-          "button": "Restart Now"
-        }
-      },
-      "api": {
-        "title": "API Access",
-        "description": "Integrate Voicebox into your workflow via the REST API at <code>{{url}}</code>",
-        "viewReference": "View the full API reference",
-        "endpoints": {
-          "health": "Server status",
-          "captures": "List captures",
-          "createCapture": "Upload audio to transcribe"
-        }
       },
       "restart": {
         "title": "Restart Voicebox",

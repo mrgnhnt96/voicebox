@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CapturePillState } from '@/lib/hooks/useCaptureRecordingSession';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
-import { useServerStore } from '@/stores/serverStore';
+import { SERVER_URL } from '@/stores/serverStore';
 
 /**
  * Pill state for one native take, emitted by Rust (`dictation/mod.rs`).
@@ -37,7 +37,6 @@ const ELAPSED_TICK_MS = 250;
 export const SLOW_MICROPHONE_MS = 300;
 
 export function useNativeDictationSession(): NativeDictationSession {
-  const serverUrl = useServerStore((state) => state.serverUrl);
   const { settings } = useCaptureSettings();
   const inputDeviceId = settings?.input_device_id ?? null;
   // Until settings load, say nothing about the microphone so Rust keeps the
@@ -66,12 +65,12 @@ export function useNativeDictationSession(): NativeDictationSession {
 
   useEffect(() => {
     invoke('dictation_configure', {
-      serverUrl,
+      serverUrl: SERVER_URL,
       origin: window.location.origin,
       inputDeviceId,
       deviceKnown,
     }).catch((err) => console.warn('[dictate] dictation_configure failed:', err));
-  }, [serverUrl, inputDeviceId, deviceKnown]);
+  }, [inputDeviceId, deviceKnown]);
 
   useEffect(() => {
     const apply = (event: NativeDictationEvent) => {

@@ -14,58 +14,27 @@ export interface PlatformFilesystem {
   pickDirectory(title: string): Promise<string | null>;
 }
 
-export interface UpdateStatus {
-  checking: boolean;
-  available: boolean;
-  version?: string;
-  downloading: boolean;
-  installing: boolean;
-  readyToInstall: boolean;
-  error?: string;
-  downloadProgress?: number; // 0-100 percentage
-  downloadedBytes?: number;
-  totalBytes?: number;
-}
-
-export interface PlatformUpdater {
-  checkForUpdates(): Promise<void>;
-  downloadAndInstall(): Promise<void>;
-  restartAndInstall(): Promise<void>;
-  getStatus(): UpdateStatus;
-  subscribe(callback: (status: UpdateStatus) => void): () => void;
-}
-
-export interface PlatformAudio {
-  isSystemAudioSupported(): Promise<boolean>;
-  startSystemAudioCapture(maxDurationSecs: number): Promise<void>;
-  stopSystemAudioCapture(): Promise<Blob>;
-}
-
 export interface ServerLogEntry {
   stream: 'stdout' | 'stderr';
   line: string;
 }
 
 export interface PlatformLifecycle {
-  startServer(remote?: boolean, modelsDir?: string | null): Promise<string>;
+  startServer(modelsDir?: string | null): Promise<string>;
   stopServer(): Promise<void>;
   restartApp(): Promise<void>;
   restartServer(modelsDir?: string | null): Promise<string>;
-  setKeepServerRunning(keep: boolean): Promise<void>;
   setupWindowCloseHandler(): Promise<void>;
   subscribeToServerLogs(callback: (entry: ServerLogEntry) => void): () => void;
   onServerReady?: () => void;
 }
 
 export interface PlatformMetadata {
-  getVersion(): Promise<string>;
   isTauri: boolean;
 }
 
 export interface Platform {
   filesystem: PlatformFilesystem;
-  updater: PlatformUpdater;
-  audio: PlatformAudio;
   lifecycle: PlatformLifecycle;
   metadata: PlatformMetadata;
 }

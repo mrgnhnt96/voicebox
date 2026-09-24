@@ -18,8 +18,9 @@ mock.module('@tauri-apps/api/event', () => ({
 mock.module('@tauri-apps/api/core', () => ({ invoke }));
 mock.module('../src/lib/hooks/useSettings', () => ({ useCaptureSettings: () => ({ settings }) }));
 // bun shares module mocks across test files: keep the store's full surface.
-const serverState = { serverUrl: 'http://127.0.0.1:17493' };
+const serverState = { customModelsDir: null };
 mock.module('../src/stores/serverStore', () => ({
+  SERVER_URL: 'http://127.0.0.1:17493',
   useServerStore: Object.assign(
     (select: (state: typeof serverState) => unknown) => select(serverState),
     { getState: () => serverState },

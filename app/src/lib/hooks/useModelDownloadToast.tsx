@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/components/ui/use-toast';
 import type { ModelProgress } from '@/lib/api/types';
-import { useServerStore } from '@/stores/serverStore';
+import { SERVER_URL } from '@/stores/serverStore';
 
 interface UseModelDownloadToastOptions {
   modelName: string;
@@ -25,7 +25,6 @@ export function useModelDownloadToast({
   onError,
 }: UseModelDownloadToastOptions) {
   const { toast } = useToast();
-  const serverUrl = useServerStore((state) => state.serverUrl);
   const toastIdRef = useRef<string | null>(null);
   // biome-ignore lint: Using any for toast update ref to handle complex toast types
   const toastUpdateRef = useRef<any>(null);
@@ -42,12 +41,11 @@ export function useModelDownloadToast({
   useEffect(() => {
     console.log('[useModelDownloadToast] useEffect triggered', {
       enabled,
-      serverUrl,
       modelName,
       displayName,
     });
 
-    if (!enabled || !serverUrl || !modelName) {
+    if (!enabled || !modelName) {
       console.log('[useModelDownloadToast] Not enabled, skipping');
       return;
     }
@@ -69,7 +67,7 @@ export function useModelDownloadToast({
     toastUpdateRef.current = toastResult.update;
 
     // Subscribe to progress updates via Server-Sent Events
-    const eventSourceUrl = `${serverUrl}/models/progress/${modelName}`;
+    const eventSourceUrl = `${SERVER_URL}/models/progress/${modelName}`;
     console.log('[useModelDownloadToast] Creating EventSource to:', eventSourceUrl);
     const eventSource = new EventSource(eventSourceUrl);
 
@@ -208,7 +206,7 @@ export function useModelDownloadToast({
       }
       // Note: We don't dismiss the toast here as it might still be showing completion state
     };
-  }, [enabled, serverUrl, modelName, displayName, toast, formatBytes, onComplete, onError]);
+  }, [enabled, modelName, displayName, toast, formatBytes, onComplete, onError]);
 
   return {
     isTracking: enabled && eventSourceRef.current !== null,

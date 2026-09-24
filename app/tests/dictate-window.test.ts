@@ -8,7 +8,7 @@ const handlers = new Map<string, Handler>();
 const invoke = mock(async (_command: string, _args?: unknown) => undefined as unknown);
 const platform = { metadata: { isTauri: true } };
 const settings = { input_device_id: null as string | null };
-const serverState = { serverUrl: 'http://127.0.0.1:17493' };
+const serverState = { customModelsDir: null };
 
 mock.module('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 mock.module('@tauri-apps/api/event', () => ({
@@ -25,6 +25,7 @@ mock.module('../src/platform/PlatformContext', () => ({
 }));
 mock.module('../src/lib/hooks/useSettings', () => ({ useCaptureSettings: () => ({ settings }) }));
 mock.module('../src/stores/serverStore', () => ({
+  SERVER_URL: 'http://127.0.0.1:17493',
   useServerStore: Object.assign(
     (select: (state: typeof serverState) => unknown) => select(serverState),
     { getState: () => serverState },

@@ -4,7 +4,6 @@ import voiceboxLogo from '@/assets/voicebox-logo.png';
 import { DictateWindow } from '@/components/DictateWindow/DictateWindow';
 import ShinyText from '@/components/ShinyText';
 import { TitleBarDragRegion } from '@/components/TitleBarDragRegion';
-import { useAutoUpdater } from '@/hooks/useAutoUpdater';
 import { useThemeSync } from '@/hooks/useThemeSync';
 import { apiClient } from '@/lib/api/client';
 import type { HealthResponse } from '@/lib/api/types';
@@ -14,11 +13,7 @@ import { cn } from '@/lib/utils/cn';
 import { usePlatform } from '@/platform/PlatformContext';
 import { router } from '@/router';
 import { useLogStore } from '@/stores/logStore';
-import {
-  getDefaultServerUrl,
-  isLoopbackVoiceboxServerUrl,
-  useServerStore,
-} from '@/stores/serverStore';
+import { useServerStore } from '@/stores/serverStore';
 
 function isDictateView(): boolean {
   if (typeof window === 'undefined') return false;
@@ -38,7 +33,7 @@ function isVoiceboxHealthResponse(health: HealthResponse): boolean {
 }
 
 /**
- * Check whether a startup error indicates the port is occupied by an external
+ * Check whether a startup error indicates the port is occupied by a local
  * server (which we should try to reuse via health-check polling) vs. a real
  * failure (missing sidecar, signing issue, etc.) that should surface immediately.
  */
@@ -83,24 +78,9 @@ function MainApp() {
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const serverStartingRef = useRef(false);
 
-  // Automatically check for app updates on startup and show toast notifications
-  useAutoUpdater({ checkOnMount: true, showToast: true });
-
   // Replay the saved chord into the Rust hotkey listener every time
   // capture_settings resolves or the user edits the chord.
   useChordSync();
-
-  // Sync stored setting to Rust on startup
-  useEffect(() => {
-    if (platform.metadata.isTauri) {
-      const keepRunning = useServerStore.getState().keepServerRunningOnClose;
-      platform.lifecycle.setKeepServerRunning(keepRunning).catch((error) => {
-        console.error('Failed to sync initial setting to Rust:', error);
-      });
-    }
-    // Empty dependency array - platform is stable from context, only run once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [platform.metadata.isTauri, platform.lifecycle]);
 
   // Setup lifecycle callbacks
   useEffect(() => {
@@ -122,17 +102,11 @@ function MainApp() {
   // Setup window close handler and auto-start server when running in Tauri (production only)
   useEffect(() => {
     if (!platform.metadata.isTauri) {
-      const serverUrl = getDefaultServerUrl();
-      const currentServerUrl = useServerStore.getState().serverUrl;
-      if (currentServerUrl !== serverUrl && isLoopbackVoiceboxServerUrl(currentServerUrl)) {
-        useServerStore.getState().setServerUrl(serverUrl);
-      }
       setServerReady(true); // Web assumes server is running
       return;
     }
 
-    // Setup window close handler to check setting and stop server if needed
-    // This works in both dev and prod, but will only stop server if it was started by the app
+    // Setup window close handler to stop the server if this app started it
     platform.lifecycle.setupWindowCloseHandler().catch((error) => {
       console.error('Failed to setup window close handler:', error);
     });
@@ -153,16 +127,13 @@ function MainApp() {
     }
 
     serverStartingRef.current = true;
-    const isRemote = useServerStore.getState().mode === 'remote';
     const customModelsDir = useServerStore.getState().customModelsDir;
-    console.log(`Production mode: Starting bundled server... (remote: ${isRemote})`);
+    console.log('Production mode: Starting bundled server...');
 
     platform.lifecycle
-      .startServer(isRemote, customModelsDir)
+      .startServer(customModelsDir)
       .then((serverUrl) => {
         console.log('Server is ready at:', serverUrl);
-        // Update the server URL in the store with the dynamically assigned port
-        useServerStore.getState().setServerUrl(serverUrl);
         setServerReady(true);
         // Mark that we started the server (so we know to stop it on close)
         window.__voiceboxServerStartedByApp = true;
@@ -182,8 +153,8 @@ function MainApp() {
           return;
         }
 
-        // Fall back to polling: the server may already be running externally
-        // (e.g. started via python/uvicorn/Docker). Poll the health endpoint
+        // Fall back to polling: a local server may already be running on the
+        // port (e.g. started by hand via python/uvicorn). Poll the health endpoint
         // until it responds with a valid Voicebox payload, then transition to
         // the main UI.
         console.log('Falling back to health-check polling...');
@@ -194,7 +165,7 @@ function MainApp() {
               console.log('Health response is not from a Voicebox server, keep polling...');
               return;
             }
-            console.log('External Voicebox server detected via health check');
+            console.log('Running local Voicebox server detected via health check');
             clearInterval(pollInterval);
             setServerReady(true);
           } catch {
@@ -213,10 +184,8 @@ function MainApp() {
         }, 120_000);
       });
 
-    // Cleanup: stop server on actual unmount (not StrictMode remount)
-    // Note: Window close is handled separately in Tauri Rust code
+    // Window close and app exit stop the server (see the close handler and Rust)
     return () => {
-      // Window close event handles server shutdown based on setting
       serverStartingRef.current = false;
     };
     // Empty dependency array - platform is stable from context, only run once

@@ -8,7 +8,5 @@
 	<string>voicebox</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Voicebox needs microphone access to transcribe your dictation.</string>
-	<key>NSScreenCaptureUsageDescription</key>
-	<string>Voicebox needs screen capture access to record system audio for transcription.</string>
 </dict>
 </plist>

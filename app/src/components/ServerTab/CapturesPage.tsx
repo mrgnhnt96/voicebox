@@ -23,7 +23,7 @@ import { useDictationReadiness } from '@/lib/hooks/useDictationReadiness';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
 import { useWritingStyle } from '@/lib/hooks/useWritingStyle';
 import { usePlatform } from '@/platform/PlatformContext';
-import { useServerStore } from '@/stores/serverStore';
+import { SERVER_URL } from '@/stores/serverStore';
 import { cn } from '@/lib/utils/cn';
 import { defaultChordKeys, displayLabelForKey, modifierSideHint } from '@/lib/utils/keyCodes';
 import type { PunctuationStyle, Qwen3ModelSize, WhisperModelSize } from '@/lib/api/types';
@@ -119,7 +119,6 @@ function HotkeyPillPreview({ enabled }: { enabled: boolean }) {
 export function CapturesPage() {
   const { t } = useTranslation();
   const platform = usePlatform();
-  const serverUrl = useServerStore((state) => state.serverUrl);
   const { settings, update } = useCaptureSettings();
   const { toast } = useToast();
   const readiness = useDictationReadiness();
@@ -152,14 +151,14 @@ export function CapturesPage() {
   const [capturesPath, setCapturesPath] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${serverUrl}/health/filesystem`)
+    fetch(`${SERVER_URL}/health/filesystem`)
       .then((res) => res.json())
       .then((data) => {
         const dir = data.directories?.find((d: { path: string }) => d.path.includes('captures'));
         if (dir?.path) setCapturesPath(dir.path);
       })
       .catch(() => {});
-  }, [serverUrl]);
+  }, []);
 
   const openCapturesFolder = useCallback(async () => {
     if (!capturesPath) return;

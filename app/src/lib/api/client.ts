@@ -1,5 +1,5 @@
 import type { LanguageCode } from '@/lib/constants/languages';
-import { useServerStore } from '@/stores/serverStore';
+import { SERVER_URL } from '@/stores/serverStore';
 import type {
   ActiveTasksResponse,
   CaptureCreateResponse,
@@ -9,7 +9,6 @@ import type {
   CaptureReadinessResponse,
   CaptureRefineRequest,
   CaptureResponse,
-  CaptureRetranscribeRequest,
   CaptureSettings,
   CaptureSettingsUpdate,
   CaptureSource,
@@ -19,7 +18,6 @@ import type {
   ModelDownloadRequest,
   ModelStatusListResponse,
   PersonalExample,
-  TranscriptionResponse,
   WhisperModelSize,
   WritingStyleCalibrationResult,
   WritingStyleCalibrationStep,
@@ -43,8 +41,7 @@ function formatErrorDetail(detail: unknown, fallback: string): string {
 
 class ApiClient {
   private getBaseUrl(): string {
-    const serverUrl = useServerStore.getState().serverUrl;
-    return serverUrl;
+    return SERVER_URL;
   }
 
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -70,37 +67,6 @@ class ApiClient {
   // Health
   async getHealth(): Promise<HealthResponse> {
     return this.request<HealthResponse>('/health');
-  }
-
-  // Transcription
-  async transcribeAudio(
-    file: File,
-    language?: LanguageCode,
-    model?: WhisperModelSize,
-  ): Promise<TranscriptionResponse> {
-    const formData = new FormData();
-    formData.append('file', file);
-    if (language) {
-      formData.append('language', language);
-    }
-    if (model) {
-      formData.append('model', model);
-    }
-
-    const url = `${this.getBaseUrl()}/transcribe`;
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        detail: response.statusText,
-      }));
-      throw new Error(formatErrorDetail(error.detail, `HTTP error! status: ${response.status}`));
-    }
-
-    return response.json();
   }
 
   async reportCaptureOutput(
@@ -146,10 +112,6 @@ class ApiClient {
     return this.request<CaptureListResponse>(`/captures?limit=${limit}&offset=${offset}`);
   }
 
-  async getCapture(captureId: string): Promise<CaptureResponse> {
-    return this.request<CaptureResponse>(`/captures/${captureId}`);
-  }
-
   async createCapture(
     file: File,
     options?: {
@@ -183,16 +145,6 @@ class ApiClient {
 
   async refineCapture(captureId: string, body: CaptureRefineRequest): Promise<CaptureResponse> {
     return this.request<CaptureResponse>(`/captures/${captureId}/refine`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  }
-
-  async retranscribeCapture(
-    captureId: string,
-    body: CaptureRetranscribeRequest,
-  ): Promise<CaptureResponse> {
-    return this.request<CaptureResponse>(`/captures/${captureId}/retranscribe`, {
       method: 'POST',
       body: JSON.stringify(body),
     });

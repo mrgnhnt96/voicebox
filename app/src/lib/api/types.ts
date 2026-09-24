@@ -1,5 +1,4 @@
 // API Types matching backend Pydantic models
-import type { LanguageCode } from '@/lib/constants/languages';
 
 export type WhisperModelSize = 'base' | 'small' | 'medium' | 'large' | 'turbo';
 
@@ -132,11 +131,6 @@ export interface CaptureRefineRequest {
   model_size?: Qwen3ModelSize;
 }
 
-export interface CaptureRetranscribeRequest {
-  model?: WhisperModelSize;
-  language?: LanguageCode;
-}
-
 export interface CaptureSettings {
   stt_model: WhisperModelSize;
   language: string;
@@ -178,11 +172,6 @@ export interface ModelReadiness {
 export interface CaptureReadinessResponse {
   stt: ModelReadiness;
   llm: ModelReadiness;
-}
-
-export interface TranscriptionResponse {
-  text: string;
-  duration: number;
 }
 
 export interface HealthResponse {

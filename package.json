@@ -11,9 +11,6 @@
     "dev:server": "uvicorn backend.main:app --reload --port 17493",
     "setup:dev": "bun run scripts/setup-dev-sidecar.js",
     "build": "./scripts/build-server.sh && cd tauri && bun run tauri build",
-    "build:release": "./scripts/prepare-release.sh",
-    "generate:api": "./scripts/generate-api.sh",
-    "generate:keys": "cd tauri && bun tauri signer generate -w ~/.tauri/voicebox.key",
     "build:server": "./scripts/build-server.sh",
     "update:icons": "./scripts/update-icons.sh",
     "lint": "biome lint .",
@@ -23,7 +20,6 @@
     "format:check": "biome format .",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "ci": "bun run typecheck",
     "test:dictation": "cd app && bun test tests"
   },
   "devDependencies": {

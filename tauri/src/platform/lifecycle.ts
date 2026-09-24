@@ -5,10 +5,9 @@ import type { PlatformLifecycle, ServerLogEntry } from '@/platform/types';
 class TauriLifecycle implements PlatformLifecycle {
   onServerReady?: () => void;
 
-  async startServer(remote = false, modelsDir?: string | null): Promise<string> {
+  async startServer(modelsDir?: string | null): Promise<string> {
     try {
       const result = await invoke<string>('start_server', {
-        remote,
         modelsDir: modelsDir ?? undefined,
       });
       console.log('Server started:', result);
@@ -48,33 +47,21 @@ class TauriLifecycle implements PlatformLifecycle {
     }
   }
 
-  async setKeepServerRunning(keepRunning: boolean): Promise<void> {
-    try {
-      await invoke('set_keep_server_running', { keepRunning });
-    } catch (error) {
-      console.error('Failed to set keep server running setting:', error);
-    }
-  }
-
   async setupWindowCloseHandler(): Promise<void> {
     try {
       // Listen for window close request from Rust
       await listen<null>('window-close-requested', async () => {
-        // Import store here to avoid circular dependency
-        const { useServerStore } = await import('@/stores/serverStore');
-        const keepRunning = useServerStore.getState().keepServerRunningOnClose;
-
-        // Check if server was started by this app instance
+        // Only stop the server if this app instance started it; a server
+        // started by hand for development keeps running.
         // @ts-expect-error - accessing module-level variable from another module
         const serverStartedByApp = window.__voiceboxServerStartedByApp ?? false;
 
         console.log(
-          '[lifecycle] window-close-requested: keepRunning=%s, serverStartedByApp=%s',
-          keepRunning,
+          '[lifecycle] window-close-requested: serverStartedByApp=%s',
           serverStartedByApp,
         );
 
-        if (!keepRunning && serverStartedByApp) {
+        if (serverStartedByApp) {
           // Stop server before closing (only if we started it)
           try {
             await this.stopServer();

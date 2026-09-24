@@ -2,7 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod accessibility;
-mod audio_capture;
 mod clipboard;
 #[cfg(desktop)]
 mod dictation;
@@ -298,7 +297,6 @@ fn check_health(port: u16) -> bool {
 struct ServerState {
     child: Mutex<Option<tauri_plugin_shell::process::CommandChild>>,
     server_pid: Mutex<Option<u32>>,
-    keep_running_on_close: Mutex<bool>,
     models_dir: Mutex<Option<String>>,
 }
 
@@ -306,7 +304,6 @@ struct ServerState {
 async fn start_server(
     app: tauri::AppHandle,
     state: State<'_, ServerState>,
-    remote: Option<bool>,
     models_dir: Option<String>,
 ) -> Result<String, String> {
     // Store models_dir for use on restart (empty string means reset to default)
@@ -322,8 +319,8 @@ async fn start_server(
         return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
     }
 
-    // Check if a voicebox server is already running on our port (from previous session with keep_running=true,
-    // or an externally started server e.g. via `python`, `uvicorn`, Docker, etc.)
+    // Check if a voicebox server is already running on our port (e.g. one left
+    // over from a previous session, or started by hand via `python`/`uvicorn`)
     #[cfg(unix)]
     {
         use std::process::Command;
@@ -458,7 +455,6 @@ async fn start_server(
     println!("=================================================================");
     println!("Starting voicebox-server sidecar");
     println!("Data directory: {:?}", data_dir);
-    println!("Remote mode: {}", remote.unwrap_or(false));
 
     let sidecar_result = app.shell().sidecar("voicebox-server");
 
@@ -505,7 +501,6 @@ async fn start_server(
         .to_string();
     let port_str = SERVER_PORT.to_string();
     let parent_pid_str = std::process::id().to_string();
-    let is_remote = remote.unwrap_or(false);
 
     // Resolve the custom models directory from the parameter or stored state
     let effective_models_dir = models_dir.or_else(|| state.models_dir.lock().unwrap().clone());
@@ -514,9 +509,6 @@ async fn start_server(
     }
 
     sidecar = sidecar.args(["--data-dir", &data_dir_str, "--port", &port_str, "--parent-pid", &parent_pid_str]);
-    if is_remote {
-        sidecar = sidecar.args(["--host", "0.0.0.0"]);
-    }
     if let Some(ref dir) = effective_models_dir {
         sidecar = sidecar.env("VOICEBOX_MODELS_DIR", dir);
     }
@@ -747,8 +739,6 @@ async fn wait_for_server_exit() -> Result<(), String> {
 async fn restart_app(app: tauri::AppHandle, state: State<'_, ServerState>) -> Result<(), String> {
     stop_server(state.clone()).await?;
     wait_for_server_exit().await?;
-    // A deliberate restart always stops the server, even when closing normally keeps it alive.
-    *state.keep_running_on_close.lock().unwrap() = false;
     app.request_restart();
     Ok(())
 }
@@ -779,33 +769,7 @@ async fn restart_server(
 
     // Start server again (uses the stored models_dir)
     println!("restart_server: starting server...");
-    start_server(app, state.clone(), None, None).await
-}
-
-#[command]
-fn set_keep_server_running(state: State<'_, ServerState>, keep_running: bool) {
-    println!("set_keep_server_running called with: {}", keep_running);
-    *state.keep_running_on_close.lock().unwrap() = keep_running;
-}
-
-#[command]
-async fn start_system_audio_capture(
-    state: State<'_, audio_capture::AudioCaptureState>,
-    max_duration_secs: u32,
-) -> Result<(), String> {
-    audio_capture::start_capture(&state, max_duration_secs).await
-}
-
-#[command]
-async fn stop_system_audio_capture(
-    state: State<'_, audio_capture::AudioCaptureState>,
-) -> Result<String, String> {
-    audio_capture::stop_capture(&state).await
-}
-
-#[command]
-fn is_system_audio_supported() -> bool {
-    audio_capture::is_supported()
+    start_server(app, state.clone(), None).await
 }
 
 /// Identifier of the Voicebox app itself — used to short-circuit auto-paste
@@ -1285,18 +1249,13 @@ pub fn run() {
         .manage(ServerState {
             child: Mutex::new(None),
             server_pid: Mutex::new(None),
-            keep_running_on_close: Mutex::new(false),
             models_dir: Mutex::new(None),
         })
-        .manage(audio_capture::AudioCaptureState::new())
         .manage(dictation::DictationState::default())
         .setup(|app| {
             dictation::restore(app.handle());
             #[cfg(desktop)]
             {
-                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
-                app.handle().plugin(tauri_plugin_process::init())?;
-
                 // Resolve the active keyboard layout's V keycode now, on
                 // the main thread, and register an observer for layout
                 // changes. The synthetic-paste hot path then only reads an
@@ -1397,10 +1356,6 @@ pub fn run() {
             stop_server,
             restart_server,
             restart_app,
-            set_keep_server_running,
-            start_system_audio_capture,
-            stop_system_audio_capture,
-            is_system_audio_supported,
             debug_clipboard_roundtrip,
             debug_paste_text,
             debug_capture_focus,
@@ -1470,55 +1425,16 @@ pub fn run() {
             match &event {
                 RunEvent::Exit => {
                     let state = app.state::<ServerState>();
-                    let keep_running = *state.keep_running_on_close.lock().unwrap();
-                    let has_pid = state.server_pid.lock().unwrap().is_some();
-                    println!("RunEvent::Exit — keep_running={}, has_pid={}", keep_running, has_pid);
-
-                    if keep_running {
-                        // Tell the server to disable its watchdog so it survives
-                        // after this process exits.
-                        println!("Keep server running: disabling watchdog...");
-
-                        // Write a sentinel file as a reliable fallback. On Windows
-                        // the HTTP request below can race with process exit, leaving
-                        // the watchdog unaware it should stay alive. The sentinel
-                        // file is checked during the watchdog grace period.
-                        let data_dir = app
-                            .path()
-                            .app_data_dir()
-                            .unwrap_or_default();
-                        let sentinel = data_dir.join(".keep-running");
-                        if let Err(e) = std::fs::write(&sentinel, b"1") {
-                            eprintln!("Failed to write keep-running sentinel: {}", e);
-                        } else {
-                            println!("Wrote keep-running sentinel to {:?}", sentinel);
-                        }
-
-                        let client = reqwest::blocking::Client::builder()
-                            .timeout(std::time::Duration::from_secs(2))
-                            .build()
-                            .unwrap();
-                        match client
-                            .post(&format!("http://127.0.0.1:{}/watchdog/disable", SERVER_PORT))
-                            .send()
-                        {
-                            Ok(resp) => println!("Watchdog disable response: {}", resp.status()),
-                            Err(e) => eprintln!("Failed to disable watchdog: {}", e),
-                        }
-                    } else {
-                        if let Err(error) = stop_managed_server(&state) {
-                            eprintln!("Failed to stop local server on exit: {error}");
-                        }
+                    if let Err(error) = stop_managed_server(&state) {
+                        eprintln!("Failed to stop local server on exit: {error}");
                     }
                 }
                 RunEvent::ExitRequested { .. } => {
                     // Stop descendants before the shell plugin's Exit handler
                     // kills the launcher and reparents its PyInstaller worker.
                     let state = app.state::<ServerState>();
-                    if !*state.keep_running_on_close.lock().unwrap() {
-                        if let Err(error) = stop_managed_server(&state) {
-                            eprintln!("Failed to stop local server before exit: {error}");
-                        }
+                    if let Err(error) = stop_managed_server(&state) {
+                        eprintln!("Failed to stop local server before exit: {error}");
                     }
                 }
                 _ => {}
