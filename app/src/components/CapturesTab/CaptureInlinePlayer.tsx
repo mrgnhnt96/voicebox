@@ -117,10 +117,20 @@ export function CaptureInlinePlayer({
     if (ws.isPlaying()) {
       ws.pause();
     } else {
-      ws.play().catch((err) => {
-        debug.error('Inline play failed', err);
-        setError(err instanceof Error ? err.message : String(err));
-      });
+      // The WebAudio backend's context is created on mount, outside a user
+      // gesture, and WebKit leaves it suspended (or interrupted after the
+      // mic is used), so playing it stays silent until it is resumed here.
+      const { audioContext } = ws.getMediaElement() as unknown as { audioContext?: AudioContext };
+      const resumed =
+        audioContext && audioContext.state !== 'running'
+          ? audioContext.resume()
+          : Promise.resolve();
+      resumed
+        .then(() => ws.play())
+        .catch((err) => {
+          debug.error('Inline play failed', err);
+          setError(err instanceof Error ? err.message : String(err));
+        });
     }
   };
 
