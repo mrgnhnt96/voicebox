@@ -60,6 +60,7 @@ impl Default for Config {
 
 struct ActiveTake {
     id: u64,
+    origin: TakeOrigin,
     stop: std_mpsc::Sender<()>,
     focus: Arc<Mutex<Option<FocusSnapshot>>>,
     /// Key-up time, for the release-to-final log.
@@ -82,9 +83,18 @@ impl DictationState {
     }
 }
 
+/// Where a take was started, which decides where its text goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TakeOrigin {
+    /// The global shortcut: paste into the app focused at chord start.
+    Shortcut,
+    /// Voicebox's own Dictate button: the text stays in Captures.
+    App,
+}
+
 /// Begin a take at chord start. `keydown` is the chord's event time, used for
 /// latency logging. Returns the take id, or `None` if one is already recording.
-pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
+pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin) -> Option<u64> {
     let state = app.state::<DictationState>();
     let mut active = state.active.lock().ok()?;
     if active.is_some() {
@@ -100,6 +110,7 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
         http: state.http(),
         focus: focus.clone(),
         clipboard: Arc::new(Mutex::new(None)),
+        pastes: origin == TakeOrigin::Shortcut,
     };
     env.emit(PillEvent::Preparing);
 
@@ -108,12 +119,14 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
     let recording = Arc::new(AtomicBool::new(true));
     let hooks = {
         let heard_env = env.clone();
+        let level_env = env.clone();
         let stopped_env = env.clone();
         let error_env = env.clone();
         let stopped_flag = recording.clone();
         let error_flag = recording.clone();
         CaptureHooks {
             on_heard: Box::new(move || heard_env.emit(PillEvent::Recording)),
+            on_level: Box::new(move |db| level_env.emit_level(db)),
             on_stopped: Box::new(move |duration| {
                 stopped_flag.store(false, Ordering::Relaxed);
                 stopped_env.emit(PillEvent::Transcribing {
@@ -130,14 +143,16 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
 
     // Save the clipboard while the user speaks. Reading it can take seconds
     // when the copying app renders its data lazily.
-    let clipboard_slot = env.clipboard.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        if let Ok(snapshot) = crate::clipboard::save_clipboard() {
-            if let Ok(mut slot) = clipboard_slot.lock() {
-                *slot = Some(snapshot);
+    if env.pastes {
+        let clipboard_slot = env.clipboard.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Ok(snapshot) = crate::clipboard::save_clipboard() {
+                if let Ok(mut slot) = clipboard_slot.lock() {
+                    *slot = Some(snapshot);
+                }
             }
-        }
-    });
+        });
+    }
     let stop = capture.stopper();
     let done = capture.done;
 
@@ -184,6 +199,7 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
 
     *active = Some(ActiveTake {
         id: take_id,
+        origin,
         stop,
         focus,
         released,
@@ -205,11 +221,27 @@ pub fn set_focus(app: &AppHandle, take_id: u64, focus: Option<FocusSnapshot>) {
     }
 }
 
-/// End the recording take at chord end. Finalization continues in the
-/// background, so a new take can start immediately.
+/// End the recording take. Finalization continues in the background, so a
+/// new take can start immediately.
 pub fn stop(app: &AppHandle) {
+    stop_matching(app, |_| true);
+}
+
+/// End the take at chord end, but only one the chord started: releasing a
+/// chord pressed during an in-app take must not cut that take short.
+pub fn stop_shortcut_take(app: &AppHandle) {
+    stop_matching(app, |take| take.origin == TakeOrigin::Shortcut);
+}
+
+fn stop_matching(app: &AppHandle, matches: impl Fn(&ActiveTake) -> bool) {
     let state = app.state::<DictationState>();
-    let taken = state.active.lock().ok().and_then(|mut a| a.take());
+    let taken = state.active.lock().ok().and_then(|mut a| {
+        if a.as_ref().is_some_and(&matches) {
+            a.take()
+        } else {
+            None
+        }
+    });
     if let Some(take) = taken {
         let _ = take.released.set(Instant::now());
         let _ = take.stop.send(());
@@ -236,6 +268,19 @@ struct AppEnv {
     focus: Arc<Mutex<Option<FocusSnapshot>>>,
     /// Clipboard saved at key-down so paste needn't read it after release.
     clipboard: Arc<Mutex<Option<crate::clipboard::ClipboardSnapshot>>>,
+    /// False for takes started from Voicebox's own window: nothing to paste into.
+    pastes: bool,
+}
+
+impl AppEnv {
+    /// Input loudness for the HUD's level bars. Sent apart from
+    /// `dictation:state` because it arrives 20 times a second.
+    fn emit_level(&self, db: f32) {
+        let payload = serde_json::json!({ "take": self.take_id, "db": db });
+        let _ = self
+            .app
+            .emit_to(DICTATE_WINDOW_LABEL, "dictation:level", payload);
+    }
 }
 
 impl TakeEnv for AppEnv {
@@ -244,9 +289,9 @@ impl TakeEnv for AppEnv {
         if let Value::Object(ref mut map) = payload {
             map.insert("take".into(), Value::from(self.take_id));
         }
-        let _ = self
-            .app
-            .emit_to(DICTATE_WINDOW_LABEL, "dictation:state", payload);
+        // Every window: the HUD draws it, and the main window's Dictate
+        // button follows it.
+        let _ = self.app.emit("dictation:state", payload);
     }
 
     fn capture_created(&self, capture: &Value) {
@@ -269,7 +314,12 @@ impl TakeEnv for AppEnv {
         let app = self.app.clone();
         let focus = self.focus.lock().ok().and_then(|f| f.clone());
         let prepared = self.clipboard.lock().ok().and_then(|mut c| c.take());
+        let pastes = self.pastes;
         async move {
+            if !pastes {
+                // Started from Voicebox itself: the capture is the result.
+                return Ok(true);
+            }
             match focus {
                 Some(focus) => crate::paste_final_text_with(app, text, focus, prepared).await,
                 None => Err(delivery::NO_FOCUS_MESSAGE.to_string()),
@@ -372,6 +422,38 @@ fn next_device(current: Option<String>, known: bool, sent: Option<String>) -> Op
 #[tauri::command]
 pub fn dictation_stop(app: AppHandle) {
     stop(&app);
+}
+
+/// Start a take from Voicebox's own Dictate button. The text lands in
+/// Captures instead of being pasted. Returns the take id, or `None` when a
+/// take is already recording.
+#[tauri::command]
+pub fn dictation_start(app: AppHandle) -> Option<u64> {
+    let take = start(&app, Instant::now(), TakeOrigin::App);
+    if take.is_some() {
+        show_hud(&app);
+    }
+    take
+}
+
+/// Bring the HUD up bottom-center without taking key focus from the app
+/// being dictated into.
+pub fn show_hud(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) else {
+        return;
+    };
+    // Restore bottom-center placement after the hide path parks the pill
+    // off-screen, then make its controls clickable again.
+    if let Err(e) = crate::position_dictate_window(&window) {
+        eprintln!("dictate:start: failed to position pill: {e}");
+    }
+    let _ = window.set_ignore_cursor_events(false);
+    // Deliberately no set_focus(): taking key focus would yank it out of
+    // whatever app the user was typing in.
+    let _ = window.show();
+    // Order the pill into the currently-active Space (incl. a foreign app's
+    // fullscreen Space); see main.rs.
+    crate::force_order_front(&window);
 }
 
 /// Native microphones, with ids suitable for `input_device_id`.

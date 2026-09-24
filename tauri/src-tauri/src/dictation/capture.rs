@@ -18,7 +18,7 @@ use serde::Serialize;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 
-use super::audio::{self, Framer, TakeMetrics};
+use super::audio::{self, Framer, LevelMeter, TakeMetrics};
 use super::stream::AudioMsg;
 use super::take::{Recorded, MIN_RECORDING};
 
@@ -63,6 +63,8 @@ pub fn list_input_devices() -> Result<Vec<NativeInputDevice>, String> {
 pub struct CaptureHooks {
     /// The microphone delivered sound (or the fallback delay passed).
     pub on_heard: Box<dyn FnOnce() + Send>,
+    /// Input loudness in dBFS, every [`audio::LEVEL_INTERVAL`].
+    pub on_level: Box<dyn FnMut(f32) + Send>,
     /// Recording stopped with a take long enough to transcribe.
     pub on_stopped: Box<dyn FnOnce(Duration) + Send>,
     /// The device could not be opened.
@@ -122,6 +124,7 @@ fn run(
 ) -> Option<Recorded> {
     let CaptureHooks {
         on_heard,
+        mut on_level,
         on_stopped,
         on_error,
     } = hooks;
@@ -150,6 +153,7 @@ fn run(
     };
     let playing_since = Instant::now();
     let mut framer = Framer::new(sample_rate);
+    let mut meter = LevelMeter::new(sample_rate);
     let max_fallback = sample_rate as usize * MAX_FALLBACK_SECONDS;
     let mut recording: Vec<i16> = Vec::with_capacity(sample_rate as usize * 30);
     let mut scratch: Vec<i16> = Vec::with_capacity(sample_rate as usize);
@@ -177,6 +181,9 @@ fn run(
         for frame in framer.push(&scratch) {
             let _ = audio_tx.send(AudioMsg::Frame(frame));
         }
+        // After the frames: the HUD's level events must never delay audio
+        // on its way to the server.
+        meter.push(&scratch, &mut on_level);
     };
 
     loop {

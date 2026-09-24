@@ -32,11 +32,10 @@ use std::time::{Duration, Instant};
 
 use keytap::chord::{Chord, ChordEvent, ChordMatcher};
 use keytap::{Key, RecvTimeoutError};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use crate::dictation;
 use crate::focus_capture;
-use crate::DICTATE_WINDOW_LABEL;
 
 // ========================================================================
 // Public types
@@ -237,7 +236,7 @@ fn apply_effect(app: &AppHandle, effect: Effect, time: Instant) {
             // Open the microphone before anything else: every word from
             // key-down must be captured. `time` is the key event's own
             // timestamp, so the logged latency includes our dispatch.
-            let take = dictation::start(app, time);
+            let take = dictation::start(app, time, dictation::TakeOrigin::Shortcut);
 
             // Snapshot focus BEFORE we touch the window — any AppKit
             // reshuffle triggered by set_position / show could in principle
@@ -248,23 +247,9 @@ fn apply_effect(app: &AppHandle, effect: Effect, time: Instant) {
                 dictation::set_focus(app, take, focus);
             }
 
-            if let Some(window) = app.get_webview_window(DICTATE_WINDOW_LABEL) {
-                // Restore bottom-center placement after the hide path parks
-                // the pill off-screen, then make its controls clickable again.
-                if let Err(e) = crate::position_dictate_window(&window) {
-                    eprintln!("dictate:start: failed to position pill: {e}");
-                }
-                let _ = window.set_ignore_cursor_events(false);
-                // Deliberately no set_focus() — taking key focus would yank
-                // it out of whatever app the user was typing in, which is
-                // the opposite of what a dictation overlay should do.
-                let _ = window.show();
-                // Order the pill into the currently-active Space (incl. a
-                // foreign app's fullscreen Space) — see main.rs.
-                crate::force_order_front(&window);
-            }
+            dictation::show_hud(app);
         }
-        Effect::StopRecording(_) => dictation::stop(app),
+        Effect::StopRecording(_) => dictation::stop_shortcut_take(app),
         Effect::RestartRecording(_) => {
             // PTT upgraded to hands-free mid-hold: keep the same take
             // recording (it was never interrupted) until the toggle ends it.

@@ -130,7 +130,7 @@ function DictateSurface({ session }: { session: NativeDictationSession }) {
       {effectiveState !== 'hidden' ? (
         <CapturePill
           state={effectiveState}
-          elapsedMs={session.pillElapsedMs}
+          inputDb={session.inputDb}
           errorMessage={session.errorMessage}
           onDismiss={session.dismissError}
           onStop={session.isRecording ? session.stopRecording : undefined}

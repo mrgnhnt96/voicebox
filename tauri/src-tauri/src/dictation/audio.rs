@@ -191,9 +191,88 @@ impl TakeMetrics {
     }
 }
 
+/// How often the recording HUD gets a new input level.
+pub const LEVEL_INTERVAL: Duration = Duration::from_millis(50);
+/// Reported for digital silence, which would otherwise be -inf dBFS.
+pub const LEVEL_FLOOR_DBFS: f32 = -100.0;
+
+/// Measures input loudness as RMS dBFS over fixed windows.
+pub struct LevelMeter {
+    window: usize,
+    count: usize,
+    sum_squares: f64,
+}
+
+impl LevelMeter {
+    pub fn new(sample_rate: u32) -> Self {
+        let window = ((sample_rate as u128 * LEVEL_INTERVAL.as_millis()) / 1000).max(1) as usize;
+        Self {
+            window,
+            count: 0,
+            sum_squares: 0.0,
+        }
+    }
+
+    /// Add samples, calling `emit` with the level of each completed window.
+    pub fn push(&mut self, samples: &[i16], mut emit: impl FnMut(f32)) {
+        for &sample in samples {
+            let value = sample as f64 / 32768.0;
+            self.sum_squares += value * value;
+            self.count += 1;
+            if self.count == self.window {
+                emit(dbfs(self.sum_squares / self.count as f64));
+                self.count = 0;
+                self.sum_squares = 0.0;
+            }
+        }
+    }
+}
+
+/// Mean square of full-scale-normalized samples, in dBFS.
+fn dbfs(mean_square: f64) -> f32 {
+    if mean_square <= 0.0 {
+        return LEVEL_FLOOR_DBFS;
+    }
+    ((10.0 * mean_square.log10()) as f32).max(LEVEL_FLOOR_DBFS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn levels(sample_rate: u32, samples: &[i16]) -> Vec<f32> {
+        let mut meter = LevelMeter::new(sample_rate);
+        let mut out = Vec::new();
+        meter.push(samples, |db| out.push(db));
+        out
+    }
+
+    #[test]
+    fn level_meter_reports_one_level_per_50ms() {
+        // 48 kHz: 2400 samples per window; the remainder carries over.
+        let mut meter = LevelMeter::new(48_000);
+        let mut out = Vec::new();
+        meter.push(&vec![1000; 5000], |db| out.push(db));
+        assert_eq!(out.len(), 2);
+        meter.push(&vec![1000; 2200], |db| out.push(db));
+        assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn level_meter_measures_rms_dbfs() {
+        let silence = levels(16_000, &vec![0; 800]);
+        assert_eq!(silence, vec![LEVEL_FLOOR_DBFS]);
+
+        let full: Vec<i16> = (0..800)
+            .map(|i| if i % 2 == 0 { 32767 } else { -32768 })
+            .collect();
+        assert!(levels(16_000, &full)[0].abs() < 0.01);
+
+        let half: Vec<i16> = (0..800)
+            .map(|i| if i % 2 == 0 { 16384 } else { -16384 })
+            .collect();
+        assert!((levels(16_000, &half)[0] + 6.02).abs() < 0.05);
+    }
 
     #[test]
     fn float_samples_convert_and_clamp() {

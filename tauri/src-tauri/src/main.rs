@@ -1170,6 +1170,7 @@ pub fn run() {
             disable_hotkey,
             update_chord_bindings,
             dictation::dictation_configure,
+            dictation::dictation_start,
             dictation::dictation_stop,
             dictation::list_input_devices
         ])

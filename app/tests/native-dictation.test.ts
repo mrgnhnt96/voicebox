@@ -119,6 +119,25 @@ test('follows the native take through the pill states', async () => {
   expect(hook.pillState).toBe('rest');
 });
 
+test('input levels drive the pill only for the current take while recording', async () => {
+  const level = async (payload: Record<string, unknown>) => {
+    await act(async () => {
+      handlers.get('dictation:level')?.({ payload });
+    });
+  };
+  await mount();
+  await send({ take: 2, state: 'preparing' });
+  expect(hook.inputDb).toBeNull();
+  await level({ take: 2, db: -30 });
+  expect(hook.inputDb).toBe(-30);
+  await level({ take: 1, db: -10 });
+  expect(hook.inputDb).toBe(-30);
+  await send({ take: 2, state: 'transcribing', elapsed_ms: 1000 });
+  expect(hook.inputDb).toBeNull();
+  await send({ take: 3, state: 'preparing' });
+  expect(hook.inputDb).toBeNull();
+});
+
 test('errors show their message for the requested time', async () => {
   await mount();
   await send({ take: 1, state: 'preparing' });

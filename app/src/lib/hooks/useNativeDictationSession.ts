@@ -15,9 +15,14 @@ export type NativeDictationEvent =
   | { take: number; state: 'transcribing'; elapsed_ms: number }
   | { take: number; state: 'error'; message: string; visible_ms: number };
 
+/** Microphone loudness for the HUD's level bars, about 20 times a second. */
+export type NativeDictationLevel = { take: number; db: number };
+
 export interface NativeDictationSession {
   pillState: CapturePillState;
   pillElapsedMs: number;
+  /** Input loudness in dBFS while recording; `null` before the first reading. */
+  inputDb?: number | null;
   errorMessage: string | null;
   isRecording: boolean;
   stopRecording: () => void;
@@ -45,6 +50,7 @@ export function useNativeDictationSession(): NativeDictationSession {
 
   const [pillState, setPillState] = useState<CapturePillState>('hidden');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [inputDb, setInputDb] = useState<number | null>(null);
   const [frozenElapsedMs, setFrozenElapsedMs] = useState(0);
   const [liveElapsedMs, setLiveElapsedMs] = useState(0);
   const startedAtRef = useRef<number | null>(null);
@@ -87,6 +93,7 @@ export function useNativeDictationSession(): NativeDictationSession {
           setLiveElapsedMs(0);
           setFrozenElapsedMs(0);
           setErrorMessage(null);
+          setInputDb(null);
           // Most microphones deliver sound within ~0.1 s, so show recording
           // right away; only a device still silent after SLOW_MICROPHONE_MS
           // (e.g. a Bluetooth headset switching to call mode) says it's opening.
@@ -129,16 +136,21 @@ export function useNativeDictationSession(): NativeDictationSession {
     };
 
     let disposed = false;
-    let release: (() => void) | undefined;
-    listen<NativeDictationEvent>('dictation:state', ({ payload }) => apply(payload))
-      .then((unlisten) => {
-        if (disposed) unlisten();
-        else release = unlisten;
-      })
-      .catch((err) => console.warn('[dictate] dictation listener failed:', err));
+    const releases: (() => void)[] = [];
+    const subscribe = <T>(name: string, handle: (payload: T) => void) =>
+      listen<T>(name, ({ payload }) => handle(payload))
+        .then((unlisten) => {
+          if (disposed) unlisten();
+          else releases.push(unlisten);
+        })
+        .catch((err) => console.warn(`[dictate] ${name} listener failed:`, err));
+    subscribe<NativeDictationEvent>('dictation:state', apply);
+    subscribe<NativeDictationLevel>('dictation:level', (level) => {
+      if (level.take === currentTakeRef.current) setInputDb(level.db);
+    });
     return () => {
       disposed = true;
-      release?.();
+      for (const release of releases) release();
       clearTimer();
     };
   }, [clearTimer]);
@@ -167,6 +179,7 @@ export function useNativeDictationSession(): NativeDictationSession {
     pillState,
     pillElapsedMs: pillState === 'recording' ? liveElapsedMs : frozenElapsedMs,
     errorMessage,
+    inputDb: isRecording ? inputDb : null,
     isRecording,
     stopRecording,
     dismissError,
