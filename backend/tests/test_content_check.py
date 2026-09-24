@@ -35,6 +35,11 @@ def test_answering_instead_of_cleaning_is_rejected():
     assert (verdict.outcome, verdict.reason) == ("reject", "answered")
 
 
+def test_a_cleanup_mostly_of_new_words_is_rejected():
+    verdict = check("Why is it?", "Because I'm pretty happy with how this is working.")
+    assert (verdict.outcome, verdict.reason) == ("reject", "answered")
+
+
 def test_self_correction_may_drop_the_retracted_words():
     flags = RefinementFlags()
     text, verdict = check_refinement(
