@@ -193,17 +193,58 @@ def check(said: str, cleaned: str, allow_retractions: bool = False) -> Verdict:
 
 
 
-def check_refinement(said: str, refined: str, flags) -> tuple[str, Verdict]:
+# This many consecutive output words the speaker never said, found in an
+# example the model was shown, means it copied the example.
+COPIED_RUN = 3
+
+
+def _copied_example(said: str, cleaned: str, examples) -> list[str] | None:
+    """A run of unsaid output words that appears word for word in an example."""
+    heard = set(_tokens(said))
+    heard |= {part for token in heard for part in _parts(token)}
+    shown = [" " + " ".join(_tokens(text)) + " " for pair in examples for text in pair]
+    run: list[str] = []
+    for token in [*_tokens(cleaned), None]:
+        if token is not None and token not in heard:
+            run.append(token)
+            continue
+        if len(run) >= COPIED_RUN:
+            # Any COPIED_RUN-long stretch of the run is enough.
+            for start in range(len(run) - COPIED_RUN + 1):
+                window = " " + " ".join(run[start : start + COPIED_RUN]) + " "
+                if any(window in text for text in shown):
+                    return run
+        run = []
+    return None
+
+
+def _shown_examples() -> list[tuple[str, str]]:
+    """Every example the cleanup model sees: built-in and the user's own."""
+    try:
+        from .personal_examples import for_prompt
+        from .refinement import REFINEMENT_EXAMPLES
+
+        return [*REFINEMENT_EXAMPLES, *for_prompt()]
+    except Exception:
+        return []
+
+
+def check_refinement(said: str, refined: str, flags, examples=None) -> tuple[str, Verdict]:
     """Check a cleanup and choose what to keep: the cleanup unless rejected.
 
     ``said`` is compared after the deterministic spoken-correction pass, so a
     retraction the speaker made ("3, no actually 4") is not a changed number.
+    Text copied from an example the model was shown is rejected, whatever
+    else the check finds.
     """
     from .refinement import prepare_refinement
 
     cleaned, explicit = prepare_refinement(said, flags)
     if explicit is not None:
         return explicit, Verdict("ok")
+    copied = _copied_example(cleaned, refined, _shown_examples() if examples is None else examples)
+    if copied:
+        return cleaned, Verdict("reject", reason="copied example", added=copied)
     verdict = check(cleaned, refined, allow_retractions=flags.self_correction)
     if verdict.outcome == "review" and not verdict.added and flags.self_correction and _CORRECTION_CUE.search(said):
         # The speaker took words back, so leaving them out is the point.

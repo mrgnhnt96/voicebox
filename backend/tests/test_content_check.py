@@ -111,3 +111,29 @@ def test_a_name_said_after_the_correction_must_survive():
 
 def test_a_capitalized_restart_is_not_a_name():
     assert check("How does it look now? It might But we'll see", "How does it look now? We'll see.").reason is None
+
+
+def test_copying_an_example_the_speaker_did_not_say_is_rejected():
+    # A real case: the newest taught example leaked into the next dictation.
+    said = "I'm sure we could do some compression and the bundle size is probably not that big."
+    refined = "New line, what else can we improve?\nI'm sure we could do some compression and the bundle size is probably not that big."
+    examples = [("New line, what else can we improve?", "What else can we improve?")]
+    text, verdict = check_refinement(said, refined, RefinementFlags(), examples=examples)
+    assert (verdict.outcome, verdict.reason) == ("reject", "copied example")
+    assert text.startswith("I'm sure we could")
+
+
+def test_saying_words_that_also_appear_in_an_example_is_fine():
+    said = "what else can we improve on the bundle"
+    refined = "What else can we improve on the bundle?"
+    examples = [("New line, what else can we improve?", "What else can we improve?")]
+    _, verdict = check_refinement(said, refined, RefinementFlags(), examples=examples)
+    assert verdict.outcome == "ok"
+
+
+def test_short_formatting_additions_are_not_mistaken_for_copying():
+    said = "go to school come home do chores"
+    refined = "1. Go to school\n2. Come home\n3. Do chores"
+    examples = [("list go to the store go home", "1. Go to the store\n2. Go home")]
+    _, verdict = check_refinement(said, refined, RefinementFlags(), examples=examples)
+    assert verdict.outcome != "reject"
