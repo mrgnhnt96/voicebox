@@ -5,7 +5,7 @@ from PyInstaller.utils.hooks import copy_metadata
 
 datas = []
 binaries = []
-hiddenimports = ['backend', 'backend.main', 'backend.config', 'backend.database', 'backend.models', 'backend.services.transcribe', 'backend.utils.platform_detect', 'backend.backends', 'backend.backends.pytorch_backend', 'backend.backends.qwen_llm_backend', 'backend.utils.audio', 'backend.utils.progress', 'backend.utils.hf_progress', 'torch', 'transformers', 'fastapi', 'uvicorn', 'uvicorn.protocols.websockets.auto', 'uvicorn.protocols.websockets.websockets_impl', 'sqlalchemy', 'soundfile', 'requests', 'pkg_resources.extern', 'backend.backends.mlx_backend', 'mlx', 'mlx.core', 'mlx.nn', 'mlx_audio', 'mlx_audio.stt', 'mlx_lm']
+hiddenimports = ['backend', 'backend.main', 'backend.config', 'backend.database', 'backend.models', 'backend.services.transcribe', 'backend.utils.platform_detect', 'backend.backends', 'backend.backends.qwen_llm_backend', 'backend.utils.audio', 'backend.utils.progress', 'backend.utils.hf_progress', 'transformers', 'fastapi', 'uvicorn', 'uvicorn.protocols.websockets.auto', 'uvicorn.protocols.websockets.websockets_impl', 'sqlalchemy', 'soundfile', 'requests', 'pkg_resources.extern', 'backend.backends.mlx_backend', 'mlx', 'mlx.core', 'mlx.nn', 'mlx_audio', 'mlx_audio.stt', 'mlx_lm']
 datas += copy_metadata('requests')
 datas += copy_metadata('transformers')
 datas += copy_metadata('huggingface-hub')
@@ -29,6 +29,7 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('mlx_lm')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+
 a = Analysis(
     ['server.py'],
     pathex=[],
@@ -37,8 +38,8 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=['pyi_hooks'],
     hooksconfig={},
-    runtime_hooks=['pyi_rth_numpy_compat.py', 'pyi_rth_torch_compiler_disable.py'],
-    excludes=['nvidia', 'nvidia.cublas', 'nvidia.cuda_cupti', 'nvidia.cuda_nvrtc', 'nvidia.cuda_runtime', 'nvidia.cudnn', 'nvidia.cufft', 'nvidia.curand', 'nvidia.cusolver', 'nvidia.cusparse', 'nvidia.nccl', 'nvidia.nvjitlink', 'nvidia.nvtx'],
+    runtime_hooks=['pyi_rth_scipy_distn.py'],
+    excludes=['torch', 'torchaudio', 'torchvision'],
     noarchive=False,
     optimize=0,
 )

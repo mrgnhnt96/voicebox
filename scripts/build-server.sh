@@ -29,9 +29,6 @@ copy_sidecar() {
         cp "dist/${name}" "../tauri/src-tauri/binaries/${name}-${PLATFORM}"
         chmod +x "../tauri/src-tauri/binaries/${name}-${PLATFORM}"
         echo "Built ${name}-${PLATFORM}"
-    elif [ -f "dist/${name}.exe" ]; then
-        cp "dist/${name}.exe" "../tauri/src-tauri/binaries/${name}-${PLATFORM}.exe"
-        echo "Built ${name}-${PLATFORM}.exe"
     else
         echo "Error: ${name} binary not found in dist/"
         exit 1

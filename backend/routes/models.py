@@ -9,7 +9,6 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import models
-from ..utils.platform_detect import get_backend_type
 from ..services.task_queue import create_background_task
 from ..utils.progress import get_progress_manager
 from ..utils.tasks import get_task_manager
@@ -203,7 +202,6 @@ async def get_model_status():
     """Get status of all available models."""
     from huggingface_hub import constants as hf_constants
 
-    backend_type = get_backend_type()
     task_manager = get_task_manager()
 
     # Pending only — an errored task stays in the active list for the

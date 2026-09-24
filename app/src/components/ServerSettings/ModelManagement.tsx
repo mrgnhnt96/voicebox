@@ -68,7 +68,7 @@ const MODEL_DESCRIPTIONS: Record<string, string> = {
   'qwen3-1.7b':
     'Qwen3 1.7B — balanced size and quality. Handles subtle self-corrections and technical vocabulary better than the 0.6B. Runs at ~1.1 GB quantized on Apple Silicon.',
   'qwen3-4b':
-    'Qwen3 4B — highest quality local refinement and longer-form reasoning. ~2.5 GB quantized on Apple Silicon, ~8 GB at full precision on PyTorch.',
+    'Qwen3 4B — highest quality local refinement and longer-form reasoning. Runs at ~2.5 GB quantized on Apple Silicon.',
 };
 
 function formatDownloads(n: number): string {

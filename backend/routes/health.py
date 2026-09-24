@@ -4,14 +4,13 @@ import asyncio
 import os
 import signal
 
-import torch
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from .. import config, models
 from ..services import transcribe
 from ..database import get_db
-from ..utils.platform_detect import get_backend_type
+from ..utils.platform_detect import BACKEND_TYPE, GPU_TYPE
 
 router = APIRouter()
 
@@ -53,17 +52,6 @@ async def health(db: Session = Depends(get_db)):
     settings is cached locally.
     """
     whisper_model = transcribe.get_whisper_model()
-    backend_type = get_backend_type()
-
-    has_mps = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
-    gpu_available = has_mps or backend_type == "mlx"
-
-    gpu_type = None
-    if backend_type == "mlx":
-        gpu_type = "Metal (Apple Silicon via MLX)"
-    elif has_mps:
-        gpu_type = "MPS (Apple Silicon)"
-
     model_loaded = False
     model_size = None
     try:
@@ -92,9 +80,11 @@ async def health(db: Session = Depends(get_db)):
         model_loaded=model_loaded,
         model_downloaded=model_downloaded,
         model_size=model_size,
-        gpu_available=gpu_available,
-        gpu_type=gpu_type,
-        backend_type=backend_type,
+        # Startup refuses anything but Apple Silicon, so MLX on Metal is
+        # always the backend here.
+        gpu_available=True,
+        gpu_type=GPU_TYPE,
+        backend_type=BACKEND_TYPE,
     )
 
 

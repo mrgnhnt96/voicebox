@@ -82,8 +82,7 @@ class TestAudioopBuildArgs:
 
         with (
             patch("build_binary.PyInstaller.__main__.run") as mock_run,
-            patch("build_binary.platform.system", return_value="Linux"),
-            patch("build_binary.is_apple_silicon", return_value=False),
+            patch("build_binary.is_apple_silicon", return_value=True),
             patch("build_binary.os.chdir"),
             patch("build_binary.sys.version_info", fake_313),
         ):
@@ -110,8 +109,7 @@ class TestAudioopBuildArgs:
 
         with (
             patch("build_binary.PyInstaller.__main__.run") as mock_run,
-            patch("build_binary.platform.system", return_value="Linux"),
-            patch("build_binary.is_apple_silicon", return_value=False),
+            patch("build_binary.is_apple_silicon", return_value=True),
             patch("build_binary.os.chdir"),
             patch("build_binary.sys.version_info", fake_312),
         ):

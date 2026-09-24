@@ -1,3 +1,5 @@
+# Voicebox backend runs on Apple Silicon only, with MLX as its sole backend.
+
 # FastAPI and server
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
@@ -6,18 +8,33 @@ pydantic>=2.5.0
 # Database
 sqlalchemy>=2.0.0
 
-# ML models (Whisper speech-to-text and the Qwen3 cleanup LLM).
-# PyTorch is the fallback backend when MLX is unavailable.
-torch>=2.2.0
+# MLX runs Whisper speech-to-text (mlx-audio) and the Qwen3 cleanup LLM (mlx-lm).
+mlx>=0.30.0
+# transformers supplies the Whisper and Qwen tokenizers.
 transformers>=4.36.0,<=4.57.6
 huggingface_hub>=0.20.0
+# Chat templates (mlx-lm's tokenizer wrapper). torch used to pull it in.
+jinja2>=3.1.0
+
+# NOTE: mlx-audio and mlx-lm are intentionally not listed here. They declare
+# `transformers>=5.0.0`, which conflicts with the `transformers<=4.57.6` cap
+# above. The parts Voicebox uses (mlx-audio's Whisper STT, mlx-lm generation)
+# work on transformers 4.57.x, so install them after this file with:
+#
+#   pip install --no-deps mlx-lm==0.31.1 mlx-audio==0.4.1
+#
+# (the setup-python recipe in the justfile does this). The runtime deps their
+# code paths need are listed in this file.
 
 # Audio processing
 audioop-lts>=0.2.1; python_version >= "3.13"
 librosa>=0.10.0
 soundfile>=0.12.0
 numpy>=1.24.0,<2.0
+# librosa and mlx-audio's Whisper import numba.
 numba>=0.60.0,<0.61.0
+# mlx-audio's STT path (mlx_audio.stt) decodes audio with miniaudio (issue #505).
+miniaudio>=1.59
 
 # HTTP client (used by FastAPI's TestClient in the test suite)
 httpx>=0.27.0

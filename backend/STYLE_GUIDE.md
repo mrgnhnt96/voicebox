@@ -42,7 +42,7 @@ from .database import get_db            #    or relative
 - Absolute imports are fine for top-level references from entry points (`main.py`, `server.py`).
 - Never use wildcard imports (`from module import *`).
 - One import per line for `from X import Y` when there are 4+ names; below that, comma-separated is fine.
-- **Lazy imports** are acceptable for heavy dependencies (torch, transformers, mlx) inside functions to reduce startup time. Add a comment: `# lazy: heavy import`.
+- **Lazy imports** are acceptable for heavy dependencies (transformers, mlx, mlx_lm) inside functions to reduce startup time. Add a comment: `# lazy: heavy import`.
 
 ---
 
@@ -87,7 +87,7 @@ Use `collections.abc` for abstract types: `Sequence`, `Mapping`, `Iterable`, `It
 **Specific conventions:**
 - Database ORM models imported with `DB` prefix alias: `from .database import VoiceProfile as DBVoiceProfile`.
 - Pydantic models use descriptive suffixes: `VoiceProfileCreate`, `VoiceProfileResponse`, `GenerationRequest`.
-- Backend classes use engine-name prefix: `MLXTTSBackend`, `PyTorchSTTBackend`.
+- Backend classes use engine-name prefix: `MLXSTTBackend`, `MLXQwenLLMBackend`.
 
 ---
 
@@ -203,7 +203,7 @@ Keep block comments tight. Two to three lines is normal. If you need a paragraph
 Always add a reason after `noqa` and `type: ignore`:
 
 ```python
-import intel_extension_for_pytorch  # noqa: F401 -- side-effect import enables XPU
+import mlx.core  # noqa: F401 -- triggers native lib loading
 _queue: asyncio.Queue = None  # type: ignore[assignment]  # initialized at startup
 ```
 

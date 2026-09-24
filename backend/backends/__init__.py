@@ -1,7 +1,7 @@
 """
 Backend abstraction layer for speech-to-text (Whisper) and the local LLM.
 
-Provides a unified interface for MLX and PyTorch backends,
+Provides the MLX backends behind a small protocol,
 and a model config registry that eliminates per-engine dispatch maps.
 """
 
@@ -21,7 +21,6 @@ import numpy as np
 DEFAULT_LLM_MAX_TOKENS = 512
 DEFAULT_LLM_TEMPERATURE = 0.7
 
-from ..utils.platform_detect import get_backend_type
 
 WHISPER_HF_REPOS = {
     "base": "openai/whisper-base",
@@ -186,20 +185,10 @@ def _get_whisper_configs() -> list[ModelConfig]:
 
 
 def _get_qwen_llm_configs() -> list[ModelConfig]:
-    """Return Qwen3 LLM configs with backend-aware HF repo IDs.
-
-    MLX path uses 4-bit community quantizations for Apple Silicon; PyTorch path
-    uses the upstream instruct weights.
-    """
-    backend_type = get_backend_type()
-    if backend_type == "mlx":
-        repo_0_6 = "mlx-community/Qwen3-0.6B-4bit"
-        repo_1_7 = "mlx-community/Qwen3-1.7B-4bit"
-        repo_4 = "mlx-community/Qwen3-4B-4bit"
-    else:
-        repo_0_6 = "Qwen/Qwen3-0.6B"
-        repo_1_7 = "Qwen/Qwen3-1.7B"
-        repo_4 = "Qwen/Qwen3-4B"
+    """Return Qwen3 LLM configs (4-bit MLX community quantizations)."""
+    repo_0_6 = "mlx-community/Qwen3-0.6B-4bit"
+    repo_1_7 = "mlx-community/Qwen3-1.7B-4bit"
+    repo_4 = "mlx-community/Qwen3-4B-4bit"
 
     common_languages = [
         "en", "zh", "ja", "ko", "de", "fr", "ru", "pt", "es", "it",
@@ -212,7 +201,7 @@ def _get_qwen_llm_configs() -> list[ModelConfig]:
             engine="qwen_llm",
             hf_repo_id=repo_0_6,
             model_size="0.6B",
-            size_mb=400 if backend_type == "mlx" else 1400,
+            size_mb=400,
             languages=common_languages,
         ),
         ModelConfig(
@@ -221,7 +210,7 @@ def _get_qwen_llm_configs() -> list[ModelConfig]:
             engine="qwen_llm",
             hf_repo_id=repo_1_7,
             model_size="1.7B",
-            size_mb=1100 if backend_type == "mlx" else 3500,
+            size_mb=1100,
             languages=common_languages,
         ),
         ModelConfig(
@@ -230,7 +219,7 @@ def _get_qwen_llm_configs() -> list[ModelConfig]:
             engine="qwen_llm",
             hf_repo_id=repo_4,
             model_size="4B",
-            size_mb=2500 if backend_type == "mlx" else 8000,
+            size_mb=2500,
             languages=common_languages,
         ),
     ]
@@ -315,31 +304,19 @@ def get_model_load_func(config: ModelConfig):
 
 
 def get_stt_backend() -> STTBackend:
-    """
-    Get or create STT backend instance based on platform.
-
-    Returns:
-        STT backend instance (MLX or PyTorch)
-    """
+    """Get or create the MLX Whisper STT backend."""
     global _stt_backend
 
     if _stt_backend is None:
-        backend_type = get_backend_type()
+        from .mlx_backend import MLXSTTBackend
 
-        if backend_type == "mlx":
-            from .mlx_backend import MLXSTTBackend
-
-            _stt_backend = MLXSTTBackend()
-        else:
-            from .pytorch_backend import PyTorchSTTBackend
-
-            _stt_backend = PyTorchSTTBackend()
+        _stt_backend = MLXSTTBackend()
 
     return _stt_backend
 
 
 def get_llm_backend() -> LLMBackend:
-    """Get or create the default Qwen3 LLM backend based on platform."""
+    """Get or create the default Qwen3 LLM backend."""
     return get_llm_backend_for_engine("qwen_llm")
 
 
@@ -355,15 +332,9 @@ def get_llm_backend_for_engine(engine: str) -> LLMBackend:
             return _llm_backends[engine]
 
         if engine == "qwen_llm":
-            backend_type = get_backend_type()
-            if backend_type == "mlx":
-                from .qwen_llm_backend import MLXQwenLLMBackend
+            from .qwen_llm_backend import MLXQwenLLMBackend
 
-                backend = MLXQwenLLMBackend()
-            else:
-                from .qwen_llm_backend import PyTorchQwenLLMBackend
-
-                backend = PyTorchQwenLLMBackend()
+            backend = MLXQwenLLMBackend()
         else:
             raise ValueError(f"Unknown LLM engine: {engine}. Supported: {list(LLM_ENGINES.keys())}")
 

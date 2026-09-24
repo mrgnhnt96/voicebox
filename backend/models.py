@@ -206,7 +206,7 @@ class HealthResponse(BaseModel):
     model_size: Optional[str] = None  # Loaded Whisper model size
     gpu_available: bool
     gpu_type: Optional[str] = None  # "Metal (Apple Silicon via MLX)", "MPS (Apple Silicon)", or None
-    backend_type: Optional[str] = None  # Backend type (mlx or pytorch)
+    backend_type: Optional[str] = None  # Always "mlx"
 
 
 class DirectoryCheck(BaseModel):

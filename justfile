@@ -26,6 +26,10 @@ setup: setup-python setup-js
 setup-python:
     #!/usr/bin/env bash
     set -euo pipefail
+    if [ "$(uname)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
+        echo "Voicebox requires an Apple Silicon Mac (arm64 macOS)." >&2
+        exit 1
+    fi
     if [ ! -d "{{ venv }}" ]; then
         echo "Creating Python virtual environment..."
         PY_MINOR=$({{ system_python }} -c "import sys; print(sys.version_info[1])")
@@ -38,17 +42,10 @@ setup-python:
     echo "Installing Python dependencies..."
     {{ pip }} install --upgrade pip -q
     {{ pip }} install -r {{ backend_dir }}/requirements.txt
-    # Apple Silicon: install MLX backend
-    if [ "$(uname -m)" = "arm64" ] && [ "$(uname)" = "Darwin" ]; then
-        echo "Detected Apple Silicon — installing MLX dependencies..."
-        {{ pip }} install -r {{ backend_dir }}/requirements-mlx.txt
-        # mlx-lm and mlx-audio declare transformers>=5.x, which conflicts with
-        # our transformers<=4.57.x cap, so install them --no-deps (their other
-        # runtime deps are covered by requirements.txt / requirements-mlx.txt —
-        # see the note in requirements-mlx.txt and .github/workflows/release.yml)
-        {{ pip }} install --no-deps mlx-lm==0.31.1
-        {{ pip }} install --no-deps mlx-audio==0.4.1
-    fi
+    # mlx-lm and mlx-audio declare transformers>=5.x, which conflicts with our
+    # transformers<=4.57.x cap, so install them --no-deps (their runtime deps
+    # are covered by requirements.txt — see the note there)
+    {{ pip }} install --no-deps mlx-lm==0.31.1 mlx-audio==0.4.1
     {{ pip }} install pyinstaller ruff pytest pytest-asyncio -q
     echo "Python environment ready."
 
@@ -165,9 +162,6 @@ db-reset:
 
 # ─── Utilities ────────────────────────────────────────────────────────
 
-# Generate TypeScript API client (backend must be running)
-generate-api:
-    ./scripts/generate-api.sh
 
 # Open API docs in browser
 docs:

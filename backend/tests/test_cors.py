@@ -25,7 +25,7 @@ def _build_app(env_origins: str = "") -> FastAPI:
     Build a minimal FastAPI app with the same CORS logic as backend/main.py.
 
     This mirrors the exact code in main.py so the test validates the real
-    configuration without needing torch/numpy/transformers installed.
+    configuration without needing numpy/transformers/mlx installed.
     """
     app = FastAPI()
 

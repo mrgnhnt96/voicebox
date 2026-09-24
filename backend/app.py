@@ -35,13 +35,12 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-import torch
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__, config, database
 from .services import transcribe, llm
-from .utils.platform_detect import get_backend_type
+from .utils.platform_detect import BACKEND_TYPE, GPU_TYPE, require_apple_silicon
 from .utils.progress import get_progress_manager
 from .routes import register_routers
 
@@ -101,15 +100,6 @@ def _configure_cors(application: FastAPI) -> None:
     )
 
 
-def _get_gpu_status() -> str:
-    """Return a human-readable string describing GPU availability."""
-    if get_backend_type() == "mlx":
-        return "Metal (Apple Silicon via MLX)"
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "MPS (Apple Silicon)"
-    return "None (CPU only)"
-
-
 async def _run_startup(application: FastAPI) -> None:
     """Initialize storage and load configured models on lifespan entry."""
     import platform
@@ -124,6 +114,8 @@ async def _run_startup(application: FastAPI) -> None:
         platform.machine(),
     )
 
+    require_apple_silicon()
+
     database.init_db()
 
     from .database.session import _db_path
@@ -131,9 +123,8 @@ async def _run_startup(application: FastAPI) -> None:
     logger.info("Database: %s", _db_path)
     logger.info("Data directory: %s", config.get_data_dir())
 
-    backend_type = get_backend_type()
-    logger.info("Backend: %s", backend_type.upper())
-    logger.info("GPU: %s", _get_gpu_status())
+    logger.info("Backend: %s", BACKEND_TYPE.upper())
+    logger.info("GPU: %s", GPU_TYPE)
 
     try:
         progress_manager = get_progress_manager()

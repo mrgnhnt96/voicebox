@@ -91,34 +91,6 @@ def ellipsis_token_ids(model_key: str, decode: Callable[[List[int]], str], vocab
     return _ELLIPSIS_TOKEN_IDS[key]
 
 
-def get_torch_device(*, allow_mps: bool = False) -> str:
-    """
-    Detect the best available torch device for the PyTorch fallback path.
-
-    Voicebox targets Apple Silicon, where MLX is the primary backend. PyTorch
-    only runs when MLX is unavailable, on Apple's MPS or on the CPU.
-
-    Args:
-        allow_mps: Allow MPS (Apple Silicon). If False, falls back to CPU.
-    """
-    import torch
-
-    if allow_mps and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-
-    return "cpu"
-
-
-def empty_device_cache(device: str) -> None:
-    """
-    Free cached accelerator memory after a model is unloaded.
-    """
-    import torch
-
-    if device == "mps" and hasattr(torch, "mps"):
-        torch.mps.empty_cache()
-
-
 @contextmanager
 def model_load_progress(
     model_name: str,

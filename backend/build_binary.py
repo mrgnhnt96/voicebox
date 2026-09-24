@@ -21,7 +21,10 @@ def is_apple_silicon():
 
 
 def build_server():
-    """Build the Python server as a standalone onefile binary."""
+    """Build the Python server as a standalone onefile binary (Apple Silicon only)."""
+    if not is_apple_silicon():
+        raise SystemExit("voicebox-server builds on Apple Silicon (arm64 macOS) only.")
+
     backend_dir = Path(__file__).parent
     binary_name = "voicebox-server"
 
@@ -35,22 +38,15 @@ def build_server():
         "backend.services",
     ]
 
-    # numpy 2.x / torch ABI mismatch fix: install memmove fallback for
-    # torch.from_numpy() before the app starts. Runtime hooks run after
-    # FrozenImporter is registered so frozen torch/numpy are importable.
     # Paths are passed relative to backend_dir because os.chdir(backend_dir)
     # runs before PyInstaller. Absolute paths would get baked into the
-    # generated .spec, breaking reproducible builds on other machines / CI.
+    # generated .spec, breaking reproducible builds on other machines.
     args.extend(
         [
+            # Let scipy.stats (librosa -> scipy.signal -> scipy.stats) load
+            # under the frozen importer. See pyi_rth_scipy_distn.py.
             "--runtime-hook",
-            "pyi_rth_numpy_compat.py",
-            # Stub torch.compiler.disable before transformers imports
-            # flex_attention, which otherwise triggers torch._dynamo →
-            # torch._numpy._ufuncs and crashes at module load under
-            # PyInstaller. See pyi_rth_torch_compiler_disable.py.
-            "--runtime-hook",
-            "pyi_rth_torch_compiler_disable.py",
+            "pyi_rth_scipy_distn.py",
             # Per-module collection overrides (e.g. forcing scipy.stats._distn_infrastructure
             # to bundle .py source alongside .pyc so the runtime hook can source-patch it).
             "--additional-hooks-dir",
@@ -78,8 +74,6 @@ def build_server():
             "--hidden-import",
             "backend.backends",
             "--hidden-import",
-            "backend.backends.pytorch_backend",
-            "--hidden-import",
             "backend.backends.qwen_llm_backend",
             "--hidden-import",
             "backend.utils.audio",
@@ -87,8 +81,6 @@ def build_server():
             "backend.utils.progress",
             "--hidden-import",
             "backend.utils.hf_progress",
-            "--hidden-import",
-            "torch",
             "--hidden-import",
             "transformers",
             "--hidden-import",
@@ -140,70 +132,50 @@ def build_server():
     if sys.version_info >= (3, 13):
         args.extend(["--hidden-import", "audioop"])
 
-    # Keep NVIDIA CUDA packages out of the binary. If the build venv has a
-    # CUDA torch installed, PyInstaller would otherwise bundle ~3GB of
-    # NVIDIA shared libraries that the app never uses.
-    nvidia_packages = [
-        "nvidia",
-        "nvidia.cublas",
-        "nvidia.cuda_cupti",
-        "nvidia.cuda_nvrtc",
-        "nvidia.cuda_runtime",
-        "nvidia.cudnn",
-        "nvidia.cufft",
-        "nvidia.curand",
-        "nvidia.cusolver",
-        "nvidia.cusparse",
-        "nvidia.nccl",
-        "nvidia.nvjitlink",
-        "nvidia.nvtx",
-    ]
-    for pkg in nvidia_packages:
-        args.extend(["--exclude-module", pkg])
+    # mlx_audio ships TTS/STS models that depend on torch. Voicebox never loads
+    # them, so keep torch out even when the build venv still has it.
+    for module in ("torch", "torchaudio", "torchvision"):
+        args.extend(["--exclude-module", module])
 
-    # Add MLX-specific imports if building on Apple Silicon
-    if is_apple_silicon():
-        logger.info("Building for Apple Silicon - including MLX dependencies")
-        args.extend(
-            [
-                "--hidden-import",
-                "backend.backends.mlx_backend",
-                "--hidden-import",
-                "mlx",
-                "--hidden-import",
-                "mlx.core",
-                "--hidden-import",
-                "mlx.nn",
-                "--hidden-import",
-                "mlx_audio",
-                "--hidden-import",
-                "mlx_audio.stt",
-                "--hidden-import",
-                "mlx_lm",
-                "--collect-submodules",
-                "mlx",
-                "--collect-submodules",
-                "mlx_audio",
-                "--collect-submodules",
-                "mlx_lm",
-                # Use --collect-all so PyInstaller bundles both data files AND
-                # native shared libraries (.dylib, .metallib) for MLX.
-                # Previously only --collect-data was used, which caused MLX to
-                # raise OSError at runtime inside the bundled binary because
-                # the Metal shader libraries were missing.
-                "--collect-all",
-                "mlx",
-                "--collect-all",
-                "mlx_audio",
-                # mlx_lm ships chat_templates/ JSON files and loads tool_parsers
-                # submodules dynamically via importlib at tokenizer load time,
-                # which --hidden-import alone can't resolve.
-                "--collect-all",
-                "mlx_lm",
-            ]
-        )
-    else:
-        logger.info("Building for a non-Apple Silicon platform - PyTorch only")
+    # MLX runs Whisper and the refinement LLM.
+    args.extend(
+        [
+            "--hidden-import",
+            "backend.backends.mlx_backend",
+            "--hidden-import",
+            "mlx",
+            "--hidden-import",
+            "mlx.core",
+            "--hidden-import",
+            "mlx.nn",
+            "--hidden-import",
+            "mlx_audio",
+            "--hidden-import",
+            "mlx_audio.stt",
+            "--hidden-import",
+            "mlx_lm",
+            "--collect-submodules",
+            "mlx",
+            "--collect-submodules",
+            "mlx_audio",
+            "--collect-submodules",
+            "mlx_lm",
+            # Use --collect-all so PyInstaller bundles both data files AND
+            # native shared libraries (.dylib, .metallib) for MLX.
+            # Previously only --collect-data was used, which caused MLX to
+            # raise OSError at runtime inside the bundled binary because
+            # the Metal shader libraries were missing.
+            "--collect-all",
+            "mlx",
+            "--collect-all",
+            "mlx_audio",
+            # mlx_lm ships chat_templates/ JSON files and loads tool_parsers
+            # submodules dynamically via importlib at tokenizer load time,
+            # which --hidden-import alone can't resolve.
+            "--collect-all",
+            "mlx_lm",
+        ]
+    )
 
     dist_dir = str(backend_dir / "dist")
     build_dir = str(backend_dir / "build")

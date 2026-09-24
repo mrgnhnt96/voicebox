@@ -29,7 +29,7 @@ backend/
 
   routes/                 # Thin HTTP handlers — validation, delegation, response formatting
   services/               # Business logic, CRUD, orchestration
-  backends/               # Whisper STT and Qwen3 LLM implementations (MLX, PyTorch)
+  backends/               # Whisper STT and Qwen3 LLM implementations (MLX)
   database/               # ORM models, session management, migrations
   utils/                  # Shared utilities (audio loading, progress tracking)
 ```
@@ -54,20 +54,13 @@ Route handlers are intentionally thin. They validate input, delegate to a servic
 
 **backends/__init__.py** -- Protocol definitions (`STTBackend`, `LLMBackend`), model config registry, and factory functions.
 
-**backends/base.py** -- Shared utilities used by the backends: HuggingFace cache checks, device detection, progress tracking.
+**backends/base.py** -- Shared utilities used by the backends: HuggingFace cache checks, progress tracking.
 
 **database/** -- SQLAlchemy ORM models with a re-exporting `__init__.py` for backward compatibility. Migrations run automatically on startup.
 
-### Backend selection
+### Platform
 
-The server detects the best inference backend at startup:
-
-| Platform | Backend | Acceleration |
-|----------|---------|-------------|
-| macOS (Apple Silicon) | MLX | Metal |
-| Fallback | PyTorch | MPS / CPU |
-
-Detection is handled by `utils/platform_detect.py`. Both backends implement the same `STTBackend` / `LLMBackend` protocols, so the API layer is engine-agnostic.
+The backend runs on Apple Silicon Macs only. Whisper (mlx-audio) and the Qwen3 LLM (mlx-lm) both run on MLX with Metal acceleration. Startup fails with a clear error on any other platform or when MLX cannot load (`utils/platform_detect.py`).
 
 ## API
 
@@ -107,4 +100,4 @@ just test               # run pytest
 
 ## Dependencies
 
-Runtime dependencies are in `requirements.txt`. macOS-only MLX dependencies are in `requirements-mlx.txt`. Dev tools (ruff, pytest) are installed automatically by `just setup-python`.
+Runtime dependencies are in `requirements.txt`. mlx-lm and mlx-audio are installed separately with `--no-deps` (see the note in that file). Dev tools (ruff, pytest) are installed automatically by `just setup-python`.

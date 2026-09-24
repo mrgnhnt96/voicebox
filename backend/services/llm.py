@@ -6,7 +6,7 @@ from ..backends import LLMBackend, get_llm_backend, unload_backend
 
 
 def get_llm_model() -> LLMBackend:
-    """Get LLM backend instance (MLX or PyTorch based on platform)."""
+    """Get the MLX LLM backend instance."""
     return get_llm_backend()
 
 

@@ -27,7 +27,7 @@ if "--improve-model" in sys.argv:
     sys.exit(0)
 
 # Fast path: handle --version before any heavy imports so the Rust
-# version check doesn't block for 30+ seconds loading torch etc.
+# version check doesn't block on loading MLX, transformers etc.
 if "--version" in sys.argv:
     from backend import __version__
 
@@ -68,7 +68,7 @@ try:
     logger.info("Importing backend.database...")
     from backend import database
 
-    logger.info("Importing backend.main (this may take a while due to torch/transformers)...")
+    logger.info("Importing backend.main (this may take a while due to MLX/transformers)...")
     from backend.main import app
 
     logger.info("Backend imports successful")
