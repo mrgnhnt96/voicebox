@@ -101,8 +101,11 @@ async def test_unloaded_refinement_model_is_not_warmed(startup):
 
 
 @pytest.mark.asyncio
-async def test_runs_whisper_once_so_the_first_dictation_is_warm(startup):
+async def test_runs_whisper_once_so_the_first_dictation_is_warm(startup, tmp_path, monkeypatch):
+    from backend import config
+
     _, stt, _ = startup
+    monkeypatch.setattr(config, "_data_dir", tmp_path)
     await model_startup.load_startup_models()
     stt.transcribe_array.assert_awaited_once()
     samples, rate = stt.transcribe_array.await_args.args[:2]
@@ -134,3 +137,45 @@ async def test_unloaded_whisper_is_not_warmed(startup):
     stt.is_loaded.return_value = False
     await model_startup.load_startup_models()
     stt.transcribe_array.assert_not_awaited()
+
+
+def _write_capture(directory, name, seconds, rate=48000, value=1000):
+    import numpy as np
+    import soundfile as sf
+
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / name
+    sf.write(path, np.full(int(seconds * rate), value, dtype=np.int16), rate, subtype="PCM_16")
+    return path
+
+
+@pytest.mark.asyncio
+async def test_warms_whisper_with_the_most_recent_recording(startup, tmp_path, monkeypatch):
+    import os
+
+    from backend import config
+
+    _, stt, _ = startup
+    monkeypatch.setattr(config, "_data_dir", tmp_path)
+    older = _write_capture(config.get_captures_dir(), "older.wav", 2, value=500)
+    os.utime(older, (1, 1))
+    _write_capture(config.get_captures_dir(), "newest.wav", 9, rate=44100)
+    await model_startup.load_startup_models()
+    samples, rate = stt.transcribe_array.await_args.args[:2]
+    # The newest recording, trimmed so loading stays short.
+    assert rate == 44100
+    assert len(samples) == model_startup.WARM_SECONDS * 44100
+    assert int(samples[0]) == 1000
+
+
+@pytest.mark.asyncio
+async def test_unreadable_recordings_fall_back_to_noise(startup, tmp_path, monkeypatch):
+    from backend import config
+
+    _, stt, _ = startup
+    monkeypatch.setattr(config, "_data_dir", tmp_path)
+    config.get_captures_dir().mkdir(parents=True, exist_ok=True)
+    (config.get_captures_dir() / "broken.wav").write_bytes(b"not audio")
+    await model_startup.load_startup_models()
+    samples, rate = stt.transcribe_array.await_args.args[:2]
+    assert rate == 48000 and len(samples) == 48000

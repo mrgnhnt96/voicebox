@@ -5,11 +5,15 @@ import time
 
 import numpy as np
 
+from .. import config
 from ..database import session
 from . import llm, refinement, settings, transcribe
 
 logger = logging.getLogger(__name__)
 WARM_RATE = 48000
+# Enough real speech to run Whisper's full decode, short enough to keep
+# startup quick.
+WARM_SECONDS = 5
 
 
 async def load_startup_models() -> None:
@@ -48,19 +52,20 @@ async def load_startup_models() -> None:
 
 
 async def warm_whisper(stt_size: str, language: str | None) -> None:
-    """Transcribe one second of faint noise so the first dictation is warm.
+    """Run Whisper once during startup so the first dictation is warm.
 
     Loading Whisper doesn't run it; the first real transcription otherwise
-    pays ~0.3 s of one-time GPU setup after the user lets go of the keys.
+    pays ~0.3 s of one-time setup after the user lets go of the keys. Faint
+    noise barely decodes anything, so the user's most recent recording is
+    used when there is one; its text is discarded.
     """
     backend = transcribe.get_whisper_model()
     if not backend.is_loaded():
         return
     try:
         started = time.monotonic()
-        # 48 kHz like a Mac microphone, so the resampling path is warm too.
-        noise = np.random.default_rng(0).integers(-30, 30, WARM_RATE, dtype=np.int16)
-        await backend.transcribe_array(noise, WARM_RATE, language=language, model_size=stt_size)
+        samples, rate = _warm_audio()
+        await backend.transcribe_array(samples, rate, language=language, model_size=stt_size)
         logger.info("Whisper warmed in %.3fs", time.monotonic() - started)
     except Exception:
         logger.exception("Could not warm Whisper")
@@ -77,3 +82,23 @@ async def warm_refinement(flags, llm_size: str) -> None:
         logger.info("Refinement prompt warmed in %.3fs", time.monotonic() - started)
     except Exception:
         logger.exception("Could not warm the refinement prompt")
+
+
+def _warm_audio() -> tuple[np.ndarray, int]:
+    """The newest recording's first seconds, or faint 48 kHz noise.
+
+    48 kHz like a Mac microphone, so the resampling path is warm too.
+    """
+    try:
+        recordings = sorted(config.get_captures_dir().glob("*.wav"), key=lambda p: p.stat().st_mtime)
+        if recordings:
+            import soundfile as sf
+
+            with sf.SoundFile(str(recordings[-1])) as audio:
+                rate = audio.samplerate
+                samples = audio.read(frames=rate * WARM_SECONDS, dtype="int16", always_2d=True)[:, 0]
+            if len(samples):
+                return samples, rate
+    except Exception:
+        logger.info("No usable recording to warm Whisper with; using noise", exc_info=True)
+    return np.random.default_rng(0).integers(-30, 30, WARM_RATE, dtype=np.int16), WARM_RATE
