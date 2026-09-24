@@ -15,6 +15,7 @@ mod keyboard_layout;
 mod speak_monitor;
 mod server_process;
 mod synthetic_keys;
+mod text_insert;
 
 use std::sync::Mutex;
 use tauri::{command, State, Manager, WindowEvent, Emitter, Listener, RunEvent, WebviewUrl, WebviewWindowBuilder, PhysicalPosition};
@@ -1359,6 +1360,20 @@ async fn paste_final_text(
     let already_front = focus_capture::frontmost_pid() == Some(focus.pid);
     #[cfg(not(target_os = "macos"))]
     let already_front = false;
+
+    // Direct insertion into the target's focused field via Accessibility: no
+    // clipboard, no keystroke, no pill hide and no settle sleeps. Falls
+    // through to ⌘V only when nothing was inserted (see text_insert.rs).
+    match text_insert::try_insert(focus.pid, focus.bundle_id.clone(), text.clone()).await {
+        text_insert::Outcome::Inserted { .. } => {
+            if !already_front {
+                let _ = focus_capture::activate_pid(focus.pid);
+            }
+            return Ok(true);
+        }
+        text_insert::Outcome::Uncertain(msg) => return Err(msg),
+        text_insert::Outcome::UseClipboard(_) => {}
+    }
 
     if !already_front {
         focus_capture::activate_pid(focus.pid)?;

@@ -119,7 +119,7 @@ unsafe fn ns_string_to_rust(s: Id) -> Option<String> {
 /// (`"AXFocusedUIElement"`, `"AXRole"`) because those aren't exported as
 /// linker symbols — Apple ships them as `CFSTR(...)` macros.
 #[cfg(target_os = "macos")]
-unsafe fn cf_string_const(s: &str) -> Option<CFStringRef> {
+pub(crate) unsafe fn cf_string_const(s: &str) -> Option<CFStringRef> {
     let cstr = std::ffi::CString::new(s).ok()?;
     let result = CFStringCreateWithCString(kCFAllocatorDefault, cstr.as_ptr(), kCFStringEncodingUTF8);
     if result.is_null() {
@@ -130,7 +130,7 @@ unsafe fn cf_string_const(s: &str) -> Option<CFStringRef> {
 }
 
 #[cfg(target_os = "macos")]
-unsafe fn cfstring_to_rust(s: CFStringRef) -> Option<String> {
+pub(crate) unsafe fn cfstring_to_rust(s: CFStringRef) -> Option<String> {
     if s.is_null() {
         return None;
     }
