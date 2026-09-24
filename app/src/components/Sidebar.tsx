@@ -1,87 +1,49 @@
 import { Link, useMatchRoute } from '@tanstack/react-router';
-import { Box, Captions, type LucideIcon, Settings } from 'lucide-react';
+import { Box, Captions, type LucideIcon, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import voiceboxLogo from '@/assets/voicebox-logo.png';
 import { cn } from '@/lib/utils/cn';
 import { version } from '../../package.json';
 
-interface SidebarProps {
-  isMacOS?: boolean;
-}
-
-const tabs: Array<{
-  id: string;
-  path: string;
-  icon: LucideIcon;
-  labelKey?: string;
-  label?: string;
-}> = [
+const tabs: Array<{ id: string; path: string; icon: LucideIcon; labelKey: string }> = [
   { id: 'captures', path: '/captures', icon: Captions, labelKey: 'nav.captures' },
   { id: 'models', path: '/models', icon: Box, labelKey: 'nav.models' },
-  { id: 'settings', path: '/settings', icon: Settings, labelKey: 'nav.settings' },
+  { id: 'settings', path: '/settings', icon: SlidersHorizontal, labelKey: 'nav.settings' },
 ];
 
-export function Sidebar({ isMacOS }: SidebarProps) {
+/** The app's left rail: logo, labeled icons, version. */
+export function Sidebar() {
   const { t } = useTranslation();
   const matchRoute = useMatchRoute();
 
   return (
-    <div
-      className={cn(
-        'fixed left-0 top-0 h-full w-20 bg-sidebar border-r border-border flex flex-col items-center py-6 gap-6',
-        isMacOS && 'pt-14',
-      )}
+    <nav
+      aria-label="Main"
+      className="w-[68px] shrink-0 flex flex-col items-center gap-1 pt-3 pb-3 bg-sidebar border-r border-border"
     >
-      {/* Logo */}
-      <div className="mb-2">
-        <img src={voiceboxLogo} alt="Voicebox" className="sidebar-logo w-12 h-12 object-contain" />
-      </div>
+      <img src={voiceboxLogo} alt="Voicebox" className="mb-4 h-8 w-8 object-contain" />
 
-      {/* Navigation Buttons */}
-      <div className="flex flex-col gap-3">
-        {tabs.map((tab, index) => {
-          const Icon = tab.icon;
-          const isActive =
-            tab.path === '/'
-              ? matchRoute({ to: '/', fuzzy: false })
-              : matchRoute({ to: tab.path, fuzzy: true });
+      {tabs.map((tab) => {
+        const Icon = tab.icon;
+        const isActive = matchRoute({ to: tab.path, fuzzy: true });
+        return (
+          <Link
+            key={tab.id}
+            to={tab.path}
+            className={cn(
+              'flex h-[52px] w-14 flex-col items-center justify-center gap-1 rounded-lg text-[10px] transition-colors',
+              isActive
+                ? 'bg-muted text-foreground'
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+            )}
+          >
+            <Icon className="h-[18px] w-[18px]" strokeWidth={1.7} />
+            {t(tab.labelKey)}
+          </Link>
+        );
+      })}
 
-          // Accent fades as buttons get further from the logo
-          const accentOpacity = Math.max(0.08, 0.5 - index * 0.07);
-
-          return (
-            <Link
-              key={tab.id}
-              to={tab.path}
-              className={cn(
-                'relative w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 overflow-hidden',
-                isActive
-                  ? 'bg-white/[0.07] text-foreground shadow-lg backdrop-blur-sm border border-white/[0.08]'
-                  : 'text-muted-foreground hover:bg-muted/50',
-              )}
-              title={tab.label ?? (tab.labelKey ? t(tab.labelKey) : tab.id)}
-              aria-label={tab.label ?? (tab.labelKey ? t(tab.labelKey) : tab.id)}
-            >
-              {isActive && (
-                <div
-                  className="absolute inset-0 rounded-full pointer-events-none"
-                  style={{
-                    maskImage: 'linear-gradient(to bottom, black, transparent 60%)',
-                    WebkitMaskImage: 'linear-gradient(to bottom, black, transparent 60%)',
-                    border: `1px solid hsl(var(--accent) / ${accentOpacity})`,
-                  }}
-                />
-              )}
-              <Icon className="h-5 w-5 relative z-10" />
-            </Link>
-          );
-        })}
-      </div>
-
-      {/* Version */}
-      <div className="mt-auto flex flex-col items-center gap-1.5">
-        <span className="text-[10px] text-muted-foreground/50">v{version}</span>
-      </div>
-    </div>
+      <span className="mt-auto font-mono text-[10px] text-muted-foreground/60">v{version}</span>
+    </nav>
   );
 }

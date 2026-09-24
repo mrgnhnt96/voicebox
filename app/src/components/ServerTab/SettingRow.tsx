@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 /**
- * A section header with title and optional description, separated by a border.
+ * A group of settings rows under a small monospace heading.
  */
 export function SettingSection({
   title,
@@ -13,13 +13,15 @@ export function SettingSection({
   children: ReactNode;
 }) {
   return (
-    <div className="space-y-1">
-      {title && <h3 className="text-lg font-semibold">{title}</h3>}
-      {description && <p className="text-sm text-muted-foreground">{description}</p>}
-      <div className={`${title || description ? 'pt-3' : ''} space-y-0 divide-y divide-border/60`}>
-        {children}
-      </div>
-    </div>
+    <section className="mb-7">
+      {title && (
+        <h2 className="mb-1 font-mono text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          {title}
+        </h2>
+      )}
+      {description && <p className="mb-1 text-xs text-muted-foreground">{description}</p>}
+      <div className="divide-y divide-border/70 border-b border-border/70">{children}</div>
+    </section>
   );
 }
 
@@ -35,7 +37,7 @@ export function SettingRow({
   children,
 }: {
   title: string;
-  description?: string;
+  description?: ReactNode;
   htmlFor?: string;
   /** Right-aligned control (checkbox, button, badge, etc.) */
   action?: ReactNode;
@@ -43,16 +45,18 @@ export function SettingRow({
   children?: ReactNode;
 }) {
   return (
-    <div className="py-3">
+    <div className="py-3.5">
       <div className="flex items-center justify-between gap-8">
         <div className="min-w-0">
           <label
             htmlFor={htmlFor}
-            className={`text-sm font-medium leading-none select-none ${htmlFor ? 'cursor-pointer' : ''}`}
+            className={`text-sm leading-none select-none ${htmlFor ? 'cursor-pointer' : ''}`}
           >
             {title}
           </label>
-          {description && <p className="text-sm text-muted-foreground mt-0.5">{description}</p>}
+          {description && (
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
+          )}
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>

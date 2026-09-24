@@ -3,55 +3,67 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils/cn';
 import { usePlatform } from '@/platform/PlatformContext';
 
-interface SettingsTab {
-  labelKey?: string;
-  label?: string;
-  path: '/settings' | '/settings/captures' | '/settings/logs';
-  tauriOnly?: boolean;
-}
+type SettingsPath =
+  | '/settings'
+  | '/settings/dictation'
+  | '/settings/transcription'
+  | '/settings/writing-style'
+  | '/settings/logs';
 
-const tabs: SettingsTab[] = [
+const tabs: Array<{ labelKey: string; path: SettingsPath; tauriOnly?: boolean }> = [
   { labelKey: 'settings.tabs.general', path: '/settings' },
-  { labelKey: 'settings.tabs.captures', path: '/settings/captures' },
+  { labelKey: 'settings.tabs.dictation', path: '/settings/dictation' },
+  { labelKey: 'settings.tabs.transcription', path: '/settings/transcription' },
+  { labelKey: 'settings.tabs.writingStyle', path: '/settings/writing-style' },
   { labelKey: 'settings.tabs.logs', path: '/settings/logs', tauriOnly: true },
 ];
 
+/** Settings: a list of sections on the left, the chosen page on the right. */
 export function SettingsLayout() {
   const { t } = useTranslation();
   const platform = usePlatform();
   const matchRoute = useMatchRoute();
+  const fullBleed = Boolean(matchRoute({ to: '/settings/logs' }));
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <nav className="flex gap-1 border-b shrink-0">
+    <div className="flex h-full min-h-0">
+      <nav
+        aria-label={t('nav.settings')}
+        className="w-[220px] shrink-0 flex flex-col gap-0.5 px-2.5 py-5 border-r border-border bg-sidebar"
+      >
+        <h1 className="px-2.5 pb-3.5 text-lg font-semibold">{t('nav.settings')}</h1>
         {tabs.map((tab) => {
           if (tab.tauriOnly && !platform.metadata.isTauri) return null;
-
-          const isActive =
-            tab.path === '/settings'
-              ? matchRoute({ to: tab.path, fuzzy: false })
-              : matchRoute({ to: tab.path });
-
+          const isActive = matchRoute({ to: tab.path, fuzzy: false });
           return (
             <Link
               key={tab.path}
               to={tab.path}
               className={cn(
-                'px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
+                'flex h-[34px] items-center rounded-md px-2.5 text-[13px] transition-colors',
                 isActive
-                  ? 'border-accent text-foreground'
-                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30',
+                  ? 'bg-muted text-foreground shadow-[inset_2px_0_0_hsl(var(--accent))]'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {tab.label ?? (tab.labelKey ? t(tab.labelKey) : '')}
+              {t(tab.labelKey)}
             </Link>
           );
         })}
       </nav>
 
-      <div className="flex-1 overflow-y-auto pt-6 pb-6 px-2 -mx-2">
-        <Outlet />
-      </div>
+      {/* Logs is a full-height pane; the other pages are a readable column. */}
+      {fullBleed ? (
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <Outlet />
+        </div>
+      ) : (
+        <div className="flex-1 min-w-0 overflow-y-auto">
+          <div className="max-w-[760px] px-12 py-7">
+            <Outlet />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
