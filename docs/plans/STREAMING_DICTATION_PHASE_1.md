@@ -6,7 +6,7 @@ This implements the first phase of [the live dictation plan](LIVE_DICTATION_AND_
 
 The existing microphone stream feeds both an AudioWorklet PCM sidecar and the existing complete MediaRecorder recording. The sidecar sends mono PCM16 at the AudioContext's actual sample rate. Keeping the original recording allows batch fallback if streaming setup, transport, or inference fails before finalization.
 
-The backend processes bounded rolling windows through the installed Whisper backend. It emits provisional recognition during speech, accepts phrases at pauses, and refines accepted phrases. Bounded speculative refinement can prepare an active phrase in advance; an exact transcript match reuses that result at acceptance. All model work still respects the existing single MLX worker.
+The backend processes bounded rolling windows through the installed Whisper backend. It accepts phrases at pauses and refines accepted phrases. All model work still respects the existing single MLX worker. Provisional previews and speculative refinement were removed (2026-09-24): no client displayed them, speculative results were never reused on the benchmark fixtures, and model work can't be interrupted, so a preview still running at release delayed the final result (about 0.3 s on a 2 s take).
 
 Streaming is attempted automatically for dictation. It is independent of a future live-insertion toggle. The recording pill labels batch fallback when the streaming path is unavailable. No partial text is pasted into the target application in this phase.
 
@@ -41,7 +41,7 @@ Offsets and sequence numbers must be contiguous. The entire message must be at m
 
 Updates carry `session_id`, a monotonic `revision`, and `covered_samples`:
 
-- `transcript`: complete `text`, `accepted_text`, `provisional_text`, and `final: false`.
+- `transcript`: complete `text`, `accepted_text`, `provisional_text`, and `final: false`. Sent when a phrase is accepted; `provisional_text` is currently always empty.
 - `refined`: the current proposed output in `text`. It may still change.
 - `final`: `capture` in the existing capture-create response shape, `refinement_complete: true`, optional `refinement_error`, and optional `degraded_reason`.
 - `error`: a failure message; unsuccessful sessions do not persist a partial capture.
@@ -52,11 +52,11 @@ Before finish, cancel/disconnect discards the streaming session. The complete Me
 
 ## Accuracy and latency limits
 
-Phrase boundaries currently use a conservative energy/pause heuristic, not a separately trained voice-activity model. Preview recognition begins after approximately two seconds of audio. The original plan's 0.5–1.5-second first-partial target has not been achieved by this implementation.
+Phrase boundaries currently use a conservative energy/pause heuristic, not a separately trained voice-activity model. There is no partial text before the first pause; the original plan's 0.5–1.5-second first-partial target is not pursued, because live text isn't shown and any preview can delay the final result.
 
 Uninterrupted speech that reaches a forced 20-second window boundary receives a final complete-audio transcription/refinement pass. This avoids trusting text-only overlap matching for final output: repeated words and changes in recognition can otherwise duplicate or delete content. `degraded_reason` makes that final batch pass explicit. Timestamp-based boundary handling is follow-up work, not a claimed capability.
 
-The main latency benefit is expected for speech with phrase pauses, where earlier phrases finish while recording continues. Short uninterrupted dictations may show little benefit. Cold model loading, TTS contention, and a final phrase that changed after speculative refinement still add delay.
+The main latency benefit is expected for speech with phrase pauses, where earlier phrases finish while recording continues. Short uninterrupted dictations may show little benefit. Cold model loading and TTS contention still add delay.
 
 Existing deterministic spoken corrections are applied against session text so later phrases can revise earlier output. Phrase-wise generative refinement is not guaranteed identical to whole-recording refinement; benchmark both final text and timing before broadening quality claims.
 
