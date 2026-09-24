@@ -473,7 +473,17 @@ test('recording starts while optional streaming setup is pending', async () => {
   }
 });
 
-test('an immediate silent streaming result clears the pill without pasting', async () => {
+/**
+ * Runs ``body`` with a fake audio graph and capture socket. ``speak`` sends a
+ * PCM frame through the processor as the microphone would.
+ */
+async function withStreamingAudio(
+  body: (tools: {
+    speak: (samples: number[]) => void;
+    advance: (ms: number) => void;
+  }) => Promise<void>,
+  contextState = 'running',
+) {
   const originalContext = globalThis.AudioContext;
   const originalWorklet = globalThis.AudioWorkletNode;
   const originalSocket = globalThis.WebSocket;
@@ -486,17 +496,23 @@ test('an immediate silent streaming result clears the pill without pasting', asy
       AudioContextMock.latest = this;
     }
     sampleRate = 48000;
-    state = 'running';
+    state = contextState;
     audioWorklet = { addModule: async () => {} };
-    resume = async () => {};
+    resume = async () => {
+      this.state = 'running';
+    };
     close = async () => {
       this.state = 'closed';
     };
     createMediaStreamSource = () => ({ connect() {}, disconnect() {} });
   }
   class Worklet {
+    static latest: Worklet;
+    constructor() {
+      Worklet.latest = this;
+    }
     port = {
-      onmessage: undefined as ((event: { data: string }) => void) | undefined,
+      onmessage: undefined as ((event: { data: unknown }) => void) | undefined,
       postMessage: () => this.port.onmessage?.({ data: 'stopped' }),
       close() {},
     };
@@ -513,7 +529,8 @@ test('an immediate silent streaming result clears the pill without pasting', asy
     constructor() {
       queueMicrotask(() => this.onopen?.());
     }
-    send(data: string) {
+    send(data: string | ArrayBuffer) {
+      if (typeof data !== 'string') return;
       const command = JSON.parse(data);
       this.onmessage?.({
         data: JSON.stringify(
@@ -541,16 +558,13 @@ test('an immediate silent streaming result clears the pill without pasting', asy
     AudioWorkletNode: Worklet,
     WebSocket: Socket,
   });
-  const deliver = mock();
   try {
-    await mountSession({ onFinalText: deliver }, true);
-    await act(async () => session.startRecording());
-    expect(session.pillState).toBe('recording');
-    now += 1000;
-    await act(async () => session.stopRecording());
-    expect(session.pillState).toBe('rest');
-    expect(session.isUploading).toBe(false);
-    expect(deliver).not.toHaveBeenCalled();
+    await body({
+      speak: (samples) => Worklet.latest.port.onmessage?.({ data: new Int16Array(samples).buffer }),
+      advance: (ms) => {
+        now += ms;
+      },
+    });
   } finally {
     await act(async () => renderer.unmount());
     await AudioContextMock.latest.close();
@@ -561,6 +575,64 @@ test('an immediate silent streaming result clears the pill without pasting', asy
     });
     Date.now = originalNow;
   }
+}
+
+test('an immediate silent streaming result clears the pill without pasting', async () => {
+  const deliver = mock();
+  await withStreamingAudio(async ({ advance }) => {
+    await mountSession({ onFinalText: deliver }, true);
+    await act(async () => session.startRecording());
+    advance(1000);
+    await act(async () => session.stopRecording());
+    expect(session.pillState).toBe('rest');
+    expect(session.isUploading).toBe(false);
+    expect(deliver).not.toHaveBeenCalled();
+  });
+});
+
+test('the pill says recording only once the microphone delivers sound', async () => {
+  await withStreamingAudio(async ({ speak }) => {
+    await mountSession({}, true);
+    await act(async () => session.startRecording());
+    expect(session.isRecording).toBe(true);
+    await act(async () => speak([0, 0, 0, 0]));
+    expect(session.pillState).toBe('preparing');
+    await act(async () => speak([0, 12, -40, 7]));
+    expect(session.pillState).toBe('recording');
+  });
+});
+
+test('a microphone that stays silent still shows recording after a moment', async () => {
+  await withStreamingAudio(async () => {
+    await mountSession({}, true);
+    await act(async () => session.startRecording());
+    expect(session.pillState).toBe('preparing');
+    await act(async () => new Promise((done) => setTimeout(done, 1600)));
+    expect(session.pillState).toBe('recording');
+  });
+});
+
+test('a stream that missed the start still hears sound and transcribes the full recording', async () => {
+  createCapture.mockResolvedValue({
+    id: 'full',
+    auto_refine: false,
+    allow_auto_paste: true,
+    transcript_raw: 'Why is it?',
+  });
+  const deliver = mock();
+  await withStreamingAudio(async ({ speak, advance }) => {
+    await mountSession({ onFinalText: deliver }, true);
+    await act(async () => session.startRecording());
+    await act(async () => speak([0, 9]));
+    expect(session.pillState).toBe('recording');
+    advance(1000);
+    await act(async () => {
+      session.stopRecording();
+      await new Promise((done) => setTimeout(done, 10));
+    });
+    expect(createCapture).toHaveBeenCalled();
+    expect(deliver.mock.calls[0][0]).toBe('Why is it?');
+  }, 'suspended');
 });
 
 test('stop does not wait for a late sidecar and retains the full recording', async () => {

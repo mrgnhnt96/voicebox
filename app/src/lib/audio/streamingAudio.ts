@@ -81,7 +81,7 @@ export function prepareStreamingAudio(): Promise<void> {
 
 export async function startStreamingAudio(
   stream: MediaStream,
-  onStart: (sampleRate: number) => void,
+  onStart: (sampleRate: number, coversStart: boolean) => void,
   onFrame: (frame: ArrayBuffer) => void,
   onFailure?: () => void,
 ): Promise<RecordingStream> {
@@ -115,7 +115,7 @@ export async function startStreamingAudio(
     } finally {
       clearTimeout(setupTimer);
     }
-    onStart(context.sampleRate);
+    onStart(context.sampleRate, coversStart);
     source = context.createMediaStreamSource(stream);
     processor = new AudioWorkletNode(context, 'capture-pcm');
     processor.onprocessorerror = () => {

@@ -2,12 +2,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { emit as tauriEmit } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PillState } from '@/components/CapturePill/CapturePill';
-import { apiClient } from '@/lib/api/client';
 import { CaptureStream, type StreamingCaptureFinal } from '@/lib/api/captureStream';
-import { prepareStreamingAudio, startStreamingAudio } from '@/lib/audio/streamingAudio';
-import { useServerStore } from '@/stores/serverStore';
+import { apiClient } from '@/lib/api/client';
 import type { CaptureListResponse, CaptureResponse, CaptureSource } from '@/lib/api/types';
+import { prepareStreamingAudio, startStreamingAudio } from '@/lib/audio/streamingAudio';
 import { useAudioRecording } from '@/lib/hooks/useAudioRecording';
+import { useServerStore } from '@/stores/serverStore';
 
 /**
  * Broadcast to sibling Tauri webviews that the captures list has changed.
@@ -37,6 +37,8 @@ interface RecordingTake {
   context: unknown;
   stream?: CaptureStream;
   final?: Promise<{ result: StreamingCaptureFinal | null; error?: Error }>;
+  /** The microphone has delivered sound, not just the silence it opens with. */
+  heard?: boolean;
 }
 
 const REST_FADE_MS = 900;
@@ -52,6 +54,9 @@ const BRIEF_NOTICE_MS = 2000;
 // "Recording too short, canceled" pill instead of bubbling up a 400.
 const MIN_RECORDING_DURATION_S = 0.5;
 const SHORT_RECORDING_MESSAGE = 'Recording too short, canceled';
+// A microphone opens with silence before it delivers sound, so the pill says
+// "recording" only once sound arrives. If none does by then, show it anyway.
+const HEARD_FALLBACK_MS = 1500;
 
 export type CapturePillState = PillState | 'hidden';
 
@@ -183,6 +188,14 @@ export function useCaptureRecordingSession(
     [clearRestTimer, clearErrorTimer],
   );
 
+  // Tell the speaker to talk only once the microphone is actually hearing.
+  const markHeard = useCallback((take: RecordingTake) => {
+    if (take.heard) return;
+    take.heard = true;
+    if (activeTakeRef.current === take)
+      setPillState((state) => (state === 'preparing' ? 'recording' : state));
+  }, []);
+
   const dismissError = useCallback(() => {
     clearErrorTimer();
     setPillState('hidden');
@@ -312,17 +325,20 @@ export function useCaptureRecordingSession(
       try {
         const audio = await startStreamingAudio(
           stream,
-          (sampleRate) => {
+          (sampleRate, coversStart) => {
+            // A stream that missed the first words would lose them, so it only
+            // listens for sound and the complete recording is transcribed.
+            if (!coversStart) return;
             take.stream = new CaptureStream(useServerStore.getState().serverUrl, sampleRate);
             streamsRef.current.add(take.stream);
           },
-          (frame) => take.stream?.append(frame),
+          (frame) => {
+            if (!take.heard && new Int16Array(frame).some((sample) => sample !== 0))
+              markHeard(take);
+            take.stream?.append(frame);
+          },
           () => take.stream?.cancel(),
         );
-        if (!audio.coversStart) {
-          audio.cancel();
-          throw new Error('Streaming was not ready at capture start; using the complete recording');
-        }
         return {
           stop: async (duration) => {
             try {
@@ -347,6 +363,8 @@ export function useCaptureRecordingSession(
       } catch (error) {
         take.stream?.cancel();
         if (take.stream) streamsRef.current.delete(take.stream);
+        // Without the PCM processor there is no way to hear the microphone.
+        markHeard(take);
         throw error;
       }
     },
@@ -424,9 +442,17 @@ export function useCaptureRecordingSession(
   });
 
   useEffect(() => {
-    // MediaRecorder has started only after the browser grants mic access.
-    if (isRecording) setPillState('recording');
-  }, [isRecording]);
+    // MediaRecorder has started only after the browser grants mic access; the
+    // pill switches to recording when the processor first hears sound.
+    const take = activeTakeRef.current;
+    if (!isRecording || !take) return;
+    if (take.heard) {
+      setPillState('recording');
+      return;
+    }
+    const timer = window.setTimeout(() => markHeard(take), HEARD_FALLBACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [isRecording, markHeard]);
 
   useEffect(() => {
     if (recordError) {
