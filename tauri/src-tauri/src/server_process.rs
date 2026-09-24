@@ -1,5 +1,17 @@
-//! Stop the bundled server, including the worker spawned by PyInstaller.
+//! Find and stop the bundled server, including the workers it spawns.
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// The server ships as a PyInstaller folder in the app's resources, so it
+/// starts in place instead of unpacking itself to a temp dir on every launch.
+pub fn bundled_executable(resource_dir: &Path) -> Result<PathBuf, String> {
+    let executable = resource_dir.join("voicebox-server").join("voicebox-server");
+    if executable.is_file() {
+        Ok(executable)
+    } else {
+        Err(format!("Bundled server not found at {}", executable.display()))
+    }
+}
 
 fn descendants(root: u32, processes: &[(u32, u32)]) -> Vec<u32> {
     let mut result = vec![root];
@@ -49,6 +61,23 @@ pub fn stop(pid: u32) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_the_server_inside_its_bundled_folder() {
+        let resources = std::env::temp_dir().join(format!("vb-resources-{}", std::process::id()));
+        let folder = resources.join("voicebox-server");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("voicebox-server"), "").unwrap();
+        let found = bundled_executable(&resources);
+        std::fs::remove_dir_all(&resources).unwrap();
+        assert_eq!(found, Ok(folder.join("voicebox-server")));
+    }
+
+    #[test]
+    fn reports_a_missing_bundled_server() {
+        let resources = std::env::temp_dir().join("vb-resources-missing");
+        assert!(bundled_executable(&resources).is_err());
+    }
 
     #[test]
     fn includes_nested_workers_but_not_unrelated_processes() {

@@ -12,7 +12,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/voicebox-server"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -21,6 +20,9 @@
     ],
     "macOS": {
       "frameworks": [],
+      "files": {
+        "Resources/voicebox-server": "binaries/voicebox-server"
+      },
       "minimumSystemVersion": "11.0",
       "infoPlist": "Info.plist",
       "entitlements": "Entitlements.plist"
