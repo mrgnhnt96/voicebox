@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { PlatformAudio, AudioDevice } from '@/platform/types';
+import type { PlatformAudio } from '@/platform/types';
 
 export const tauriAudio: PlatformAudio = {
   async isSystemAudioSupported(): Promise<boolean> {
@@ -23,22 +23,5 @@ export const tauriAudio: PlatformAudio = {
     }
 
     return new Blob([bytes], { type: 'audio/wav' });
-  },
-
-  async listOutputDevices(): Promise<AudioDevice[]> {
-    return await invoke<AudioDevice[]>('list_audio_output_devices');
-  },
-
-  async playToDevices(audioData: Uint8Array, deviceIds: string[]): Promise<void> {
-    await invoke('play_audio_to_devices', {
-      audioData: Array.from(audioData),
-      deviceIds,
-    });
-  },
-
-  stopPlayback(): void {
-    invoke('stop_audio_playback').catch((error) => {
-      console.error('Failed to stop audio playback:', error);
-    });
   },
 };

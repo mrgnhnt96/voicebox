@@ -3,7 +3,6 @@
 
 mod accessibility;
 mod audio_capture;
-mod audio_output;
 mod clipboard;
 #[cfg(desktop)]
 mod dictation;
@@ -14,7 +13,6 @@ mod input_monitoring;
 #[cfg(desktop)]
 mod key_codes;
 mod keyboard_layout;
-mod speak_monitor;
 mod server_process;
 mod synthetic_keys;
 mod text_insert;
@@ -31,8 +29,8 @@ const DICTATE_BOTTOM_PADDING: f64 = 24.0;
 
 /// Create the floating dictate webview hidden. The HotkeyMonitor shows it on
 /// chord-start; the frontend hides it when the capture pipeline finishes.
-/// Building it at setup avoids a race where the first chord or agent-speech
-/// event fires before the webview subscribes to the `dictate:*` events.
+/// Building it at setup avoids a race where the first chord event fires
+/// before the webview subscribes to the `dictate:*` events.
 #[cfg(desktop)]
 fn build_dictate_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
     let window = WebviewWindowBuilder::new(
@@ -211,17 +209,8 @@ pub fn force_order_front(window: &tauri::WebviewWindow) {
     });
 }
 
-/// Position, undo click-through, and show the dictate pill window.
-///
-/// The hide path parks the window at (-10_000, -10_000) and toggles
-/// `ignore_cursor_events(true)` so invisible click targets don't leak; we
-/// undo both here. Mirrors the logic the hotkey_monitor's
-/// `Effect::StartRecording` path runs, minus the focus snapshot — this is
-/// for agent-initiated speech, not dictation, so there's no focused text
-/// field to paste into.
-/// Build the pill webview if it doesn't exist yet. Idempotent — used by
-/// agent-speech to prime the webview on speak-start so its listeners can
-/// register before the actual show arrives from `audio.onplaying`.
+/// Build the pill webview if it doesn't exist yet. Idempotent — called at
+/// setup so the pill's listeners are registered before the first chord.
 #[cfg(desktop)]
 pub fn ensure_dictate_window(app: &tauri::AppHandle) {
     if app.get_webview_window(DICTATE_WINDOW_LABEL).is_none() {
@@ -229,34 +218,6 @@ pub fn ensure_dictate_window(app: &tauri::AppHandle) {
             eprintln!("ensure_dictate_window: failed to build pill: {e}");
         }
     }
-}
-
-#[cfg(desktop)]
-pub fn show_dictate_window(app: &tauri::AppHandle) {
-    // Build on demand so agent-initiated speech works before the user has
-    // enabled the global hotkey (the hotkey path is the other place this
-    // window gets built, see `enable_hotkey`).
-    let window = match app.get_webview_window(DICTATE_WINDOW_LABEL) {
-        Some(w) => w,
-        None => match build_dictate_window(app) {
-            Ok(w) => w,
-            Err(e) => {
-                eprintln!("show_dictate_window: failed to build pill window: {e}");
-                return;
-            }
-        },
-    };
-    if let Err(e) = position_dictate_window(&window) {
-        eprintln!("show_dictate_window: failed to position pill: {e}");
-    }
-    // Skip on Linux: tao's CursorIgnoreEvents handler unwraps the GdkWindow,
-    // which is None until the window is first shown, aborting the process.
-    // The click-through toggle is a macOS workaround and is never set on Linux.
-    #[cfg(not(target_os = "linux"))]
-    let _ = window.set_ignore_cursor_events(false);
-    let _ = window.show();
-    #[cfg(target_os = "macos")]
-    force_order_front(&window);
 }
 
 const LEGACY_PORT: u16 = 8000;
@@ -306,10 +267,8 @@ fn find_voicebox_pid_on_port(port: u16) -> Option<u32> {
 /// Check if a Voicebox server is responding on the given port.
 ///
 /// Sends an HTTP GET to `/health` and returns `true` only if the response
-/// is valid JSON matching the Voicebox `HealthResponse` schema — specifically
-/// `status` must be `"healthy"`, and both `model_loaded` and `gpu_available`
-/// must be present as booleans. This prevents misidentifying an unrelated
-/// service that happens to expose a `/health` endpoint.
+/// is valid JSON with `status == "healthy"`, which filters out unrelated
+/// services that answer `/health` with something else.
 #[allow(dead_code)] // Used in platform-specific cfg blocks
 fn check_health(port: u16) -> bool {
     let url = format!("http://127.0.0.1:{}/health", port);
@@ -326,8 +285,6 @@ fn check_health(port: u16) -> bool {
                 match resp.json::<serde_json::Value>() {
                     Ok(body) => {
                         body.get("status").and_then(|v| v.as_str()) == Some("healthy")
-                            && body.get("model_loaded").map(|v| v.is_boolean()).unwrap_or(false)
-                            && body.get("gpu_available").map(|v| v.is_boolean()).unwrap_or(false)
                     }
                     Err(_) => false,
                 }
@@ -343,63 +300,6 @@ struct ServerState {
     server_pid: Mutex<Option<u32>>,
     keep_running_on_close: Mutex<bool>,
     models_dir: Mutex<Option<String>>,
-    /// Override the backend selection: Some("cpu") forces the CPU sidecar even
-    /// when GPU binaries exist (solving the Windows catch-22 where an active
-    /// .exe cannot be deleted), while Some("cuda")/Some("rocm") pin a specific
-    /// GPU variant when more than one is installed. None uses the on-disk
-    /// default (ROCm preferred, then CUDA). Persisted to disk so the choice
-    /// survives an app restart.
-    backend_override: Mutex<Option<String>>,
-}
-
-fn backend_override_file(data_dir: &std::path::Path) -> std::path::PathBuf {
-    data_dir.join("backend_override")
-}
-
-fn read_persisted_backend_override(data_dir: &std::path::Path) -> Option<String> {
-    std::fs::read_to_string(backend_override_file(data_dir))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-}
-
-fn write_persisted_backend_override(data_dir: &std::path::Path, value: Option<&str>) {
-    let path = backend_override_file(data_dir);
-    match value {
-        Some(v) => {
-            let _ = std::fs::create_dir_all(data_dir);
-            if let Err(e) = std::fs::write(&path, v) {
-                println!("Failed to persist backend override: {}", e);
-            }
-        }
-        None => {
-            let _ = std::fs::remove_file(&path);
-        }
-    }
-}
-
-/// Run `<exe> --version` with a 10-second timeout to avoid hanging Tauri startup.
-/// Returns the last whitespace-delimited token from stdout (e.g. "0.4.4"), or None on any failure.
-async fn probe_binary_version(exe: &std::path::Path, cwd: &std::path::Path) -> Option<String> {
-    let mut cmd = tokio::process::Command::new(exe);
-    cmd.arg("--version")
-        .current_dir(cwd)
-        .kill_on_drop(true);
-
-    match tokio::time::timeout(std::time::Duration::from_secs(10), cmd.output()).await {
-        Ok(Ok(output)) => {
-            let s = String::from_utf8_lossy(&output.stdout);
-            s.trim().split_whitespace().last().map(String::from)
-        }
-        Ok(Err(e)) => {
-            println!("Version probe failed: {}", e);
-            None
-        }
-        Err(_) => {
-            println!("Version probe timed out after 10s");
-            None
-        }
-    }
 }
 
 #[command]
@@ -560,86 +460,6 @@ async fn start_server(
     println!("Data directory: {:?}", data_dir);
     println!("Remote mode: {}", remote.unwrap_or(false));
 
-    // Check for ROCm backend in data directory (onedir layout: backends/rocm/)
-    let rocm_binary = {
-        let rocm_dir = data_dir.join("backends").join("rocm");
-        let rocm_name = if cfg!(windows) {
-            "voicebox-server-rocm.exe"
-        } else {
-            "voicebox-server-rocm"
-        };
-        let exe_path = rocm_dir.join(rocm_name);
-        if exe_path.exists() {
-            println!("Found ROCm backend at {:?}", rocm_dir);
-
-            let app_version = app.config().version.clone().unwrap_or_default();
-            let binary_version = probe_binary_version(&exe_path, &rocm_dir).await;
-            let version_ok = if !app_version.is_empty()
-                && binary_version.as_deref() == Some(app_version.as_str())
-            {
-                println!("ROCm binary version {} matches app version", app_version);
-                true
-            } else {
-                println!(
-                    "ROCm binary version mismatch: binary={}, app={}. Falling back to CPU.",
-                    binary_version.as_deref().unwrap_or("<unknown>"),
-                    app_version
-                );
-                false
-            };
-
-            if version_ok {
-                Some(exe_path)
-            } else {
-                None
-            }
-        } else {
-            println!("No ROCm backend found");
-            None
-        }
-    };
-
-    // Check for CUDA backend in data directory (onedir layout: backends/cuda/)
-    let cuda_binary = {
-        let cuda_dir = data_dir.join("backends").join("cuda");
-        let cuda_name = if cfg!(windows) {
-            "voicebox-server-cuda.exe"
-        } else {
-            "voicebox-server-cuda"
-        };
-        let exe_path = cuda_dir.join(cuda_name);
-        if exe_path.exists() {
-            println!("Found CUDA backend at {:?}", cuda_dir);
-
-            // Version check: run --version from the onedir directory so
-            // PyInstaller can find its support files for the fast --version path
-            let app_version = app.config().version.clone().unwrap_or_default();
-            let binary_version = probe_binary_version(&exe_path, &cuda_dir).await;
-            let version_ok = if !app_version.is_empty()
-                && binary_version.as_deref() == Some(app_version.as_str())
-            {
-                println!("CUDA binary version {} matches app version", app_version);
-                true
-            } else {
-                println!(
-                    "CUDA binary version mismatch: binary={}, app={}. Falling back to CPU.",
-                    binary_version.as_deref().unwrap_or("<unknown>"),
-                    app_version
-                );
-                false
-            };
-
-            if version_ok {
-                Some(exe_path)
-            } else {
-                None
-            }
-        } else {
-            println!("No CUDA backend found, using bundled CPU binary");
-            None
-        }
-    };
-
     let sidecar_result = app.shell().sidecar("voicebox-server");
 
     let mut sidecar = match sidecar_result {
@@ -693,83 +513,15 @@ async fn start_server(
         println!("Custom models directory: {}", dir);
     }
 
-    // Respect backend override (e.g., user wants CPU even though a GPU binary
-    // exists, or pinned a specific GPU variant). The in-memory value resets to
-    // None on app launch, so fall back to the persisted choice on disk.
-    let backend_override = {
-        let in_memory = state.backend_override.lock().unwrap().clone();
-        in_memory.or_else(|| read_persisted_backend_override(&data_dir))
-    };
-
-    // Honor a pinned GPU variant by ignoring the other one — but only when the
-    // pinned variant is actually installed, so a stale pin to a deleted backend
-    // self-heals to the default order instead of forcing CPU. With no pin, both
-    // stay eligible and the launch order below prefers ROCm, then CUDA.
-    let pin = backend_override.as_deref();
-    let pin_cuda = pin == Some("cuda") && cuda_binary.is_some();
-    let pin_rocm = pin == Some("rocm") && rocm_binary.is_some();
-    let rocm_binary = if pin_cuda { None } else { rocm_binary };
-    let cuda_binary = if pin_rocm { None } else { cuda_binary };
-
-    // If ROCm binary exists, launch it from the onedir directory.
-    // If CUDA binary exists, launch it from the onedir directory.
-    // .current_dir() is critical: PyInstaller onedir expects all DLLs and
-    // support files relative to the exe.
-    let spawn_result = if backend_override.as_deref() != Some("cpu") {
-        let mut gpu_spawn = None;
-
-        if let Some(ref rocm_path) = rocm_binary {
-            let rocm_dir = rocm_path.parent().unwrap();
-            println!("Launching ROCm backend: {:?} (cwd: {:?})", rocm_path, rocm_dir);
-            let mut cmd = app.shell().command(rocm_path.to_str().unwrap());
-            cmd = cmd.current_dir(rocm_dir);
-            cmd = cmd.args(["--data-dir", &data_dir_str, "--port", &port_str, "--parent-pid", &parent_pid_str]);
-            if is_remote { cmd = cmd.args(["--host", "0.0.0.0"]); }
-            if let Some(ref dir) = effective_models_dir { cmd = cmd.env("VOICEBOX_MODELS_DIR", dir); }
-            match cmd.spawn() {
-                Ok(r) => { gpu_spawn = Some(Ok(r)); }
-                Err(e) => { println!("ROCm spawn failed ({}), trying CUDA/CPU fallback", e); }
-            }
-        }
-
-        if gpu_spawn.is_none() {
-            if let Some(ref cuda_path) = cuda_binary {
-                let cuda_dir = cuda_path.parent().unwrap();
-                println!("Launching CUDA backend: {:?} (cwd: {:?})", cuda_path, cuda_dir);
-                let mut cmd = app.shell().command(cuda_path.to_str().unwrap());
-                cmd = cmd.current_dir(cuda_dir);
-                cmd = cmd.args(["--data-dir", &data_dir_str, "--port", &port_str, "--parent-pid", &parent_pid_str]);
-                if is_remote { cmd = cmd.args(["--host", "0.0.0.0"]); }
-                if let Some(ref dir) = effective_models_dir { cmd = cmd.env("VOICEBOX_MODELS_DIR", dir); }
-                match cmd.spawn() {
-                    Ok(r) => { gpu_spawn = Some(Ok(r)); }
-                    Err(e) => { println!("CUDA spawn failed ({}), falling back to CPU", e); }
-                }
-            }
-        }
-
-        if let Some(result) = gpu_spawn {
-            result
-        } else {
-            // Fall back to bundled CPU sidecar
-            sidecar = sidecar.args(["--data-dir", &data_dir_str, "--port", &port_str, "--parent-pid", &parent_pid_str]);
-            if is_remote { sidecar = sidecar.args(["--host", "0.0.0.0"]); }
-            if let Some(ref dir) = effective_models_dir { sidecar = sidecar.env("VOICEBOX_MODELS_DIR", dir); }
-            println!("Spawning bundled CPU server process...");
-            sidecar.spawn()
-        }
-    } else {
-        // Override forces CPU — use bundled sidecar, GPU binary stays on disk
-        println!("Backend override=cpu: using bundled CPU sidecar");
-        sidecar = sidecar.args(["--data-dir", &data_dir_str, "--port", &port_str, "--parent-pid", &parent_pid_str]);
-        if is_remote {
-            sidecar = sidecar.args(["--host", "0.0.0.0"]);
-        }
-        if let Some(ref dir) = effective_models_dir {
-            sidecar = sidecar.env("VOICEBOX_MODELS_DIR", dir);
-        }
-        sidecar.spawn()
-    };
+    sidecar = sidecar.args(["--data-dir", &data_dir_str, "--port", &port_str, "--parent-pid", &parent_pid_str]);
+    if is_remote {
+        sidecar = sidecar.args(["--host", "0.0.0.0"]);
+    }
+    if let Some(ref dir) = effective_models_dir {
+        sidecar = sidecar.env("VOICEBOX_MODELS_DIR", dir);
+    }
+    println!("Spawning bundled server process...");
+    let spawn_result = sidecar.spawn();
 
     let (mut rx, child) = match spawn_result {
         Ok(result) => result,
@@ -1025,7 +777,7 @@ async fn restart_server(
     println!("restart_server: waiting for port release...");
     wait_for_server_exit().await?;
 
-    // Start server again (will auto-detect GPU binary and use stored models_dir)
+    // Start server again (uses the stored models_dir)
     println!("restart_server: starting server...");
     start_server(app, state.clone(), None, None).await
 }
@@ -1034,19 +786,6 @@ async fn restart_server(
 fn set_keep_server_running(state: State<'_, ServerState>, keep_running: bool) {
     println!("set_keep_server_running called with: {}", keep_running);
     *state.keep_running_on_close.lock().unwrap() = keep_running;
-}
-
-#[command]
-fn set_backend_override(
-    app: tauri::AppHandle,
-    state: State<'_, ServerState>,
-    backend: Option<String>,
-) {
-    println!("set_backend_override called with: {:?}", backend);
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        write_persisted_backend_override(&data_dir, backend.as_deref());
-    }
-    *state.backend_override.lock().unwrap() = backend;
 }
 
 #[command]
@@ -1067,29 +806,6 @@ async fn stop_system_audio_capture(
 #[command]
 fn is_system_audio_supported() -> bool {
     audio_capture::is_supported()
-}
-
-#[command]
-fn list_audio_output_devices(
-    state: State<'_, audio_output::AudioOutputState>,
-) -> Result<Vec<audio_output::AudioOutputDevice>, String> {
-    state.list_output_devices()
-}
-
-#[command]
-async fn play_audio_to_devices(
-    state: State<'_, audio_output::AudioOutputState>,
-    audio_data: Vec<u8>,
-    device_ids: Vec<String>,
-) -> Result<(), String> {
-    state.play_audio_to_devices(audio_data, device_ids).await
-}
-
-#[command]
-fn stop_audio_playback(
-    state: State<'_, audio_output::AudioOutputState>,
-) -> Result<(), String> {
-    state.stop_all_playback()
 }
 
 /// Identifier of the Voicebox app itself — used to short-circuit auto-paste
@@ -1571,10 +1287,8 @@ pub fn run() {
             server_pid: Mutex::new(None),
             keep_running_on_close: Mutex::new(false),
             models_dir: Mutex::new(None),
-            backend_override: Mutex::new(None),
         })
         .manage(audio_capture::AudioCaptureState::new())
-        .manage(audio_output::AudioOutputState::new())
         .manage(dictation::DictationState::default())
         .setup(|app| {
             dictation::restore(app.handle());
@@ -1609,7 +1323,8 @@ pub fn run() {
                 app.handle().listen("dictate:hide", move |_event| {
                     if let Some(window) = handle_for_hide.get_webview_window(DICTATE_WINDOW_LABEL) {
                         // Skip on Linux: aborts if the window was never realized
-                        // (see show_dictate_window).
+                        // (tao unwraps the GdkWindow, which is None until
+                        // the window is first shown).
                         #[cfg(not(target_os = "linux"))]
                         let _ = window.set_ignore_cursor_events(true);
                         let _ = window.set_position(PhysicalPosition::new(-10_000, -10_000));
@@ -1617,20 +1332,7 @@ pub fn run() {
                     }
                 });
 
-                // Agent-initiated speech (voicebox.speak over MCP or POST /speak)
-                // pops the pill up so the user can see what's coming out of their
-                // machine. The `dictate:show` listener is kept for any frontend
-                // caller that wants to force-surface the pill directly, but the
-                // primary source is `speak_monitor` below — Rust subscribes to
-                // the backend /events/speak SSE stream so the pill surfaces even
-                // when no JS window is active.
-                let handle_for_show = app.handle().clone();
-                app.handle().listen("dictate:show", move |_event| {
-                    show_dictate_window(&handle_for_show);
-                });
-
                 ensure_dictate_window(app.handle());
-                speak_monitor::spawn_speak_monitor(app.handle().clone());
             }
 
             // Hide title bar icon on Windows
@@ -1696,13 +1398,9 @@ pub fn run() {
             restart_server,
             restart_app,
             set_keep_server_running,
-            set_backend_override,
             start_system_audio_capture,
             stop_system_audio_capture,
             is_system_audio_supported,
-            list_audio_output_devices,
-            play_audio_to_devices,
-            stop_audio_playback,
             debug_clipboard_roundtrip,
             debug_paste_text,
             debug_capture_focus,

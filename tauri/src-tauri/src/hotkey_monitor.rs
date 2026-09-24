@@ -255,8 +255,9 @@ fn apply_effect(app: &AppHandle, effect: Effect, time: Instant) {
                 if let Err(e) = crate::position_dictate_window(&window) {
                     eprintln!("dictate:start: failed to position pill: {e}");
                 }
-                // Skip on Linux: aborts if the window was never realized
-                // (see show_dictate_window in main.rs).
+                // Skip on Linux: tao's CursorIgnoreEvents handler unwraps
+                // the GdkWindow, which is None until the window is first
+                // shown, aborting the process.
                 #[cfg(not(target_os = "linux"))]
                 let _ = window.set_ignore_cursor_events(false);
                 // Deliberately no set_focus() — taking key focus would yank
