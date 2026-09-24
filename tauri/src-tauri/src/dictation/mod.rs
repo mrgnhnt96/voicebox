@@ -41,6 +41,13 @@ pub const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:17493";
 const MAX_PENDING_BYTES: usize = 48_000 * 2 * 60;
 const LEARNING_PAUSE_INTERVAL: Duration = Duration::from_secs(30);
 
+/// Live text (docs/plans/STREAMING_INSERTION.md) is off unless the app is
+/// started with `VOICEBOX_LIVE_TEXT=1`, until it has been checked by hand in
+/// the apps people dictate into.
+fn live_text_enabled() -> bool {
+    std::env::var("VOICEBOX_LIVE_TEXT").is_ok_and(|v| v == "1")
+}
+
 /// Where and how to capture. Pushed by the dictate webview, which owns the
 /// server URL and capture settings.
 #[derive(Debug, Clone)]
@@ -164,9 +171,15 @@ pub fn start(app: &AppHandle, keydown: Instant) -> Option<u64> {
     });
 
     tauri::async_runtime::spawn(async move {
-        let offer = live.clone();
+        let client = StreamClient::new(MAX_PENDING_BYTES);
+        let client = if live_text_enabled() {
+            let offer = live.clone();
+            client.with_provisional(move |text| offer.offer(text))
+        } else {
+            client
+        };
         let outcome = stream::drive(
-            StreamClient::new(MAX_PENDING_BYTES).with_provisional(move |text| offer.offer(text)),
+            client,
             out_tx,
             in_rx,
             audio_rx,

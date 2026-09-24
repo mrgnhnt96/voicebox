@@ -26,17 +26,19 @@ pub fn encode_frame(sequence: u32, sample_offset: u32, pcm: &[i16]) -> Vec<u8> {
 
 /// The JSON start object sent right after the socket opens. `provisional`
 /// asks for provisional cleaned text after release; older servers ignore it.
-pub fn start_message(sample_rate: u32) -> String {
-    serde_json::json!({
+pub fn start_message(sample_rate: u32, provisional: bool) -> String {
+    let mut start = serde_json::json!({
         "type": "start",
         "protocol_version": 1,
         "sample_rate": sample_rate,
         "channels": 1,
         "encoding": "pcm_s16le",
         "source": "dictation",
-        "provisional": true,
-    })
-    .to_string()
+    });
+    if provisional {
+        start["provisional"] = Value::Bool(true);
+    }
+    start.to_string()
 }
 
 pub fn finish_message() -> String {
@@ -138,7 +140,7 @@ mod tests {
 
     #[test]
     fn start_message_matches_protocol_v1() {
-        let value: Value = serde_json::from_str(&start_message(48_000)).unwrap();
+        let value: Value = serde_json::from_str(&start_message(48_000, false)).unwrap();
         assert_eq!(
             value,
             serde_json::json!({
@@ -148,9 +150,15 @@ mod tests {
                 "channels": 1,
                 "encoding": "pcm_s16le",
                 "source": "dictation",
-                "provisional": true,
             })
         );
+    }
+
+    #[test]
+    fn start_message_can_ask_for_provisional_text() {
+        let value: Value = serde_json::from_str(&start_message(16_000, true)).unwrap();
+        assert_eq!(value["provisional"], Value::Bool(true));
+        assert_eq!(value["protocol_version"], 1);
     }
 
     #[test]

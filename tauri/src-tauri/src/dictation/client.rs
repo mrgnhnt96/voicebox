@@ -114,7 +114,10 @@ impl StreamClient {
         ) {
             (true, true, false, Some(rate)) => {
                 self.start_sent = true;
-                vec![Action::Text(protocol::start_message(rate))]
+                vec![Action::Text(protocol::start_message(
+                    rate,
+                    self.on_provisional.is_some(),
+                ))]
             }
             _ => Vec::new(),
         }
@@ -374,6 +377,16 @@ mod tests {
             Some(Outcome::Final(v)) => assert_eq!(v["capture"]["id"], "s1"),
             other => panic!("unexpected {other:?}"),
         }
+    }
+
+    #[test]
+    fn provisional_text_is_asked_for_only_with_a_sink() {
+        let mut client = StreamClient::new(1 << 20);
+        client.set_format(48_000);
+        assert_eq!(texts(&client.on_open())[0].get("provisional"), None);
+        let mut client = StreamClient::new(1 << 20).with_provisional(|_| {});
+        client.set_format(48_000);
+        assert_eq!(texts(&client.on_open())[0]["provisional"], true);
     }
 
     #[test]
