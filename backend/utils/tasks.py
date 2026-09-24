@@ -1,5 +1,5 @@
 """
-Task tracking for active downloads and generations.
+Task tracking for active model downloads.
 """
 
 from typing import Optional, Dict, List
@@ -16,21 +16,11 @@ class DownloadTask:
     error: Optional[str] = None
 
 
-@dataclass
-class GenerationTask:
-    """Represents an active generation task."""
-    task_id: str
-    profile_id: str
-    text_preview: str  # First 50 chars of text
-    started_at: datetime = field(default_factory=datetime.utcnow)
-
-
 class TaskManager:
-    """Manages active downloads and generations."""
+    """Manages active model downloads."""
     
     def __init__(self):
         self._active_downloads: Dict[str, DownloadTask] = {}
-        self._active_generations: Dict[str, GenerationTask] = {}
     
     def start_download(self, model_name: str) -> None:
         """Mark a download as started."""
@@ -50,20 +40,6 @@ class TaskManager:
             self._active_downloads[model_name].status = "error"
             self._active_downloads[model_name].error = error
     
-    def start_generation(self, task_id: str, profile_id: str, text: str) -> None:
-        """Mark a generation as started."""
-        text_preview = text[:50] + "..." if len(text) > 50 else text
-        self._active_generations[task_id] = GenerationTask(
-            task_id=task_id,
-            profile_id=profile_id,
-            text_preview=text_preview,
-        )
-    
-    def complete_generation(self, task_id: str) -> None:
-        """Mark a generation as complete."""
-        if task_id in self._active_generations:
-            del self._active_generations[task_id]
-    
     def get_active_downloads(self) -> List[DownloadTask]:
         """Get all active downloads."""
         return list(self._active_downloads.values())
@@ -81,26 +57,17 @@ class TaskManager:
             if task.status in ("downloading", "extracting")
         ]
     
-    def get_active_generations(self) -> List[GenerationTask]:
-        """Get all active generations."""
-        return list(self._active_generations.values())
-    
     def cancel_download(self, model_name: str) -> bool:
         """Cancel/dismiss a download task (removes it from active list)."""
         return self._active_downloads.pop(model_name, None) is not None
 
     def clear_all(self) -> None:
-        """Clear all download and generation tasks."""
+        """Clear all download tasks."""
         self._active_downloads.clear()
-        self._active_generations.clear()
 
     def is_download_active(self, model_name: str) -> bool:
         """Check if a download is active."""
         return model_name in self._active_downloads
-    
-    def is_generation_active(self, task_id: str) -> bool:
-        """Check if a generation is active."""
-        return task_id in self._active_generations
 
 
 # Global task manager instance

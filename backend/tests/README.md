@@ -4,19 +4,6 @@ Manual test scripts for debugging and validating backend functionality.
 
 ## Test Files
 
-### `test_generation_progress.py`
-Tests TTS generation with SSE progress monitoring to identify UX issues where users see download progress even when the model is already cached.
-
-**Usage:**
-```bash
-cd backend
-python tests/test_generation_progress.py
-```
-
-**Prerequisites:**
-- Server must be running (`python main.py`)
-- At least one voice profile must exist
-
 ### `test_real_download.py`
 Tests real model download with SSE progress monitoring.
 

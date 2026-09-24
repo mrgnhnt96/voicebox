@@ -1,7 +1,7 @@
 """
 Regression tests for issue #852: audioop removed from Python 3.13 stdlib.
 
-Voice sample validation imports audioop transitively (librosa → audioread).
+Audio loading imports audioop transitively (librosa → audioread).
 The audioop-lts backport must be declared in requirements and bundled in
 PyInstaller builds on 3.13+.
 """
@@ -38,23 +38,21 @@ class TestAudioopRuntime:
     def test_audioop_importable(self):
         import audioop  # noqa: F401
 
-    def test_validate_reference_wav_does_not_fail_on_missing_audioop(self, tmp_path):
+    def test_load_audio_does_not_fail_on_missing_audioop(self, tmp_path):
         import numpy as np
         import soundfile as sf
-        from utils.audio import validate_and_load_reference_audio
+        from utils.audio import load_audio
 
         sr = 24000
         t = np.arange(int(sr * 3), dtype=np.float32) / sr
         audio = (0.3 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
-        path = tmp_path / "reference.wav"
+        path = tmp_path / "recording.wav"
         sf.write(str(path), audio, sr)
 
-        ok, err, out_audio, out_sr = validate_and_load_reference_audio(str(path))
+        out_audio, out_sr = load_audio(str(path))
 
-        assert ok, err
-        assert out_audio is not None
+        assert len(out_audio) > 0
         assert out_sr == sr
-        assert "audioop" not in (err or "").lower()
 
 
 class TestAudioopBuildArgs:

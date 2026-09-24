@@ -17,7 +17,6 @@ from .base import (
     is_model_cached,
     get_torch_device,
     empty_device_cache,
-    manual_seed,
     model_load_progress,
 )
 from ..services.mlx_thread import run_on_mlx_thread, clear_mlx_cache
@@ -69,7 +68,7 @@ class PyTorchQwenLLMBackend:
         self.device = self._get_device()
 
     def _get_device(self) -> str:
-        return get_torch_device(allow_xpu=True, allow_directml=True, allow_mps=True)
+        return get_torch_device(allow_mps=True)
 
     def is_loaded(self) -> bool:
         return self.model is not None

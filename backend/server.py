@@ -7,7 +7,6 @@ absolute imports instead of relative imports.
 
 import sys
 import os
-import re
 
 # The app can close while this server stays alive. Protect output for the
 # entire process lifetime, not only while the initial pipe is still connected.
@@ -27,15 +26,6 @@ if "--improve-model" in sys.argv:
     improvement_main(sys.argv[sys.argv.index("--improve-model") + 1 :])
     sys.exit(0)
 
-# In frozen builds, piper_phonemize's espeak-ng C library falls back to
-# /usr/share/espeak-ng-data/ which doesn't exist.  Point it at the bundled
-# data directory instead.
-if getattr(sys, "frozen", False):
-    _meipass = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
-    _espeak_data = os.path.join(_meipass, "piper_phonemize", "espeak-ng-data")
-    if os.path.isdir(_espeak_data):
-        os.environ.setdefault("ESPEAK_DATA_PATH", _espeak_data)
-
 # Fast path: handle --version before any heavy imports so the Rust
 # version check doesn't block for 30+ seconds loading torch etc.
 if "--version" in sys.argv:
@@ -43,17 +33,6 @@ if "--version" in sys.argv:
 
     print(f"voicebox-server {__version__}")
     sys.exit(0)
-
-# Detect backend variant from binary name BEFORE importing backend modules
-# so that env-var guards in app.py (e.g. HSA_OVERRIDE_GFX_VERSION) fire at import time.
-_binary_name = os.path.basename(sys.executable).lower()
-if re.search(r"voicebox-server-rocm(\.exe)?$", _binary_name):
-    os.environ["VOICEBOX_BACKEND_VARIANT"] = "rocm"
-elif re.search(r"voicebox-server-cuda(\.exe)?$", _binary_name):
-    os.environ["VOICEBOX_BACKEND_VARIANT"] = "cuda"
-else:
-    os.environ.setdefault("VOICEBOX_BACKEND_VARIANT", "cpu")
-
 
 import logging
 
@@ -273,7 +252,7 @@ if __name__ == "__main__":
             "--data-dir",
             type=str,
             default=None,
-            help="Data directory for database, profiles, and generated audio",
+            help="Data directory for the database and recorded audio",
         )
         parser.add_argument(
             "--parent-pid",
@@ -290,8 +269,6 @@ if __name__ == "__main__":
 
         if args.parent_pid is not None and args.parent_pid <= 0:
             parser.error("--parent-pid must be a positive integer")
-
-        logger.info(f"Backend variant: {os.environ.get('VOICEBOX_BACKEND_VARIANT', 'cpu').upper()}")
 
         # Register parent watchdog to start after server is fully ready
         if args.parent_pid is not None:

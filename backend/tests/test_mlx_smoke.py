@@ -4,7 +4,7 @@ Smoke test for the MLX backend dependencies on Apple Silicon.
 Guards the `--no-deps` install of mlx-audio/mlx-lm done by `just setup-python`
 and release.yml: those packages skip their declared dependencies (transformers
 >=5.x conflict), so a missing transitive dep only surfaces at import time.
-This test fails fast if the MLX STT/TTS entry points the backend uses stop
+This test fails fast if the MLX STT/LLM entry points the backend uses stop
 importing (e.g. the `miniaudio` regression from issue #505).
 
 Usage:
@@ -27,13 +27,6 @@ def test_mlx_core_runs():
     import mlx.core as mx
 
     assert mx.array([1, 2]).sum().item() == 3
-
-
-def test_mlx_audio_tts_entry_point():
-    """`from mlx_audio.tts import load` — used by MLXBackend.load_model_async."""
-    from mlx_audio.tts import load
-
-    assert callable(load)
 
 
 def test_mlx_audio_stt_entry_point():

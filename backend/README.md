@@ -1,12 +1,12 @@
 # Voicebox Backend
 
-FastAPI server powering voice cloning, speech generation, and audio processing. Runs locally as a Tauri sidecar or standalone via `python -m backend.main`.
+FastAPI server powering Voicebox dictation: Whisper speech-to-text followed by a local LLM cleanup pass. Runs locally as a Tauri sidecar or standalone via `python -m backend.main`.
 
 ## Running
 
 ```bash
 # Via justfile (recommended)
-just dev:server
+just dev-backend
 
 # Standalone
 python -m backend.main --host 127.0.0.1 --port 17493
@@ -29,9 +29,9 @@ backend/
 
   routes/                 # Thin HTTP handlers — validation, delegation, response formatting
   services/               # Business logic, CRUD, orchestration
-  backends/               # TTS/STT engine implementations (MLX, PyTorch, etc.)
-  database/               # ORM models, session management, migrations, seed data
-  utils/                  # Shared utilities (audio, effects, caching, progress tracking)
+  backends/               # Whisper STT and Qwen3 LLM implementations (MLX, PyTorch)
+  database/               # ORM models, session management, migrations
+  utils/                  # Shared utilities (audio loading, progress tracking)
 ```
 
 ### Request flow
@@ -40,21 +40,21 @@ backend/
 HTTP request
   -> routes/        (validate input, parse params)
   -> services/      (business logic, database queries, orchestration)
-  -> backends/      (TTS/STT inference)
-  -> utils/         (audio processing, effects, caching)
+  -> backends/      (STT / LLM inference)
+  -> utils/         (audio loading, progress tracking)
 ```
 
 Route handlers are intentionally thin. They validate input, delegate to a service function, and format the response. All business logic lives in `services/`.
 
 ### Key modules
 
-**services/generation.py** -- Single `run_generation()` function that handles all three generation modes (generate, retry, regenerate). Manages model loading, voice prompt creation, chunked inference, normalization, effects, and version persistence.
+**services/captures.py**, **services/capture_stream.py** -- Dictation captures: upload or stream audio, run Whisper, persist the capture, and chain refinement.
 
-**services/task_queue.py** -- Serial generation queue. Ensures only one GPU inference runs at a time. Background tasks are tracked to prevent garbage collection.
+**services/refinement.py** -- Builds the cleanup prompt and runs the local Qwen3 LLM over a raw transcript.
 
-**backends/__init__.py** -- Protocol definitions (`TTSBackend`, `STTBackend`), model config registry, and factory functions. Adding a new engine means implementing the protocol and registering a config entry.
+**backends/__init__.py** -- Protocol definitions (`STTBackend`, `LLMBackend`), model config registry, and factory functions.
 
-**backends/base.py** -- Shared utilities used across all engine implementations: HuggingFace cache checks, device detection, voice prompt combination, progress tracking.
+**backends/base.py** -- Shared utilities used by the backends: HuggingFace cache checks, device detection, progress tracking.
 
 **database/** -- SQLAlchemy ORM models with a re-exporting `__init__.py` for backward compatibility. Migrations run automatically on startup.
 
@@ -64,59 +64,33 @@ The server detects the best inference backend at startup:
 
 | Platform | Backend | Acceleration |
 |----------|---------|-------------|
-| macOS (Apple Silicon) | MLX | Metal / Neural Engine |
-| Windows / Linux (NVIDIA) | PyTorch | CUDA |
-| Linux (AMD) | PyTorch | ROCm |
-| Intel Arc | PyTorch | IPEX / XPU |
-| Windows (any GPU) | PyTorch | DirectML |
-| Any | PyTorch | CPU fallback |
+| macOS (Apple Silicon) | MLX | Metal |
+| Fallback | PyTorch | MPS / CPU |
 
-Detection is handled by `utils/platform_detect.py`. Both backends implement the same `TTSBackend` protocol, so the API layer is engine-agnostic.
+Detection is handled by `utils/platform_detect.py`. Both backends implement the same `STTBackend` / `LLMBackend` protocols, so the API layer is engine-agnostic.
 
 ## API
 
-90 endpoints organized by domain. Full interactive documentation available at `http://localhost:17493/docs` when the server is running.
+Full interactive documentation is available at `http://localhost:17493/docs` when the server is running.
 
 | Domain | Prefix | Description |
 |--------|--------|-------------|
-| Health | `/`, `/health` | Server status, GPU info, filesystem checks |
-| Profiles | `/profiles` | Voice profile CRUD, samples, avatars, import/export |
-| Channels | `/channels` | Audio channel management and voice assignment |
-| Generation | `/generate` | TTS generation, retry, regenerate, status SSE |
-| History | `/history` | Generation history, search, favorites, export |
+| Health | `/`, `/health` | Server status, filesystem checks, shutdown |
 | Transcription | `/transcribe` | Whisper-based audio-to-text |
+| Captures | `/captures`, `/capture` | Dictation captures, refinement, feedback, readiness, correction learning |
 | Streaming dictation | `WS /captures/stream` | PCM recognition/refinement during recording, with one final capture |
-| Stories | `/stories` | Multi-track timeline editor, audio export |
-| Effects | `/effects` | Effect presets, preview, version management |
-| Audio | `/audio`, `/samples` | Audio file serving |
-| Models | `/models` | Load, unload, download, migrate, status |
-| Tasks | `/tasks`, `/cache` | Active task tracking, cache management |
-| CUDA | `/backend/cuda-*` | CUDA binary download and management |
-
-### Quick examples
-
-```bash
-# Generate speech
-curl -X POST http://localhost:17493/generate \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Hello world", "profile_id": "...", "language": "en"}'
-
-# List profiles
-curl http://localhost:17493/profiles
-
-# Stream generation status (SSE)
-curl http://localhost:17493/generate/{id}/status
-```
+| LLM | `/llm/generate` | Local Qwen3 text generation |
+| Writing style | `/writing-style` | Learned punctuation habits and personal examples |
+| Settings | `/settings/captures` | Capture and refinement defaults |
+| Models | `/models` | Download, unload, delete, migrate, status |
+| Tasks | `/tasks` | Active download tracking |
 
 ## Data directory
 
 ```
 {data_dir}/
   voicebox.db             # SQLite database
-  profiles/{id}/          # Voice samples per profile
-  generations/            # Generated audio files
-  cache/                  # Voice prompt cache (memory + disk)
-  backends/               # Downloaded CUDA binary (if applicable)
+  captures/               # Recorded dictation audio
 ```
 
 Default location is the OS-specific app data directory. Override with `--data-dir` or the `VOICEBOX_DATA_DIR` environment variable.

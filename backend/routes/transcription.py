@@ -15,7 +15,7 @@ router = APIRouter()
 
 UPLOAD_CHUNK_SIZE = 1024 * 1024  # 1MB
 
-# Same set profiles.py accepts for voice samples. librosa picks its decoder from the
+# Audio formats accepted for upload. librosa picks its decoder from the
 # file extension, so the temp file has to keep the uploaded one.
 ALLOWED_AUDIO_EXTS = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".opus"}
 

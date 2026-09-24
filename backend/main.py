@@ -28,7 +28,7 @@ if __name__ == "__main__":
         "--data-dir",
         type=str,
         default=None,
-        help="Data directory for database, profiles, and generated audio",
+        help="Data directory for the database and recorded audio",
     )
     args = parser.parse_args()
 
