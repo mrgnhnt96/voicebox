@@ -226,6 +226,10 @@ pub trait AxTextTarget {
     /// Set `AXSelectedText`. `Err` carries the AX error code.
     fn set_selected_text(&self, text: &str) -> Result<(), i32>;
     fn string_for_range(&self, range: TextRange) -> Option<String>;
+    /// Set `AXSelectedTextRange`. `Err` carries the AX error code.
+    fn set_selection(&self, range: TextRange) -> Result<(), i32>;
+    /// The element's whole `AXValue`, when it is a string.
+    fn value(&self) -> Option<String>;
 }
 
 /// Read what `target` supports without changing anything.
@@ -290,6 +294,253 @@ pub fn insert_into<T: AxTextTarget>(
                 sleep(VERIFY_POLL_INTERVAL);
             }
         }
+    }
+}
+
+// ========================================================================
+// Live insertion: cleaned text shown while it is still being generated
+// (docs/plans/STREAMING_INSERTION.md)
+// ========================================================================
+
+/// Text this dictation has put into the field, and where it starts (UTF-16).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Owned {
+    pub start: i64,
+    pub text: String,
+}
+
+impl Owned {
+    fn range(&self) -> TextRange {
+        TextRange {
+            location: self.start,
+            length: utf16_len(&self.text),
+        }
+    }
+
+    fn end(&self) -> i64 {
+        self.start + utf16_len(&self.text)
+    }
+}
+
+/// Result of the first live write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LiveStart {
+    /// Inserted and read back exactly.
+    Started(Owned),
+    /// Nothing was inserted. The final text takes today's path.
+    Declined(FallbackReason),
+    /// Something may have been inserted but can't be tracked. Nothing more
+    /// may be written, and the final text must not be pasted on top of it.
+    Broken(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LiveError {
+    /// The user changed the text or moved the caret. Nothing is written.
+    Edited,
+    /// The app did not apply the write; the field still holds the owned text.
+    NotApplied,
+    /// The field no longer matches what was written, for an unknown reason.
+    Uncertain(String),
+}
+
+/// The text in `range`, from `AXStringForRange` or else the whole `AXValue`.
+fn text_in<T: AxTextTarget>(target: &T, range: TextRange) -> Option<String> {
+    if let Some(text) = target.string_for_range(range) {
+        return Some(text);
+    }
+    let value: Vec<u16> = target.value()?.encode_utf16().collect();
+    let start = usize::try_from(range.location).ok()?;
+    let end = start.checked_add(usize::try_from(range.length).ok()?)?;
+    String::from_utf16(value.get(start..end)?).ok()
+}
+
+/// The field's state when it still shows exactly `owned` with the caret
+/// right after it, which is how this dictation left it.
+fn intact<T: AxTextTarget>(target: &T, owned: &Owned) -> Option<Observation> {
+    let now = target.observe();
+    let caret = TextRange {
+        location: owned.end(),
+        length: 0,
+    };
+    (now.selection == Some(caret)
+        && now.char_count.is_some()
+        && text_in(target, owned.range()).as_deref() == Some(owned.text.as_str()))
+    .then_some(now)
+}
+
+/// Byte length of the longest common prefix, on a char boundary.
+fn common_prefix(a: &str, b: &str) -> usize {
+    a.char_indices()
+        .zip(b.chars())
+        .find(|((_, x), y)| x != y)
+        .map(|((i, _), _)| i)
+        .unwrap_or_else(|| a.len().min(b.len()))
+}
+
+/// Make the owned text read `text`, rewriting only the part after what the
+/// two share. `before` is the [`intact`] state of the field.
+fn rewrite<T: AxTextTarget>(
+    target: &T,
+    owned: &Owned,
+    before: Observation,
+    text: &str,
+    mut sleep: impl FnMut(Duration),
+) -> Result<Owned, LiveError> {
+    let keep = common_prefix(&owned.text, text);
+    let kept16 = utf16_len(&owned.text[..keep]);
+    let replaced = TextRange {
+        location: owned.start + kept16,
+        length: utf16_len(&owned.text) - kept16,
+    };
+    if replaced.length > 0 && target.set_selection(replaced).is_err() {
+        return match intact(target, owned) {
+            Some(_) => Err(LiveError::NotApplied),
+            None => Err(LiveError::Uncertain(
+                "The selection changed while revising the dictated text.".into(),
+            )),
+        };
+    }
+    let set_ok = target.set_selected_text(&text[keep..]).is_ok();
+    let count0 = before.char_count.unwrap_or_default();
+    let written = Owned {
+        start: owned.start,
+        text: text.to_string(),
+    };
+    let expected = Observation {
+        selection: Some(TextRange {
+            location: written.end(),
+            length: 0,
+        }),
+        char_count: Some(count0 - utf16_len(&owned.text) + utf16_len(text)),
+    };
+    let untouched = Observation {
+        selection: Some(if replaced.length > 0 {
+            replaced
+        } else {
+            TextRange {
+                location: owned.end(),
+                length: 0,
+            }
+        }),
+        char_count: Some(count0),
+    };
+    let mut polls_left = VERIFY_POLLS;
+    loop {
+        let after = target.observe();
+        if after == expected && text_in(target, written.range()).as_deref() == Some(text) {
+            return Ok(written);
+        }
+        if after != untouched {
+            return Err(LiveError::Uncertain(
+                "The dictated text did not read back as written.".into(),
+            ));
+        }
+        if !set_ok || polls_left == 0 {
+            if replaced.length > 0 {
+                let _ = target.set_selection(TextRange {
+                    location: owned.end(),
+                    length: 0,
+                });
+            }
+            return Err(LiveError::NotApplied);
+        }
+        polls_left -= 1;
+        sleep(VERIFY_POLL_INTERVAL);
+    }
+}
+
+/// First live write: insert `text` at the caret (or over the selection),
+/// only where the result can be read back and revised later.
+pub fn begin_live<T: AxTextTarget>(
+    target: &T,
+    bundle_id: Option<&str>,
+    text: &str,
+    sleep: impl FnMut(Duration),
+) -> LiveStart {
+    let caps = probe(target);
+    if let Strategy::Clipboard(reason) = choose_strategy(bundle_id, text, &caps) {
+        return LiveStart::Declined(reason);
+    }
+    let Some(selection) = caps.before.selection else {
+        return LiveStart::Declined(FallbackReason::Unverifiable);
+    };
+    // A revision has to read back what was written: check before writing.
+    if text_in(target, selection).is_none() {
+        return LiveStart::Declined(FallbackReason::Unverifiable);
+    }
+    match insert_into(target, bundle_id, text, sleep) {
+        Outcome::Inserted { .. } => {
+            let owned = Owned {
+                start: selection.location,
+                text: text.to_string(),
+            };
+            match intact(target, &owned) {
+                Some(_) => LiveStart::Started(owned),
+                None => LiveStart::Broken(
+                    "The app changed the dictated text as it was inserted.".into(),
+                ),
+            }
+        }
+        Outcome::UseClipboard(reason) => LiveStart::Declined(reason),
+        Outcome::Uncertain(message) => LiveStart::Broken(message),
+    }
+}
+
+/// Grow the owned text to `text`, which must start with it.
+pub fn extend_live<T: AxTextTarget>(
+    target: &T,
+    owned: &Owned,
+    text: &str,
+    sleep: impl FnMut(Duration),
+) -> Result<Owned, LiveError> {
+    if !text.starts_with(owned.text.as_str()) {
+        return Err(LiveError::Uncertain("Live text can only grow.".into()));
+    }
+    let before = intact(target, owned).ok_or(LiveError::Edited)?;
+    if text.len() == owned.text.len() {
+        return Ok(owned.clone());
+    }
+    rewrite(target, owned, before, text, sleep)
+}
+
+/// Make the owned text exactly `final_text` (empty removes it), unless the
+/// user has touched the field since.
+pub fn finish_live<T: AxTextTarget>(
+    target: &T,
+    owned: &Owned,
+    final_text: &str,
+    sleep: impl FnMut(Duration),
+) -> Result<(), LiveError> {
+    if final_text == owned.text {
+        return Ok(());
+    }
+    let before = intact(target, owned).ok_or(LiveError::Edited)?;
+    rewrite(target, owned, before, final_text, sleep).map(|_| ())
+}
+
+/// [`begin_live`] on the focused element of the app with `pid`. Blocking.
+pub fn begin_live_focused(pid: i32, bundle_id: Option<&str>, text: &str) -> LiveStart {
+    match macos::FocusedElement::of_app(pid) {
+        Some(element) => begin_live(&element, bundle_id, text, std::thread::sleep),
+        None => LiveStart::Declined(FallbackReason::NoFocusedElement),
+    }
+}
+
+/// [`extend_live`] on the focused element of the app with `pid`. Blocking.
+/// Focus having moved to another element reads as an edit.
+pub fn extend_live_focused(pid: i32, owned: &Owned, text: &str) -> Result<Owned, LiveError> {
+    match macos::FocusedElement::of_app(pid) {
+        Some(element) => extend_live(&element, owned, text, std::thread::sleep),
+        None => Err(LiveError::Edited),
+    }
+}
+
+/// [`finish_live`] on the focused element of the app with `pid`. Blocking.
+pub fn finish_live_focused(pid: i32, owned: &Owned, final_text: &str) -> Result<(), LiveError> {
+    match macos::FocusedElement::of_app(pid) {
+        Some(element) => finish_live(&element, owned, final_text, std::thread::sleep),
+        None => Err(LiveError::Edited),
     }
 }
 
@@ -558,6 +809,36 @@ mod macos {
             } else {
                 Err(err)
             }
+        }
+
+        fn set_selection(&self, range: TextRange) -> Result<(), i32> {
+            let key = key("AXSelectedTextRange").ok_or(-1)?;
+            let cf_range = CFRange {
+                location: range.location as CFIndex,
+                length: range.length as CFIndex,
+            };
+            let value = unsafe {
+                AXValueCreate(
+                    AX_VALUE_CF_RANGE,
+                    &cf_range as *const CFRange as *const c_void,
+                )
+            };
+            if value.is_null() {
+                return Err(-1);
+            }
+            let value = Cf(value);
+            let err = unsafe {
+                AXUIElementSetAttributeValue(self.element.0, key.0 as CFStringRef, value.0)
+            };
+            if err == AX_SUCCESS {
+                Ok(())
+            } else {
+                Err(err)
+            }
+        }
+
+        fn value(&self) -> Option<String> {
+            self.string_attr("AXValue")
         }
 
         fn string_for_range(&self, range: TextRange) -> Option<String> {
@@ -874,6 +1155,8 @@ mod tests {
         /// Reads return nothing after the set (app went unresponsive).
         blind_after_set: bool,
         set_calls: Cell<u32>,
+        /// AXStringForRange is unsupported.
+        ranges_unreadable: bool,
     }
 
     impl FakeField {
@@ -890,7 +1173,14 @@ mod tests {
                 pending: RefCell::new(None),
                 blind_after_set: false,
                 set_calls: Cell::new(0),
+                ranges_unreadable: false,
             }
+        }
+
+        /// The user types `text` at `at` and leaves the caret after it.
+        fn user_types(&self, at: i64, text: &str) {
+            self.sel.set(range(at, 0));
+            self.apply(text);
         }
 
         fn contents(&self) -> String {
@@ -947,7 +1237,20 @@ mod tests {
             }
             self.set_result
         }
+        fn value(&self) -> Option<String> {
+            (!self.ranges_unreadable).then(|| self.contents())
+        }
+        fn set_selection(&self, r: TextRange) -> Result<(), i32> {
+            if r.location < 0 || r.location + r.length > self.text.borrow().len() as i64 {
+                return Err(-25201);
+            }
+            self.sel.set(r);
+            Ok(())
+        }
         fn string_for_range(&self, r: TextRange) -> Option<String> {
+            if self.ranges_unreadable {
+                return None;
+            }
             let t = self.text.borrow();
             let start = r.location as usize;
             let end = start + r.length as usize;
@@ -1059,5 +1362,198 @@ mod tests {
         let (out, _) = run(&field, Some("com.apple.Terminal"), "ls");
         assert_eq!(out, Outcome::UseClipboard(FallbackReason::ClipboardOnlyApp));
         assert_eq!(field.set_calls.get(), 0);
+    }
+
+    // ---- live insertion ----
+
+    fn live(field: &FakeField, text: &str) -> LiveStart {
+        begin_live(field, Some("com.apple.TextEdit"), text, |_| {})
+    }
+
+    fn started(outcome: LiveStart) -> Owned {
+        match outcome {
+            LiveStart::Started(owned) => owned,
+            other => panic!("not started: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn live_text_grows_at_the_caret_and_is_owned() {
+        let field = FakeField::new("Dear team, ", range(11, 0));
+        let owned = started(live(&field, "The first"));
+        assert_eq!(
+            owned,
+            Owned {
+                start: 11,
+                text: "The first".into()
+            }
+        );
+        let owned = extend_live(&field, &owned, "The first part is", |_| {}).unwrap();
+        assert_eq!(field.contents(), "Dear team, The first part is");
+        assert_eq!(owned.text, "The first part is");
+        assert_eq!(field.sel.get(), range(28, 0));
+    }
+
+    #[test]
+    fn final_text_that_extends_the_live_text_is_appended() {
+        let field = FakeField::new("", range(0, 0));
+        let owned = started(live(&field, "Hello there"));
+        finish_live(&field, &owned, "Hello there, my friend.", |_| {}).unwrap();
+        assert_eq!(field.contents(), "Hello there, my friend.");
+        assert_eq!(field.sel.get(), range(23, 0));
+    }
+
+    #[test]
+    fn a_revised_final_replaces_only_what_this_dictation_inserted() {
+        let field = FakeField::new("Before. After", range(8, 0));
+        let owned = started(live(&field, "Send the update"));
+        assert_eq!(field.contents(), "Before. Send the updateAfter");
+        finish_live(
+            &field,
+            &owned,
+            "Do not send the update to the team.",
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(
+            field.contents(),
+            "Before. Do not send the update to the team.After"
+        );
+        assert_eq!(field.sel.get(), range(8 + 35, 0));
+    }
+
+    #[test]
+    fn a_revision_keeps_the_common_start_in_place() {
+        let field = FakeField::new("", range(0, 0));
+        let owned = started(live(&field, "It might. But"));
+        let calls = field.set_calls.get();
+        finish_live(&field, &owned, "It might, but we'll see", |_| {}).unwrap();
+        assert_eq!(field.contents(), "It might, but we'll see");
+        // One replacement of the changed tail.
+        assert_eq!(field.set_calls.get(), calls + 1);
+    }
+
+    #[test]
+    fn empty_final_removes_the_live_text() {
+        let field = FakeField::new("keep ", range(5, 0));
+        let owned = started(live(&field, "Um so"));
+        finish_live(&field, &owned, "", |_| {}).unwrap();
+        assert_eq!(field.contents(), "keep ");
+        assert_eq!(field.sel.get(), range(5, 0));
+    }
+
+    #[test]
+    fn unicode_is_measured_in_utf16_units() {
+        let field = FakeField::new("x", range(1, 0));
+        let owned = started(live(&field, "Café 👍"));
+        let owned = extend_live(&field, &owned, "Café 👍 and", |_| {}).unwrap();
+        finish_live(&field, &owned, "Café 👍 and naïve.", |_| {}).unwrap();
+        assert_eq!(field.contents(), "xCafé 👍 and naïve.");
+    }
+
+    #[test]
+    fn user_typing_stops_live_insertion_and_is_never_overwritten() {
+        let field = FakeField::new("", range(0, 0));
+        let owned = started(live(&field, "Hello there"));
+        field.user_types(11, "!");
+        assert!(matches!(
+            extend_live(&field, &owned, "Hello there my", |_| {}),
+            Err(LiveError::Edited)
+        ));
+        assert!(matches!(
+            finish_live(&field, &owned, "Goodbye.", |_| {}),
+            Err(LiveError::Edited)
+        ));
+        assert_eq!(field.contents(), "Hello there!");
+    }
+
+    #[test]
+    fn user_editing_inside_the_live_text_is_never_overwritten() {
+        let field = FakeField::new("", range(0, 0));
+        let owned = started(live(&field, "Hello there"));
+        field.user_types(0, "Oh ");
+        field.sel.set(range(14, 0));
+        assert!(matches!(
+            finish_live(&field, &owned, "Hello there.", |_| {}),
+            Err(LiveError::Edited)
+        ));
+        assert_eq!(field.contents(), "Oh Hello there");
+    }
+
+    #[test]
+    fn a_moved_caret_counts_as_an_edit() {
+        let field = FakeField::new("abc ", range(4, 0));
+        let owned = started(live(&field, "Hi"));
+        field.sel.set(range(0, 0));
+        assert!(matches!(
+            finish_live(&field, &owned, "Hi there.", |_| {}),
+            Err(LiveError::Edited)
+        ));
+        assert_eq!(field.contents(), "abc Hi");
+    }
+
+    #[test]
+    fn live_insertion_is_declined_where_it_cannot_be_verified() {
+        let mut field = FakeField::new("", range(0, 0));
+        field.ranges_unreadable = true;
+        assert_eq!(
+            live(&field, "Hello"),
+            LiveStart::Declined(FallbackReason::Unverifiable)
+        );
+        assert_eq!(field.set_calls.get(), 0);
+    }
+
+    #[test]
+    fn terminals_and_secure_fields_never_get_live_text() {
+        let field = FakeField::new("$ ", range(2, 0));
+        assert_eq!(
+            begin_live(&field, Some("com.googlecode.iterm2"), "ls", |_| {}),
+            LiveStart::Declined(FallbackReason::ClipboardOnlyApp)
+        );
+        let mut field = FakeField::new("", range(0, 0));
+        field.role = Some("AXSecureTextField".into());
+        assert_eq!(
+            live(&field, "pw"),
+            LiveStart::Declined(FallbackReason::SecureField)
+        );
+    }
+
+    #[test]
+    fn an_app_that_ignores_the_first_write_is_declined_with_nothing_inserted() {
+        let mut field = FakeField::new("abc", range(3, 0));
+        field.applies = false;
+        assert_eq!(
+            live(&field, "Hello"),
+            LiveStart::Declined(FallbackReason::NotInserted)
+        );
+        assert_eq!(field.contents(), "abc");
+    }
+
+    #[test]
+    fn a_first_write_that_lands_differently_is_broken_not_declined() {
+        // Declining would paste the whole text again on top of it.
+        let field = FakeField::new("abc", range(3, 0));
+        field.apply_delay_reads.set(0);
+        let mut field = field;
+        field.blind_after_set = true;
+        assert!(matches!(live(&field, "Hello"), LiveStart::Broken(_)));
+    }
+
+    #[test]
+    fn a_selection_is_replaced_by_the_first_live_text() {
+        let field = FakeField::new("Hello world", range(6, 5));
+        let owned = started(live(&field, "there"));
+        assert_eq!(owned.start, 6);
+        finish_live(&field, &owned, "there, friend", |_| {}).unwrap();
+        assert_eq!(field.contents(), "Hello there, friend");
+    }
+
+    #[test]
+    fn final_equal_to_the_live_text_changes_nothing() {
+        let field = FakeField::new("", range(0, 0));
+        let owned = started(live(&field, "Done"));
+        let calls = field.set_calls.get();
+        finish_live(&field, &owned, "Done", |_| {}).unwrap();
+        assert_eq!(field.set_calls.get(), calls);
     }
 }
