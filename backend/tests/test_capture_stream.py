@@ -37,14 +37,16 @@ def append(session, seconds, amplitude=1000):
 
 
 @pytest.mark.asyncio
-async def test_partial_before_finish_and_single_persisted_tail(tmp_path, monkeypatch):
+async def test_unpaused_speech_is_recognized_once_at_finish(tmp_path, monkeypatch):
     session, events = make_session(tmp_path, monkeypatch)
-    session.recognize = AsyncMock(side_effect=["hello", "hello world"])
+    session.recognize = AsyncMock(return_value="hello world")
     worker = asyncio.create_task(session.run())
     append(session, 2)
     await asyncio.sleep(0)
-    assert events[0]["type"] == "transcript"
-    assert events[0]["provisional_text"] == "hello"
+    # No client shows provisional text, and a preview still running at
+    # release would delay the final result, so none is made.
+    assert not events
+    session.recognize.assert_not_awaited()
     append(session, 0.3)
     session.finish()
     await worker
@@ -55,10 +57,66 @@ async def test_partial_before_finish_and_single_persisted_tail(tmp_path, monkeyp
         assert result.transcript_raw == "hello world"
         assert result.duration_ms == 2300
         assert db.query(Capture).count() == 1
-    assert session.recognize.await_count == 2
+    # The whole recording, recognized exactly once.
+    session.recognize.assert_awaited_once()
+    assert len(session.recognize.await_args.args[0]) == 2.3 * session.rate * 2
     assert events[-1]["accepted_text"] == "hello world"
     session.close()
     assert session.path.exists()
+
+
+@pytest.mark.asyncio
+async def test_no_speculative_work_while_speaking(tmp_path, monkeypatch):
+    session, _ = make_session(tmp_path, monkeypatch)
+    session.settings.auto_refine = True
+    stt = type("STT", (), {"transcribe": AsyncMock(return_value="hello world")})()
+    monkeypatch.setattr(capture_stream, "get_whisper_model", lambda: stt)
+    refine = AsyncMock(return_value=("Hello world.", "0.6B"))
+    monkeypatch.setattr(capture_stream, "refine_transcript", refine)
+    from backend.services import correction_learning
+
+    monkeypatch.setattr(correction_learning, "apply_learned_corrections", lambda text, _: text)
+    worker = asyncio.create_task(session.run())
+    for _ in range(7):
+        append(session, 1)
+        await asyncio.sleep(0)
+    stt.transcribe.assert_not_awaited()
+    refine.assert_not_awaited()
+    session.finish()
+    await worker
+    stt.transcribe.assert_awaited_once()
+    refine.assert_awaited_once()
+    assert session.refined == "Hello world."
+    session.close()
+
+
+@pytest.mark.asyncio
+async def test_release_during_a_phrase_only_adds_the_remaining_audio(tmp_path, monkeypatch):
+    session, _ = make_session(tmp_path, monkeypatch)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    heard = []
+
+    async def recognize(pcm):
+        heard.append(len(pcm) // 2)
+        if len(heard) == 1:
+            started.set()
+            await release.wait()
+        return f"phrase {len(heard)}"
+
+    session.recognize = recognize
+    worker = asyncio.create_task(session.run())
+    append(session, 2)
+    append(session, 1, amplitude=0)
+    await started.wait()
+    # The key comes up while the paused phrase is still being recognized.
+    append(session, 1)
+    session.finish()
+    release.set()
+    await worker
+    assert heard == [3 * session.rate, 1 * session.rate]
+    assert session.raw.startswith("phrase 1") and "phrase 2" in session.raw
+    session.close()
 
 
 @pytest.mark.asyncio
@@ -188,29 +246,6 @@ async def test_each_phrase_is_recognized_in_context_of_earlier_phrases(tmp_path,
     await session.run()
     assert [call.kwargs["previous_text"] for call in stt.transcribe.await_args_list] == ["", "How"]
     assert session.raw == "How much is it?"
-    session.close()
-
-
-@pytest.mark.asyncio
-async def test_preview_audio_and_refinement_are_reused_at_finish(tmp_path, monkeypatch):
-    session, events = make_session(tmp_path, monkeypatch)
-    session.settings.auto_refine = True
-    stt = type("STT", (), {"transcribe": AsyncMock(return_value="hello world")})()
-    monkeypatch.setattr(capture_stream, "get_whisper_model", lambda: stt)
-    refine = AsyncMock(return_value=("Hello world.", "0.6B"))
-    monkeypatch.setattr(capture_stream, "refine_transcript", refine)
-    from backend.services import correction_learning
-
-    monkeypatch.setattr(correction_learning, "apply_learned_corrections", lambda text, _: text)
-    append(session, 6)
-    worker = asyncio.create_task(session.run())
-    await asyncio.sleep(0)
-    assert any(event["type"] == "refined" for event in events)
-    session.finish()
-    await worker
-    stt.transcribe.assert_awaited_once()
-    refine.assert_awaited_once()
-    assert session.refined == "Hello world."
     session.close()
 
 

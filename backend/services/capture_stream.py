@@ -2,6 +2,11 @@
 
 Recognition windows end on pauses where possible. Full audio is archived once;
 only a bounded backlog and one inference window are kept in memory.
+
+Only work the final result uses runs: phrases cut at pauses, then the rest at
+finish. There are no provisional previews or speculative cleanups. No client
+shows them, they were rarely reused, and model work can't be interrupted, so
+one still running when the key comes up only delays the final text.
 """
 
 import asyncio
@@ -99,13 +104,8 @@ class StreamingCapture:
         self.sequence = 0
         self.silence = 0
         self.last_cut = 0
-        self.last_preview = 0
-        self.last_refine_preview = 0
-        self.preview_refinement = None
         self.revision = 0
         self.covered = 0
-        self.cached_key = None
-        self.cached_text = None
         self.raw = ""
         self.refined = ""
         self.last_phrase_raw = ""
@@ -189,11 +189,8 @@ class StreamingCapture:
         # phrase cut at a pause neither trails off with "..." nor restarts
         # with a capital letter.
         previous_text = self.raw[-PHRASE_CONTEXT_CHARS:]
-        if (pcm, previous_text) == self.cached_key:
-            return self.cached_text
         samples = np.frombuffer(pcm, dtype="<i2")
         if not len(samples) or np.max(np.abs(samples.astype(np.int32))) < 250:
-            self.cached_key, self.cached_text = (pcm, previous_text), ""
             return ""
         # Keep each temporary window alive until inference actually completes.
         with tempfile.TemporaryDirectory(prefix="voicebox-stream-") as directory:
@@ -203,13 +200,11 @@ class StreamingCapture:
                 audio.setsampwidth(2)
                 audio.setframerate(self.rate)
                 audio.writeframes(pcm)
-            text = (
+            return (
                 await get_whisper_model().transcribe(
                     str(path), self.language, self.stt_model, previous_text=previous_text
                 )
             ).strip()
-            self.cached_key, self.cached_text = (pcm, previous_text), text
-            return text
 
     def close_dictation(self, text):
         closed = close_phrase(text) if self.cleanup_closed else text
@@ -246,12 +241,9 @@ class StreamingCapture:
                     and bool(re.search(r"\b(actually|no wait|no actually|make that|I mean|scratch that)\b", text, re.I))
                 )
                 prompt = " ".join((self.last_phrase_raw[-4000:], text)) if revise_previous else text
-                if self.preview_refinement and self.preview_refinement[0] == prompt:
-                    _, refined, self.llm_model = self.preview_refinement
-                else:
-                    refined, self.llm_model = await refine_transcript(
-                        prompt, self.flags, model_size=self.settings.llm_model
-                    )
+                refined, self.llm_model = await refine_transcript(
+                    prompt, self.flags, model_size=self.settings.llm_model
+                )
                 refined, verdict = guard_phrase_refinement(prompt, refined, self.flags)
                 # A rejected cleanup falls back to the transcript, which is closed
                 # the standard way.
@@ -330,7 +322,6 @@ class StreamingCapture:
                 self.offset += advance
                 await self.accept(text)
                 self.overlap = forced
-                self.last_preview = self.offset
                 continue
             if self.finished:
                 if self.degraded_reason:
@@ -341,34 +332,6 @@ class StreamingCapture:
                     self.refined = closed
                     await self.emit("refined", text=self.refined)
                 return
-            if available >= self.rate * 2 and self.samples - self.last_preview >= self.rate * 2:
-                end = self.samples
-                text = await self.recognize(bytes(self.pending))
-                if self.abort:
-                    return
-                self.covered = max(self.covered, end)
-                self.last_preview = end
-                combined = self.join(self.raw, text, text)
-                await self.emit("transcript", accepted_text=self.raw, provisional_text=text, text=combined, final=False)
-                # Speculate only on the bounded active phrase, at most once per
-                # six seconds of new audio. Final acceptance reuses an exact
-                # match; changed text must be refined again.
-                if (
-                    not self.finished
-                    and self.settings.auto_refine
-                    and text
-                    and end - self.last_refine_preview >= self.rate * 6
-                ):
-                    self.last_refine_preview = end
-                    try:
-                        refined, model = await refine_transcript(text, self.flags, model_size=self.settings.llm_model)
-                        self.preview_refinement = (text, refined, model)
-                        refined, _ = guard_phrase_refinement(text, refined, self.flags)
-                        output = self.join(self.refined, refined if self.overlap else open_phrase(refined, text), text)
-                        await self.emit("refined", text=output)
-                    except Exception:
-                        logger.debug("Speculative streaming refinement failed", exc_info=True)
-                continue
             self.wake.clear()
             await self.wake.wait()
 
