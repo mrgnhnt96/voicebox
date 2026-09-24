@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..database import Capture, get_db
-from ..services import personal_examples, settings as settings_service, writing_style
+from ..services import correction_notes, personal_examples, settings as settings_service, writing_style
 from ..services.content_check import check_refinement
 from ..services.refinement import RefinementFlags, refine_transcript
 from ..services.writing_style_paragraphs import PARAGRAPHS
@@ -61,6 +61,17 @@ async def remove_example(example_id: str):
     """Stop using an example; corrections stay recorded for the personal model."""
     if not personal_examples.hide(example_id):
         raise HTTPException(status_code=404, detail="Example not found")
+
+
+@router.get("/notes", response_model=models.CorrectionNotesStatus)
+async def get_correction_notes():
+    return correction_notes.status()
+
+
+@router.delete("/notes/{note_id}", status_code=204)
+async def remove_correction_note(note_id: str):
+    if not correction_notes.remove(note_id):
+        raise HTTPException(status_code=404, detail="Rule not found")
 
 
 @router.post("/calibration", response_model=models.WritingStyleCalibrationStep)

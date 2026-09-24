@@ -53,18 +53,21 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         await _run_startup(app)
         from .services.correction_learning import initialize
+        from .services.correction_notes import periodic_job as notes_job
         from .services.model_improvement.manager import periodic_job
 
         initialize()
-        learning_task = asyncio.create_task(periodic_job())
+        tasks = [asyncio.create_task(periodic_job()), asyncio.create_task(notes_job())]
         try:
             yield
         finally:
-            learning_task.cancel()
-            try:
-                await learning_task
-            except asyncio.CancelledError:
-                pass
+            for task in tasks:
+                task.cancel()
+            for task in tasks:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
             # Runs whether or not startup finished, so a partial startup
             # still unloads whatever models were loaded.
             await _run_shutdown()

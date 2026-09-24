@@ -303,6 +303,22 @@ class PersonalExample(BaseModel):
     created_at: Optional[str] = None
 
 
+class CorrectionNote(BaseModel):
+    """One rule summarized from the user's older examples."""
+
+    id: str
+    text: str
+
+
+class CorrectionNotesStatus(BaseModel):
+    """Rules cleanup follows from examples too old to show the model."""
+
+    notes: List[CorrectionNote]
+    pending: int
+    last_run: Optional[str] = None
+    outcome: str
+
+
 class WritingStyleStepRequest(BaseModel):
     written: str = Field(..., max_length=4000)
 

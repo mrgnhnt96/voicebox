@@ -221,6 +221,26 @@ def foreground_activity(recording=False):
     _stop_process(process)
 
 
+def idle_generation():
+    """The foreground generation when nothing uses the models, else None.
+
+    Other background jobs compare it later to notice a dictation started.
+    """
+    with _lock:
+        now = time.monotonic()
+        busy = (
+            _foreground_count
+            or now < _recording_until
+            or now - _last_activity < IDLE_SECONDS
+            or (_thread and _thread.is_alive())
+        )
+        return None if busy else _generation
+
+
+def interrupted(generation):
+    return generation != _generation
+
+
 def cancel():
     global _last_attempt
     foreground_activity()

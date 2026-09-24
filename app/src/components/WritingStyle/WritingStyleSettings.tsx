@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api/client';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
 import { useWritingStyle, WRITING_STYLE_KEY } from '@/lib/hooks/useWritingStyle';
+import { CorrectionNotes } from './CorrectionNotes';
 import { PERSONAL_EXAMPLES_KEY, PersonalExamples } from './PersonalExamples';
 import { StyleCalibrationDialog } from './StyleCalibrationDialog';
 import { WritingStyleHabits } from './WritingStyleHabits';
@@ -58,6 +59,7 @@ export function WritingStyleSettings() {
         ) : null}
       </SettingRow>
       <PersonalExamples />
+      <CorrectionNotes />
       {status?.ready || runs ? (
         <SettingRow
           title={t('writingStyle.settings.reset.title')}

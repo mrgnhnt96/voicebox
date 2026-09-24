@@ -46,6 +46,19 @@ export interface PersonalExample {
   created_at: string | null;
 }
 
+export interface CorrectionNote {
+  id: string;
+  text: string;
+}
+
+export interface CorrectionNotesStatus {
+  notes: CorrectionNote[];
+  /** Examples that left the prompt and have not been summarized yet. */
+  pending: number;
+  last_run: string | null;
+  outcome: string;
+}
+
 export interface WritingStyleCalibrationStep {
   session_id: string;
   step: number;

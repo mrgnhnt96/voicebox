@@ -3,7 +3,8 @@
 Two sources feed it: corrections to refined output (Teach Voicebox) and
 calibration rewrites the user edited. Cleanup shows the model the same
 recent examples on every dictation, so a correction counts on the very next
-dictation, and the model's prompt cache keeps the wait short.
+dictation, and the model's prompt cache keeps the wait short. Examples too old
+to fit are summarized into correction notes, so none stop counting.
 
 Corrections are immutable training records, so removing one from the user's
 examples hides it here without deleting the record.
@@ -42,7 +43,6 @@ def _from_corrections() -> list[dict]:
             db.query(CaptureFeedback)
             .filter(CaptureFeedback.target == "refined")
             .order_by(CaptureFeedback.created_at.desc(), CaptureFeedback.id.desc())
-            .limit(500)
             .all()
         )
     examples = []
@@ -91,21 +91,29 @@ def all_examples() -> list[dict]:
         return list(_cache)
 
 
-def for_prompt(extra: list[tuple[str, str]] | None = None) -> list[tuple[str, str]]:
-    """The examples every cleanup shows the model, oldest first.
+def in_prompt() -> list[dict]:
+    """The most recent examples that fit the prompt budget, newest first.
 
-    Every dictation gets the same list, so the cleanup model's cached prompt
-    covers it and only the new transcript is read. A new example goes at the
-    end, keeping everything before it cached. Only the most recent examples
-    that fit the budget are used. ``extra`` examples, such as a calibration
-    run's rewrites before they are saved, come last.
+    Older examples are summarized into correction notes instead.
     """
     chosen, size = [], 0
     for example in all_examples()[:MAX_PROMPT_EXAMPLES]:
         size += len(example["said"]) + len(example["meant"])
         if size > MAX_PROMPT_CHARS:
             break
-        chosen.append((example["said"], example["meant"]))
+        chosen.append(example)
+    return chosen
+
+
+def for_prompt(extra: list[tuple[str, str]] | None = None) -> list[tuple[str, str]]:
+    """The examples every cleanup shows the model, oldest first.
+
+    Every dictation gets the same list, so the cleanup model's cached prompt
+    covers it and only the new transcript is read. A new example goes at the
+    end, keeping everything before it cached. ``extra`` examples, such as a
+    calibration run's rewrites before they are saved, come last.
+    """
+    chosen = [(example["said"], example["meant"]) for example in in_prompt()]
     return [*reversed(chosen), *(extra or [])]
 
 

@@ -14,6 +14,7 @@ import type {
   CaptureSettingsUpdate,
   CaptureSource,
   CorrectionLearningStatus,
+  CorrectionNotesStatus,
   HealthResponse,
   ModelDownloadRequest,
   ModelStatusListResponse,
@@ -212,6 +213,20 @@ class ApiClient {
 
   async listPersonalExamples(): Promise<PersonalExample[]> {
     return this.request<PersonalExample[]>('/writing-style/examples');
+  }
+
+  async getCorrectionNotes(): Promise<CorrectionNotesStatus> {
+    return this.request<CorrectionNotesStatus>('/writing-style/notes');
+  }
+
+  async removeCorrectionNote(noteId: string): Promise<void> {
+    const response = await fetch(
+      `${this.getBaseUrl()}/writing-style/notes/${encodeURIComponent(noteId)}`,
+      { method: 'DELETE' },
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
   }
 
   async removePersonalExample(exampleId: string): Promise<void> {

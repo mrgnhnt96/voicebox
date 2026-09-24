@@ -596,18 +596,29 @@
       },
       "examples": {
         "title": "Your examples",
-        "description_one": "{{count}} example of what you said and what you meant. Cleanup uses the closest ones on every dictation.",
-        "description_other": "{{count}} examples of what you said and what you meant. Cleanup uses the closest ones on every dictation.",
+        "description_one": "{{count}} example of what you said and what you meant. Cleanup shows the most recent ones on every dictation.",
+        "description_other": "{{count}} examples of what you said and what you meant. Cleanup shows the most recent ones on every dictation.",
         "empty": "No examples yet. Use Teach Voicebox on a capture, or run the calibration above.",
         "view": "View",
         "dialogTitle": "Your examples",
-        "dialogDescription": "Cleanup shows the model the examples closest to what you just said. Removing one stops Voicebox from using it.",
+        "dialogDescription": "Cleanup shows the model your most recent examples. Older ones are summarized into rules. Removing an example stops Voicebox from using it.",
         "said": "You said",
         "meant": "You meant",
         "fromCorrection": "From a correction",
         "fromCalibration": "From calibration",
         "remove": "Remove",
         "removeFailed": "Could not remove the example"
+      },
+      "notes": {
+        "title": "Rules from older examples",
+        "description_one": "{{count}} rule summarized from examples too old to show the model, so they keep counting.",
+        "description_other": "{{count}} rules summarized from examples too old to show the model, so they keep counting.",
+        "empty": "None yet. Once enough of your examples are older than the most recent ones, Voicebox summarizes them into rules while it's idle.",
+        "view": "View",
+        "dialogTitle": "Rules from older examples",
+        "dialogDescription": "Cleanup follows these on every dictation. A new version is only kept when replaying your examples with it does no worse than the current rules.",
+        "remove": "Remove",
+        "removeFailed": "Could not remove the rule"
       }
     },
     "calibration": {
