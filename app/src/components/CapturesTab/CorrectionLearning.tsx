@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { apiClient } from '@/lib/api/client';
 import { WritingStyleHabits } from '@/components/WritingStyle/WritingStyleHabits';
+import { apiClient } from '@/lib/api/client';
 import type { CaptureFeedbackResponse } from '@/lib/api/types';
 import { useWritingStyle } from '@/lib/hooks/useWritingStyle';
 
@@ -40,11 +40,13 @@ export function CorrectionLearning({
   }
 
   return (
-    <details className="text-sm rounded-md border p-3">
-      <summary className="cursor-pointer font-medium">
+    <details className="text-[13px] rounded-md border border-border bg-card p-3">
+      <summary className="cursor-pointer font-mono text-[11px] uppercase text-muted-foreground hover:text-foreground">
         {t('captures.feedback.learning.title')}
       </summary>
-      <p className="mt-2 text-muted-foreground">{t('captures.feedback.learning.description')}</p>
+      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+        {t('captures.feedback.learning.description')}
+      </p>
       {writingStyle.data?.habits.length ? (
         <div className="mt-2 space-y-1">
           <p className="font-medium">{t('writingStyle.learningPanel.title')}</p>
@@ -73,7 +75,7 @@ export function CorrectionLearning({
         </p>
       )}
       {status.data?.model && (
-        <div className="mt-3 space-y-1 border-t pt-3">
+        <div className="mt-3 space-y-1 border-t border-border pt-3">
           <p className="font-medium">{t('captures.feedback.learning.modelTitle')}</p>
           <p>{t(`captures.feedback.learning.modelPhases.${status.data.model.phase}`)}</p>
           <p className="text-muted-foreground">

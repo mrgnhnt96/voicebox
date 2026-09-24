@@ -7,8 +7,11 @@ export function RefinementReviewNotice({ review }: { review: RefinementReview })
   const { t } = useTranslation();
   const rejected = review.outcome === 'reject';
   return (
-    <div className="mb-3 flex gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+    <div
+      role="note"
+      className="flex gap-2.5 rounded-lg border border-warning/30 bg-warning/10 p-3 text-[13px]"
+    >
+      <AlertTriangle className="h-4 w-4 shrink-0 text-warning mt-0.5" />
       <div className="space-y-1">
         <p className="font-medium">
           {rejected ? t('captures.review.rejectedTitle') : t('captures.review.title')}

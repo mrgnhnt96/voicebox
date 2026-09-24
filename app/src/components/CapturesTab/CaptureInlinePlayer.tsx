@@ -4,14 +4,7 @@ import WaveSurfer from 'wavesurfer.js';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils/cn';
 import { debug } from '@/lib/utils/debug';
-
-function formatDuration(ms?: number | null): string {
-  if (!ms || ms < 0) return '0:00';
-  const total = Math.round(ms / 1000);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+import { formatDuration } from './captureFormat';
 
 export function CaptureInlinePlayer({
   audioUrl,
@@ -45,13 +38,13 @@ export function CaptureInlinePlayer({
 
     const ws = WaveSurfer.create({
       container,
-      waveColor: cssHsla('--muted-foreground', 1),
+      waveColor: cssHsla('--muted-foreground', 0.45),
       progressColor: cssHsla('--accent', 1),
       cursorColor: 'transparent',
-      barWidth: 2,
-      barRadius: 2,
+      barWidth: 3,
+      barRadius: 1,
       barGap: 2,
-      height: 40,
+      height: 32,
       normalize: true,
       interact: true,
       dragToSeek: { debounceTime: 0 },
@@ -140,27 +133,29 @@ export function CaptureInlinePlayer({
       : (fallbackDurationMs ?? 0);
 
   return (
-    <div className={cn('flex items-center gap-4', className)}>
+    <div className={cn('flex items-center gap-3', className)}>
       <Button
         size="icon"
         variant="outline"
-        className="h-10 w-10 rounded-full shrink-0"
+        className="h-8 w-8 shrink-0 bg-popover [&_svg]:size-3"
         onClick={handlePlayPause}
         disabled={isLoading || !!error}
-        aria-label={isPlaying ? 'Pause' : 'Play'}
+        aria-label={isPlaying ? 'Pause recording' : 'Play recording'}
       >
         {isLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="animate-spin" />
         ) : isPlaying ? (
-          <Pause className="h-4 w-4 fill-current" />
+          <Pause className="fill-current" />
         ) : (
-          <Play className="h-4 w-4 ml-0.5 fill-current" />
+          <Play className="ml-px fill-current" />
         )}
       </Button>
-      <div ref={waveformRef} className="flex-1 min-w-0 h-10 select-none" />
-      <span className="text-xs tabular-nums text-muted-foreground font-medium shrink-0">
-        {error ? '—' : formatDuration(displayMs)}
-      </span>
+      <div className="flex-1 min-w-0 h-11 flex items-center gap-3 px-2.5 rounded-md border border-border bg-card">
+        <div ref={waveformRef} className="flex-1 min-w-0 h-8 select-none" />
+        <span className="font-mono text-[11px] tabular-nums text-muted-foreground shrink-0">
+          {error ? '—' : formatDuration(displayMs)}
+        </span>
+      </div>
     </div>
   );
 }
