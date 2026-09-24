@@ -15,9 +15,116 @@
     "models": "Models",
     "settings": "Settings"
   },
+  "setup": {
+    "title": "Set up dictation",
+    "intro": "Everything runs on this Mac. Models download once and never leave your machine.",
+    "progress": "{{done}} of {{total}} done",
+    "allSet": "all set · {{done}} of {{total}} done",
+    "stepsLabel": "Setup steps",
+    "status": {
+      "done": "done",
+      "toDo": "to do",
+      "waiting": "waiting",
+      "downloading": "downloading"
+    },
+    "back": "Back",
+    "next": {
+      "permissions": "Next: permissions",
+      "accessibility": "Next: accessibility",
+      "shortcut": "Next: shortcut",
+      "tryIt": "Next: try it"
+    },
+    "models": {
+      "title": "Download models",
+      "why": "Speech-to-text, and the model that cleans it up",
+      "sttRole": "turns speech into text",
+      "llmRole": "cleans up what you said",
+      "ready": "done",
+      "download": "Download",
+      "downloadSize": "Download · {{size}}",
+      "starting": "starting",
+      "parallelHint": "You can do the next steps while these download.",
+      "chooseDifferent": "Choose different models"
+    },
+    "inputMonitoring": {
+      "title": "Allow Input Monitoring",
+      "why": "So your shortcut works in any app",
+      "body": "macOS needs this so Voicebox can hear your shortcut while you’re in other apps. Voicebox only watches for the keys you pick.",
+      "path": "System Settings › Privacy & Security › Input Monitoring › Voicebox"
+    },
+    "accessibility": {
+      "title": "Allow Accessibility",
+      "why": "So Voicebox can paste at your cursor",
+      "body": "macOS needs this so Voicebox can paste what you said into the app you’re using. Without it, dictations still land in Captures.",
+      "path": "System Settings › Privacy & Security › Accessibility › Voicebox"
+    },
+    "permission": {
+      "open": "Open System Settings",
+      "recheck": "I’ve turned it on",
+      "checking": "Checking…",
+      "stillOff": "Still off. macOS sometimes needs Voicebox to restart before it notices.",
+      "focusHint": "Voicebox checks again when you come back to this window."
+    },
+    "shortcut": {
+      "title": "Pick your shortcut",
+      "why": "Hold to talk, or tap to go hands-free",
+      "body": "Hold these keys to record, let go to finish.",
+      "pushToTalk": "Push to talk",
+      "handsFree": "Hands-free toggle",
+      "handsFreeHint": "Change it later in Settings.",
+      "change": "Change shortcut",
+      "enable": "Turn on the global shortcut",
+      "enableHint": "Listens for your keys in every app.",
+      "pickerTitle": "Push-to-talk shortcut",
+      "pickerDescription": "Hold these keys to record, let go to finish. Press the keys now."
+    },
+    "tryIt": {
+      "title": "Try it",
+      "instructionBefore": "Click the box, then hold",
+      "instructionAfter": "and say a sentence. Let go when you’re done.",
+      "practiceLabel": "Practice box",
+      "notReady": "Some steps aren’t done yet, so the shortcut may not fire.",
+      "anyApp": "Next time, do this in any app. The text lands wherever your cursor is.",
+      "goToCaptures": "Go to Captures"
+    }
+  },
+  "palette": {
+    "label": "Command palette",
+    "placeholder": "Search captures or run a command",
+    "captures": "CAPTURES · {{count}}",
+    "commands": "COMMANDS",
+    "empty": "Nothing matches.",
+    "hints": {
+      "move": "↑↓ move",
+      "open": "⏎ open",
+      "copy": "⌘⏎ copy text",
+      "commandsOnly": "> commands only"
+    },
+    "cmd": {
+      "captures": "Go to Captures",
+      "models": "Go to Models",
+      "settingsGeneral": "Settings: General",
+      "settingsDictation": "Settings: Dictation",
+      "settingsTranscription": "Settings: Transcription",
+      "settingsWritingStyle": "Settings: Writing style",
+      "settingsLogs": "Settings: Logs",
+      "setup": "Open setup",
+      "calibrate": "Run style calibration…",
+      "themeLight": "Switch to light theme",
+      "themeDark": "Switch to dark theme",
+      "themeSystem": "Match system theme"
+    },
+    "keys": {
+      "go": "go",
+      "settings": "settings",
+      "theme": "theme",
+      "style": "style"
+    }
+  },
   "captures": {
     "feedback": {
       "report": "Teach Voicebox",
+      "sectionTitle": "Corrections",
       "description": "Edit this into what you meant: fix wrong words, drop false starts, put things in order, fix grammar. Keep your own words and every idea you said. Voicebox uses it as an example on your next dictations right away, and the personal model trains on it while the app is idle. Everything stays on this device. Deleting a capture removes its corrections from future training.",
       "original": "What Voicebox wrote ({{target}})",
       "expected": "What you meant",
@@ -74,12 +181,50 @@
       }
     },
     "title": "Captures",
-    "beta": "Beta",
-    "searchPlaceholder": "Search transcripts…",
+    "searchPlaceholder": "Search captures",
     "snippetEmpty": "(no transcript)",
     "captureCardLabel": "Capture · {{when}}",
-    "header": {
-      "modelSummary": "Whisper {{stt}} · Qwen3 · {{llm}}"
+    "filters": {
+      "label": "Filter captures",
+      "all": "All",
+      "dictation": "Dictation",
+      "recording": "Recording",
+      "file": "File",
+      "review": "Review"
+    },
+    "tag": {
+      "refined": "Refined",
+      "review": "Review",
+      "raw": "Raw"
+    },
+    "list": {
+      "yesterday": "yest"
+    },
+    "notReady": {
+      "title": "Dictation isn't set up yet",
+      "description": "Finish setup to download the models and grant the permissions the shortcut needs.",
+      "action": "Finish setup"
+    },
+    "panel": {
+      "words_one": "{{count}} word",
+      "words_other": "{{count}} words",
+      "notRefined": "Not refined yet. Press R to refine it.",
+      "copyRaw": "Copy raw transcript"
+    },
+    "teach": {
+      "label": "Teach: what did you mean?",
+      "placeholder": "Type the fix and press ⏎ — Voicebox learns from it",
+      "save": "Save correction",
+      "learned": "Learned",
+      "moreChanges_one": "+{{count}} more change",
+      "moreChanges_other": "+{{count}} more changes",
+      "examplesLearned_one": "{{count}} example learned",
+      "examplesLearned_other": "{{count}} examples learned",
+      "undo": "Undo",
+      "undoFailed": "Could not undo the correction",
+      "corrected": "corrected",
+      "editedByYou": "edited by you",
+      "correctRaw": "Correct"
     },
     "source": {
       "dictation": "Dictation",
@@ -88,13 +233,11 @@
     },
     "transcript": {
       "refined": "Refined",
-      "raw": "Raw",
-      "refinedHint": "Refined with Qwen3 · {{model}}",
-      "rawHint": "Transcribed with Whisper {{model}}"
+      "raw": "Raw"
     },
     "actions": {
-      "configure": "Configure",
-      "import": "Import",
+      "configure": "Dictation settings",
+      "import": "Import audio",
       "importing": "Uploading…",
       "dictate": "Dictate",
       "stop": "Stop",
@@ -110,6 +253,7 @@
     },
     "empty": {
       "noMatches": "No captures match \"{{query}}\"",
+      "noneInFilter": "No captures in this filter.",
       "none": "No captures yet.",
       "loading": "Loading captures…",
       "pickOne": "Pick a capture to see the transcript.",
@@ -117,7 +261,7 @@
       "toggleHandsFree": "Toggle hands-free",
       "pressShortcut": "Press the shortcut anywhere on your machine to start your first capture.",
       "turnOnShortcut": "Turn on the global shortcut to dictate from anywhere — or click Dictate above for an in-app capture.",
-      "openSettings": "Open Captures settings"
+      "openSettings": "Open dictation settings"
     },
     "deleteDialog": {
       "title": "Delete capture",
@@ -150,7 +294,9 @@
       "pressShortcut": "Press your shortcut",
       "noKeys": "No keys yet",
       "unsupported": "\"{{key}}\" isn't supported in chords. Try a modifier or letter key.",
-      "notSet": "Not set"
+      "notSet": "Not set",
+      "captured": "captured",
+      "save": "Save shortcut"
     },
     "readiness": {
       "title": "A few things before you can dictate",
@@ -217,13 +363,15 @@
       },
       "added": "May have added: {{words}}",
       "missing": "May have left out: {{words}}",
-      "hint": "If it's wrong, use Teach Voicebox below so it learns what you meant."
+      "hint": "If it's wrong, type what you meant under Teach so Voicebox learns it."
     }
   },
   "settings": {
     "tabs": {
       "general": "General",
-      "captures": "Captures",
+      "dictation": "Dictation",
+      "transcription": "Transcription & refinement",
+      "writingStyle": "Writing style",
       "logs": "Logs"
     },
     "theme": {
@@ -236,9 +384,10 @@
       }
     },
     "general": {
+      "sectionApp": "App",
       "server": {
         "title": "Local server",
-        "description": "The dictation server bundled with Voicebox, running on this Mac."
+        "description": "Runs Whisper and Qwen3 on this Mac. Nothing leaves your machine."
       },
       "connection": {
         "connecting": "Connecting",
@@ -248,6 +397,7 @@
       "restart": {
         "title": "Restart Voicebox",
         "description": "Restart the app and its local server. Any recording or task in progress will stop.",
+        "action": "Restart",
         "busy": "Restarting…",
         "failed": "Restart failed"
       }
@@ -256,25 +406,30 @@
       "dictation": {
         "title": "Dictation",
         "description": "Capture from anywhere on your machine with a global shortcut.",
+        "sectionShortcut": "Shortcut",
+        "sectionInput": "Input & HUD",
+        "sectionOutput": "Output",
         "globalShortcut": {
           "title": "Global shortcut",
-          "description": "Hold the shortcut to record from anywhere on your machine. Release to transcribe."
+          "description": "Dictate from any app, even when this window is closed."
         },
         "inputDevice": {
-          "title": "Audio input microphone",
+          "title": "Microphone",
           "description": "Choose which microphone Voicebox records dictation from.",
           "default": "System Default Microphone",
           "fallbackLabel": "Microphone {{index}}"
         },
         "pushToTalk": {
-          "title": "Push-to-talk shortcut",
-          "description": "Hold these keys anywhere on your system to record. Release to stop and transcribe.",
-          "change": "Change"
+          "title": "Push-to-talk",
+          "description": "Hold to record, let go to finish.",
+          "change": "Change",
+          "changeLabel": "Change push-to-talk shortcut"
         },
         "toggle": {
-          "title": "Toggle shortcut",
-          "description": "Press once to start a hands-free recording. Press again to stop. Usually push-to-talk plus Space.",
-          "change": "Change"
+          "title": "Hands-free",
+          "description": "Tap to start, tap again to stop. Usually push-to-talk plus Space.",
+          "change": "Change",
+          "changeLabel": "Change hands-free shortcut"
         },
         "chordPicker": {
           "pttTitle": "Set push-to-talk shortcut",
@@ -283,7 +438,7 @@
           "toggleDescription": "Hold the keys you want to use, then release and click Save. Pick something distinct from your push-to-talk chord."
         },
         "preview": {
-          "title": "Preview",
+          "title": "HUD preview",
           "description": "What appears on screen while you're holding the shortcut."
         },
         "copyToClipboard": {
@@ -291,12 +446,12 @@
           "description": "The cleaned transcript lands on your clipboard when the capture finishes."
         },
         "autoPaste": {
-          "title": "Auto-paste into focused text field",
-          "description": "If a text input is focused in another app, paste directly into it. Voicebox saves and restores whatever was on your clipboard."
+          "title": "Paste at cursor",
+          "description": "Types the refined text into the focused field. Needs Accessibility. Voicebox saves and restores whatever was on your clipboard."
         }
       },
       "transcription": {
-        "title": "Transcription",
+        "title": "Transcription · Whisper",
         "description": "Pick which speech-to-text model runs on your captures.",
         "model": {
           "title": "Transcription model",
@@ -332,7 +487,7 @@
         }
       },
       "refinement": {
-        "title": "Refinement",
+        "title": "Refinement · Qwen3",
         "description": "Optionally run a local LLM over transcripts to clean filler words, punctuation, and self-corrections.",
         "auto": {
           "title": "Refine transcripts automatically",
@@ -356,7 +511,7 @@
         },
         "punctuationStyle": {
           "title": "Punctuation style",
-          "description": "Casual joins related thoughts with commas and keeps run-on sentences the way you said them. Standard punctuates like written prose. Match my writing follows the habits Voicebox learned from you in Writing style below.",
+          "description": "Casual joins related thoughts with commas and keeps run-on sentences the way you said them. Standard punctuates like written prose. Match my writing follows the habits Voicebox learned from you in Writing style.",
           "casual": "Casual · commas, as spoken",
           "standard": "Standard · written prose",
           "learned": "Match my writing · learned from you",
@@ -387,82 +542,101 @@
           "description": "Where capture audio and transcripts are stored on disk.",
           "open": "Open"
         }
-      },
-      "sidebar": {
-        "aboutTitle": "About Captures",
-        "aboutBody": "Hold a shortcut anywhere on your machine, speak, and Voicebox turns your voice into text. Paste it into any app, or pipe it into your coding agent.",
-        "differencesTitle": "What's different",
-        "local": {
-          "title": "Fully local.",
-          "body": "Whisper and the refinement LLM run on your hardware. No cloud, no accounts, your voice never leaves the machine."
-        },
-        "crossPlatform": {
-          "title": "Cross-platform.",
-          "body": "Same shortcut, same flow on macOS, Windows, and Linux."
-        },
-        "windowsCaveat": {
-          "title": "Heads-up on Windows",
-          "body": "The shortcut won't fire while Voicebox itself or any app running as administrator is focused. Working on it."
-        }
       }
     },
     "logs": {
       "title": "Server Logs",
       "lineCount_one": "{{count}} line",
       "lineCount_other": "{{count}} lines",
-      "scrollToBottom": "Scroll to bottom",
+      "jumpToLatest": "Jump to latest",
+      "filterAll": "All",
+      "filterErrors": "Errors only",
+      "copyAll": "Copy all",
+      "copied": "Logs copied",
+      "copyFailed": "Could not copy the logs",
       "clear": "Clear",
       "empty": "No log output yet.",
+      "noErrors": "No errors in the log.",
       "devHint": "Server logs are only captured when the app manages the server process (production builds)."
     }
   },
   "models": {
     "title": "Models",
-    "subtitle": "Download and manage AI models for transcription and cleanup",
-    "defaultName": "Model",
-    "unknownSize": "Unknown size",
-    "sections": {
+    "empty": "No models available.",
+    "groups": {
+      "whisper": "Transcription · Whisper",
+      "qwen3": "Refinement · Qwen3"
+    },
+    "purpose": {
+      "whisper": "Turns your speech into a raw transcript.",
+      "qwen3": "Cleans up your raw transcript: fillers, punctuation, self-corrections, and your writing style."
+    },
+    "roles": {
       "transcription": "Transcription",
-      "languageModels": "Language Models"
+      "refinement": "Refinement"
+    },
+    "tags": {
+      "inUse": "In use · {{role}}"
     },
     "status": {
       "loaded": "Loaded"
     },
+    "row": {
+      "loaded": "loaded",
+      "downloaded": "downloaded",
+      "connecting": "…",
+      "get": "get",
+      "retry": "retry",
+      "downloadAria": "Download {{name}}"
+    },
     "storage": {
-      "location": "Storage location",
       "open": "Open",
-      "change": "Change",
+      "move": "Move…",
       "migrating": "Migrating…",
       "reset": "Reset",
       "pickerTitle": "Choose model storage folder"
     },
     "progress": {
-      "connecting": "Connecting…",
       "connectingHf": "Connecting to HuggingFace…"
     },
     "problems": {
       "title": "Problems",
-      "clearAll": "Clear All",
+      "count_one": "{{count}} problem",
+      "count_other": "{{count}} problems",
+      "clearAll": "Clear all",
       "noDetails": "No error details available. Try downloading again.",
       "startedAt": "started at {{time}}"
     },
     "detail": {
       "loadingInfo": "Loading model info…",
-      "byAuthor": "by {{author}}",
+      "hfLink": "{{repo}} on Hugging Face",
       "downloads": "Downloads",
       "likes": "Likes",
       "license": "License",
-      "languagesCount": "{{count}} languages supported",
-      "languagesList": "Languages: {{list}}",
-      "onDisk": "{{size}} on disk"
+      "compare": "Compared with other sizes"
+    },
+    "stats": {
+      "onDisk": "On disk",
+      "languages": "Languages",
+      "languagesCount": "{{count}} languages",
+      "task": "Task",
+      "library": "Library",
+      "author": "Author"
+    },
+    "compare": {
+      "downloading": "downloading",
+      "notDownloaded": "not downloaded"
     },
     "actions": {
       "download": "Download",
-      "retry": "Retry Download",
-      "unload": "Unload",
+      "retry": "Retry download",
+      "dismiss": "Dismiss",
+      "cancelDownload": "Cancel download",
+      "unloadFromMemory": "Unload from memory",
       "unloading": "Unloading…",
       "unloadFirst": "Unload model before deleting",
-      "deleteModel": "Delete Model"
+      "showInFinder": "Show in Finder",
+      "deleteModel": "Delete model"
     },
     "deleteDialog": {
       "title": "Delete Model",
@@ -511,13 +685,24 @@
         "description": "Rewrite 5 things said out loud the way you'd send them. About 3 minutes.",
         "lastRun_one": "Last run {{date}} · {{count}} run so far",
         "lastRun_other": "Last run {{date}} · {{count}} runs so far",
+        "habitsLabel": "Learned habits",
         "start": "Start",
         "again": "Run again"
       },
+      "learnsFrom": "What Voicebox learns from",
       "reset": {
         "title": "Reset writing style",
         "description": "Forget your calibration rewrites and the punctuation habits learned from them and from corrections. Match my writing switches back to Standard.",
-        "action": "Reset"
+        "action": "Reset…",
+        "confirmTitle": "Reset writing style?",
+        "confirm": "Reset"
+      },
+      "recent": {
+        "title": "Recent corrections",
+        "empty": "No corrections yet. Use Teach Voicebox on a capture to fix what it got wrong.",
+        "today": "today",
+        "yesterday": "yesterday",
+        "remove": "Remove correction"
       },
       "examples": {
         "title": "Your examples",
@@ -559,17 +744,24 @@
       "wordsNote": "Keep the meaning: don't add new ideas, summarize, or leave out anything that was said.",
       "start": "Start",
       "notNow": "Not now",
-      "progress": "Paragraph {{current}} of {{total}}",
-      "instructions": "Rewrite Voicebox's cleanup into what you'd send, then tap Looks like me.",
-      "paragraphLabel": "What you'd send",
-      "pickedUp": "Picked up so far",
+      "progress": "paragraph {{current}} of {{total}}",
+      "instructions": "Edit the paragraph until it reads like something you'd send. If it already does, say so.",
+      "voiceboxWrote": "How Voicebox wrote it",
+      "paragraphLabel": "How you'd write it",
+      "pickedUp": "Picked up so far:",
+      "wordDelta_one": "{{sign}}{{count}} word",
+      "wordDelta_other": "{{sign}}{{count}} words",
       "looksLikeMe": "Looks like me",
+      "saveNext": "Save & next",
+      "saveFinish": "Save & finish",
       "failed": "Could not continue calibration",
       "said": "What was said",
       "cleaning": "Cleaning up the next one…"
     },
     "summary": {
       "title": "Here's what Voicebox learned",
+      "progress": "{{total}} of {{total}} paragraphs · {{edited}} edited",
+      "runItAgain": "Run it again",
       "settled": "Your last paragraphs needed little or no editing, so Voicebox has your style.",
       "runAgain": "Your last paragraphs still needed edits. Running it again will sharpen it.",
       "examplesSaved": "Your rewrites are saved as examples, and Voicebox uses them on your next dictations.",
@@ -598,6 +790,15 @@
       "drop_intro_comma": "You skip the comma after opening words like \"yeah\" or \"so\"",
       "drop_conjunction_comma": "You skip the comma before \"and\" or \"but\"",
       "drop_final_period": "You leave off the final period"
+    },
+    "habitChips": {
+      "boundary_period": "New sentence per thought",
+      "boundary_comma": "Commas join thoughts",
+      "boundary_none": "Thoughts run together",
+      "lowercase_start": "Lowercase starts",
+      "drop_intro_comma": "No comma after “so”",
+      "drop_conjunction_comma": "No comma before “and”",
+      "drop_final_period": "No final period"
     }
   }
 }

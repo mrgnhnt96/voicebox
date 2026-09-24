@@ -1,4 +1,3 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Accessibility,
   CheckCircle2,
@@ -9,13 +8,10 @@ import {
   Keyboard,
   Loader2,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { progressPercent, useModelDownloads } from '@/components/Setup/useModelDownloads';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/components/ui/use-toast';
-import { apiClient } from '@/lib/api/client';
-import type { ActiveDownloadTask } from '@/lib/api/types';
-import type { DictationReadiness, ReadinessGate } from '@/lib/hooks/useDictationReadiness';
+import type { DictationReadiness } from '@/lib/hooks/useDictationReadiness';
 import { cn } from '@/lib/utils/cn';
 
 interface RowProps {
@@ -53,14 +49,6 @@ function ChecklistRow({ icon, title, description, ready, action }: RowProps) {
   );
 }
 
-function progressPercent(task: ActiveDownloadTask | undefined): number | null {
-  if (!task) return null;
-  if (typeof task.progress === 'number')
-    return Math.round(Math.max(0, Math.min(100, task.progress)));
-  if (task.current && task.total) return Math.round((task.current / task.total) * 100);
-  return null;
-}
-
 /**
  * Renders one row per dictation-readiness gate. Each unmet gate gets an
  * inline action — Download for missing models, Open Settings for missing
@@ -88,73 +76,7 @@ export function DictationReadinessChecklist({
   compact?: boolean;
 }) {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  const { data: activeTasks } = useQuery({
-    queryKey: ['activeTasks'],
-    queryFn: () => apiClient.getActiveTasks(),
-    // Mirror ModelManagement's cadence: 1s while a download is in flight,
-    // 5s otherwise. Keeps progress feeling live without hammering when idle.
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      const hasActive = data?.downloads.some((d) => d.status === 'downloading');
-      return hasActive ? 1000 : 5000;
-    },
-  });
-
-  // Memo so the Map identity is stable across renders that don't change
-  // activeTasks — otherwise the cleanup effect below saw a fresh Map every
-  // render and re-fired on every 1 s poll tick.
-  const downloadByModel = useMemo(() => {
-    const m = new Map<string, ActiveDownloadTask>();
-    for (const dl of activeTasks?.downloads ?? []) {
-      if (dl.status === 'downloading') m.set(dl.model_name, dl);
-    }
-    return m;
-  }, [activeTasks]);
-
-  // When a download disappears from activeTasks, it just finished — refetch
-  // readiness immediately so the row flips to ✓ instead of waiting up to 5s
-  // for the next readiness poll.
-  const prevActive = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    const current = new Set(downloadByModel.keys());
-    for (const name of prevActive.current) {
-      if (!current.has(name)) {
-        queryClient.invalidateQueries({ queryKey: ['capture-readiness'] });
-        queryClient.invalidateQueries({ queryKey: ['modelStatus'] });
-        break;
-      }
-    }
-    prevActive.current = current;
-  }, [downloadByModel, queryClient]);
-
-  const downloadMutation = useMutation({
-    mutationFn: async ({ modelName }: { gate: ReadinessGate; modelName: string }) =>
-      apiClient.triggerModelDownload(modelName),
-    onSuccess: (_data, vars) => {
-      // Bump activeTasks so the row immediately shows "Downloading…" without
-      // waiting for the next 5s poll. modelStatus + readiness invalidations
-      // keep adjacent UI in sync.
-      queryClient.invalidateQueries({ queryKey: ['activeTasks'] });
-      queryClient.invalidateQueries({ queryKey: ['modelStatus'] });
-      queryClient.invalidateQueries({ queryKey: ['capture-readiness'] });
-      const displayName =
-        vars.gate === 'stt' ? readiness.stt?.display_name : readiness.llm?.display_name;
-      toast({
-        title: t('captures.readiness.downloadStarted'),
-        description: t('captures.readiness.downloadStartedDescription', { name: displayName }),
-      });
-    },
-    onError: (err: Error) => {
-      toast({
-        title: t('captures.readiness.downloadFailed'),
-        description: err.message,
-        variant: 'destructive',
-      });
-    },
-  });
+  const { downloadByModel, download, isStarting } = useModelDownloads(readiness);
 
   const sttSize =
     readiness.stt?.size_mb != null ? `${(readiness.stt.size_mb / 1000).toFixed(1)} GB` : null;
@@ -172,8 +94,8 @@ export function DictationReadinessChecklist({
     return (
       <Button
         size="sm"
-        onClick={() => downloadMutation.mutate({ gate, modelName })}
-        disabled={downloading || downloadMutation.isPending}
+        onClick={() => download(gate, modelName)}
+        disabled={downloading || isStarting}
         className="gap-1.5"
       >
         {downloading ? (

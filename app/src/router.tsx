@@ -7,35 +7,39 @@ import {
 } from '@tanstack/react-router';
 import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { CapturesTab } from '@/components/CapturesTab/CapturesTab';
+import { CommandPalette } from '@/components/CommandPalette/CommandPalette';
 import { ModelsTab } from '@/components/ModelsTab/ModelsTab';
-import { CapturesPage } from '@/components/ServerTab/CapturesPage';
 import { GeneralPage } from '@/components/ServerTab/GeneralPage';
 import { LogsPage } from '@/components/ServerTab/LogsPage';
 import { SettingsLayout } from '@/components/ServerTab/ServerTab';
+import { DictationSettingsPage } from '@/components/Settings/DictationSettingsPage';
+import { TranscriptionSettingsPage } from '@/components/Settings/TranscriptionSettingsPage';
+import { WritingStylePage } from '@/components/Settings/WritingStylePage';
+import { SetupFlow } from '@/components/Setup/SetupFlow';
+import { useFirstRunRedirect } from '@/components/Setup/useFirstRunRedirect';
 import { Sidebar } from '@/components/Sidebar';
+import { StatusBar } from '@/components/StatusBar';
 import { Toaster } from '@/components/ui/toaster';
 import { useModelDownloadToast } from '@/lib/hooks/useModelDownloadToast';
 import { MODEL_DISPLAY_NAMES, useRestoreActiveTasks } from '@/lib/hooks/useRestoreActiveTasks';
-
-// Simple platform check that works in both web and Tauri
-const isMacOS = () => navigator.platform.toLowerCase().includes('mac');
 
 // Root layout component
 function RootLayout() {
   // Monitor active model downloads and show toasts for them
   const activeDownloads = useRestoreActiveTasks();
+  // Send a brand-new user to /setup, once per launch.
+  useFirstRunRedirect();
 
   return (
     <AppFrame>
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        <Sidebar isMacOS={isMacOS()} />
-
-        <main className="flex-1 ml-20 overflow-hidden flex flex-col">
-          <div className="container mx-auto px-8 max-w-[1800px] h-full overflow-hidden flex flex-col">
-            <Outlet />
-          </div>
+      <div className="flex flex-1 min-h-0 overflow-hidden border-t border-border">
+        <Sidebar />
+        <main className="flex-1 min-w-0 overflow-hidden flex flex-col">
+          <Outlet />
         </main>
       </div>
+      <StatusBar />
+      <CommandPalette />
 
       {/* Show download toasts for any active downloads (from anywhere) */}
       {activeDownloads.map((download) => {
@@ -93,6 +97,10 @@ const capturesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/captures',
   component: CapturesTab,
+  // `?capture=<id>` opens that capture (the command palette links here).
+  validateSearch: (search: Record<string, unknown>): { capture?: string } => ({
+    capture: typeof search.capture === 'string' ? search.capture : undefined,
+  }),
 });
 
 // Models route
@@ -116,16 +124,44 @@ const settingsGeneralRoute = createRoute({
   component: GeneralPage,
 });
 
-const settingsCapturesRoute = createRoute({
+const settingsDictationRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: '/dictation',
+  component: DictationSettingsPage,
+});
+
+const settingsTranscriptionRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: '/transcription',
+  component: TranscriptionSettingsPage,
+});
+
+const settingsWritingStyleRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: '/writing-style',
+  component: WritingStylePage,
+});
+
+// Dictation, transcription and writing style used to share one page.
+const settingsCapturesRedirectRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: '/captures',
-  component: CapturesPage,
+  beforeLoad: () => {
+    throw redirect({ to: '/settings/dictation' });
+  },
 });
 
 const settingsLogsRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: '/logs',
   component: LogsPage,
+});
+
+// First-run setup: models, permissions, shortcut, try it.
+const setupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/setup',
+  component: SetupFlow,
 });
 
 // Redirect old /server path to /settings
@@ -144,9 +180,13 @@ const routeTree = rootRoute.addChildren([
   modelsRoute,
   settingsRoute.addChildren([
     settingsGeneralRoute,
-    settingsCapturesRoute,
+    settingsDictationRoute,
+    settingsTranscriptionRoute,
+    settingsWritingStyleRoute,
+    settingsCapturesRedirectRoute,
     settingsLogsRoute,
   ]),
+  setupRoute,
   serverRedirectRoute,
 ]);
 
