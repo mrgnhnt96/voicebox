@@ -334,12 +334,46 @@ class PyTorchSTTBackend:
         Returns:
             Transcribed text
         """
+        return await self._transcribe(
+            lambda: load_audio(audio_path, sample_rate=16000)[0], language, model_size, previous_text
+        )
+
+    async def transcribe_array(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        language: Optional[str] = None,
+        model_size: Optional[str] = None,
+        previous_text: Optional[str] = None,
+    ) -> str:
+        """
+        Transcribe in-memory audio to text, without a temporary file.
+
+        Args:
+            samples: Mono int16 PCM, or float audio scaled to [-1, 1]
+            sample_rate: Sample rate of ``samples`` in Hz (resampled to 16 kHz)
+            language: Optional language hint
+            model_size: Optional model size override
+            previous_text: Earlier dictation text when transcribing one phrase
+
+        Returns:
+            Transcribed text
+        """
+        from .whisper_audio import to_16k_mono_float32
+
+        samples = np.asarray(samples)
+        if samples.size == 0:
+            raise ValueError("No audio samples to transcribe")
+        return await self._transcribe(
+            lambda: to_16k_mono_float32(samples, sample_rate), language, model_size, previous_text
+        )
+
+    async def _transcribe(self, get_audio, language, model_size, previous_text) -> str:
         await self.load_model_async(model_size)
 
         def _transcribe_sync():
             """Run synchronous transcription in thread pool."""
-            # Load audio
-            audio, _sr = load_audio(audio_path, sample_rate=16000)
+            audio = get_audio()
 
             # Inference runs with the process's default HF_HUB_OFFLINE
             # state — forcing offline here (issue #462) broke online users
