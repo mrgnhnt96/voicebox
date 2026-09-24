@@ -1,9 +1,9 @@
 """The user's own "when I say this, I mean this" examples.
 
 Two sources feed it: corrections to refined output (Teach Voicebox) and
-calibration rewrites the user edited. Cleanup shows the model the few
-examples closest to what was just said, so a correction counts on the very
-next dictation instead of waiting for the personal model to train.
+calibration rewrites the user edited. Cleanup shows the model the same
+recent examples on every dictation, so a correction counts on the very next
+dictation, and the model's prompt cache keeps the wait short.
 
 Corrections are immutable training records, so removing one from the user's
 examples hides it here without deleting the record.
@@ -11,32 +11,19 @@ examples hides it here without deleting the record.
 
 import json
 import logging
-import re
 import threading
 
 from . import writing_style
 
 logger = logging.getLogger(__name__)
 
-EXAMPLES_PER_REFINEMENT = 3
 MAX_EXAMPLE_CHARS = 800
+# Enough to show how the user writes without bloating the prompt.
+MAX_PROMPT_EXAMPLES = 16
+MAX_PROMPT_CHARS = 6000
 
 _lock = threading.RLock()
 _cache = None
-
-_FUNCTION_WORDS = frozenset(
-    re.findall(
-        r"\S+",
-        "a an the and or but so to of in on at for with from by as is are was were be been am it its i you we they he "
-        "she my your our their this that these those there here what when where how why which who do does did have has "
-        "had will would can could should just like um uh",
-    )
-)
-
-
-def _words(text: str) -> set[str]:
-    return {word for word in re.findall(r"[\w']+", text.casefold()) if word not in _FUNCTION_WORDS}
-
 
 def invalidate() -> None:
     global _cache
@@ -104,27 +91,22 @@ def all_examples() -> list[dict]:
         return list(_cache)
 
 
-def closest(
-    transcript: str, count: int = EXAMPLES_PER_REFINEMENT, extra: list[tuple[str, str]] | None = None
-) -> list[tuple[str, str]]:
-    """The examples sharing the most words with ``transcript``, most similar last.
+def for_prompt(extra: list[tuple[str, str]] | None = None) -> list[tuple[str, str]]:
+    """The examples every cleanup shows the model, oldest first.
 
-    Examples still help when nothing overlaps (they show how the user writes),
-    so the newest fill any remaining slots. ``extra`` examples, such as a
-    calibration run's rewrites before they are saved, count as the newest.
+    Every dictation gets the same list, so the cleanup model's cached prompt
+    covers it and only the new transcript is read. A new example goes at the
+    end, keeping everything before it cached. Only the most recent examples
+    that fit the budget are used. ``extra`` examples, such as a calibration
+    run's rewrites before they are saved, come last.
     """
-    examples = [{"said": said, "meant": meant} for said, meant in reversed(extra or [])] + all_examples()
-    if not examples:
-        return []
-    words = _words(transcript)
-
-    def overlap(example: dict) -> float:
-        theirs = _words(example["said"])
-        return len(words & theirs) / len(words | theirs) if words and theirs else 0.0
-
-    # sorted() is stable, so equal overlap keeps newest first.
-    ranked = sorted(examples, key=overlap, reverse=True)[:count]
-    return [(e["said"], e["meant"]) for e in reversed(ranked)]
+    chosen, size = [], 0
+    for example in all_examples()[:MAX_PROMPT_EXAMPLES]:
+        size += len(example["said"]) + len(example["meant"])
+        if size > MAX_PROMPT_CHARS:
+            break
+        chosen.append((example["said"], example["meant"]))
+    return [*reversed(chosen), *(extra or [])]
 
 
 def hide(example_id: str) -> bool:

@@ -57,13 +57,39 @@ def test_refined_corrections_become_examples(storage):
     ]
 
 
-def test_closest_examples_come_last_and_fill_with_newest(storage):
+def test_every_dictation_gets_the_same_examples_oldest_first(storage):
     _correct(storage, "lunch plans for thursday with the team", "Lunch with the team on Thursday.", "a")
     _correct(storage, "push the release to friday the release", "Push the release to Friday.", "b")
+    first = personal_examples.for_prompt()
+    # A different dictation sees exactly the same examples, so the cleanup
+    # model's cached prompt still matches.
+    assert personal_examples.for_prompt() == first
+    assert [said for said, _ in first] == [
+        "lunch plans for thursday with the team",
+        "push the release to friday the release",
+    ]
+
+
+def test_a_new_correction_is_added_after_the_existing_ones(storage):
+    _correct(storage, "lunch plans for thursday with the team", "Lunch with the team on Thursday.", "a")
+    before = personal_examples.for_prompt()
     _correct(storage, "the dog needs a walk", "The dog needs a walk.", "c")
-    closest = personal_examples.closest("can we push the release to next week", count=2)
-    assert closest[-1][0] == "push the release to friday the release"
-    assert len(closest) == 2
+    after = personal_examples.for_prompt()
+    assert after[: len(before)] == before
+    assert after[-1] == ("the dog needs a walk", "The dog needs a walk.")
+
+
+def test_only_the_most_recent_examples_fit(storage, monkeypatch):
+    monkeypatch.setattr(personal_examples, "MAX_PROMPT_EXAMPLES", 2)
+    for index in range(3):
+        _correct(storage, f"example {index} said", f"Example {index} meant.", f"id{index}")
+    assert [said for said, _ in personal_examples.for_prompt()] == ["example 1 said", "example 2 said"]
+
+
+def test_unsaved_calibration_examples_come_last(storage):
+    _correct(storage, "lunch plans for thursday with the team", "Lunch with the team on Thursday.", "a")
+    examples = personal_examples.for_prompt(extra=[("draft said", "Draft meant.")])
+    assert examples[-1] == ("draft said", "Draft meant.")
 
 
 def test_hidden_examples_are_left_out(storage):

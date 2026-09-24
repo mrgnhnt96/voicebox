@@ -50,7 +50,7 @@ def test_whisper_final_period_is_not_shown_to_the_cleanup(monkeypatch):
             seen.update(arguments)
             return "Done"
 
-    monkeypatch.setattr(personal_examples, "closest", lambda *_, **__: [("Yes.", "Yes")])
+    monkeypatch.setattr(personal_examples, "for_prompt", lambda *_, **__: [("Yes.", "Yes")])
     asyncio.run(refinement.refine_transcript("Go home. Do chores.", RefinementFlags(), backend_override=Backend()))
     assert seen["prompt"] == "Go home. Do chores"
     assert ("Yes", "Yes") in seen["examples"]

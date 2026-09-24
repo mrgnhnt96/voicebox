@@ -406,9 +406,9 @@ async def refine_transcript(
     options = {"adapter_path": adapter_path} if adapter_path else {}
     personal = []
     if use_personal_examples:
-        from .personal_examples import closest
+        from .personal_examples import for_prompt
 
-        personal = closest(cleaned_input, extra=extra_examples)
+        personal = for_prompt(extra=extra_examples)
     # Whisper ends every transcript with a period. Hide it, in the user's
     # examples too, so the ending follows how they write ("3. Do chores").
     personal = [(_without_final_period(said), meant) for said, meant in personal]
