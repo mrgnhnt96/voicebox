@@ -8,7 +8,7 @@ absolute imports instead of relative imports.
 import sys
 import os
 
-# The app can close while this server stays alive. Protect output for the
+# The app can close before this server notices and exits. Protect output for the
 # entire process lifetime, not only while the initial pipe is still connected.
 from backend.utils.safe_output import protect_standard_streams
 
@@ -76,22 +76,6 @@ except Exception as e:
     logger.error(f"Failed to import required modules: {e}", exc_info=True)
     sys.exit(1)
 
-_watchdog_disabled = False
-
-
-def disable_watchdog():
-    """Disable the parent watchdog so the server keeps running after parent exits."""
-    global _watchdog_disabled
-    _watchdog_disabled = True
-    # Ignore SIGHUP so the server survives when the parent Tauri process exits.
-    # On Unix, child processes receive SIGHUP when the parent's session leader
-    # exits, which would kill the server even though we want it to persist.
-    if sys.platform != "win32":
-        import signal
-
-        signal.signal(signal.SIGHUP, signal.SIG_IGN)
-
-
 def _log_to_file(data_dir):
     """Keep server logs on disk; the desktop app discards the sidecar's stderr."""
     from logging.handlers import RotatingFileHandler
@@ -111,14 +95,8 @@ def _log_to_file(data_dir):
 def _start_parent_watchdog(parent_pid, data_dir=None):
     """Monitor parent process and exit if it dies.
 
-    This is the clean shutdown mechanism: instead of the Tauri app trying to
-    forcefully kill the server (which spawns console windows on Windows),
-    the server monitors its parent and shuts itself down gracefully.
-
-    The Tauri app writes a .keep-running sentinel file to data_dir before
-    exiting when "remain running after close" is enabled. This is a reliable
-    fallback for the HTTP /watchdog/disable request, which can race with
-    process exit on Windows.
+    This is the clean shutdown mechanism: the server monitors its parent and
+    shuts itself down gracefully when the app is gone.
     """
     import os
     import signal
@@ -139,35 +117,10 @@ def _start_parent_watchdog(parent_pid, data_dir=None):
     watchdog_logger.setLevel(logging.INFO)
 
     def _is_pid_alive(pid):
-        """Check if a process with the given PID exists (cross-platform)."""
+        """Check if a process with the given PID exists."""
         try:
-            if sys.platform == "win32":
-                import ctypes
-
-                kernel32 = ctypes.windll.kernel32
-                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-                handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-                if handle:
-                    # Check if process has actually exited
-                    STILL_ACTIVE = 259
-                    exit_code = ctypes.c_ulong()
-                    result = kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
-                    kernel32.CloseHandle(handle)
-                    if result and exit_code.value == STILL_ACTIVE:
-                        return True
-                    watchdog_logger.info(f"PID {pid}: exited with code {exit_code.value}")
-                    return False
-                # OpenProcess failed — check if it's an access error (process exists
-                # but we can't open it) vs process not found
-                error = ctypes.GetLastError()
-                ACCESS_DENIED = 5
-                if error == ACCESS_DENIED:
-                    return True  # process exists, we just can't open it
-                watchdog_logger.info(f"PID {pid}: OpenProcess failed, error={error}")
-                return False
-            else:
-                os.kill(pid, 0)
-                return True
+            os.kill(pid, 0)
+            return True
         except (OSError, PermissionError):
             return False
 
@@ -179,53 +132,10 @@ def _start_parent_watchdog(parent_pid, data_dir=None):
         if not alive:
             watchdog_logger.warning(f"Parent PID {parent_pid} not found on first check — disabling watchdog")
             return
-        # Clear any stale .keep-running sentinel from a previous session. The
-        # sentinel is only removed by the watchdog when it's consumed during a
-        # grace period; if the HTTP /watchdog/disable path wins the race on a
-        # "keep running" exit, the sentinel is left on disk. Wipe it here so a
-        # future session can't inherit that stale signal.
-        if data_dir:
-            stale = os.path.join(data_dir, ".keep-running")
-            if os.path.exists(stale):
-                try:
-                    os.remove(stale)
-                    watchdog_logger.info("Removed stale .keep-running sentinel from previous session")
-                except OSError as e:
-                    watchdog_logger.warning(f"Failed to remove stale sentinel: {e}")
         while True:
-            if _watchdog_disabled:
-                watchdog_logger.info("Watchdog disabled (keep server running), stopping monitor")
-                return
             if not _is_pid_alive(parent_pid):
-                # Parent is gone. Before shutting down, give the app a moment
-                # to send /watchdog/disable — there is a race where the Tauri
-                # RunEvent::Exit handler sends the disable request while we are
-                # mid-iteration (already past the _watchdog_disabled check above).
-                watchdog_logger.info(f"Parent process {parent_pid} gone, waiting for possible disable request...")
-                time.sleep(1)
-                if _watchdog_disabled:
-                    watchdog_logger.info("Watchdog was disabled during grace period, keeping server alive")
-                    return
-                # Check for sentinel file written by Tauri before exit.
-                # This catches the case where the HTTP disable request
-                # didn't arrive before the parent process died (common
-                # on Windows where process teardown is fast).
-                sentinel = os.path.join(data_dir, ".keep-running") if data_dir else None
-                if sentinel and os.path.exists(sentinel):
-                    watchdog_logger.info("Found .keep-running sentinel file, keeping server alive")
-                    try:
-                        os.remove(sentinel)
-                    except OSError:
-                        pass
-                    return
-                watchdog_logger.info("Watchdog still enabled after grace period, shutting down server...")
-                if sys.platform == "win32":
-                    # sys.exit triggers SystemExit, allowing uvicorn to run
-                    # shutdown handlers. os.kill(SIGTERM) on Windows calls
-                    # TerminateProcess which hard-kills without cleanup.
-                    os._exit(0)
-                else:
-                    os.kill(os.getpid(), signal.SIGTERM)
+                watchdog_logger.info(f"Parent process {parent_pid} gone, shutting down server...")
+                os.kill(os.getpid(), signal.SIGTERM)
                 return
             time.sleep(2)
 

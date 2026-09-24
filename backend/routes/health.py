@@ -34,15 +34,6 @@ async def shutdown():
     return {"message": "Shutting down..."}
 
 
-@router.post("/watchdog/disable")
-async def watchdog_disable():
-    """Disable the parent process watchdog so the server keeps running."""
-    from backend.server import disable_watchdog
-
-    disable_watchdog()
-    return {"message": "Watchdog disabled"}
-
-
 @router.get("/health", response_model=models.HealthResponse)
 async def health(db: Session = Depends(get_db)):
     """Health check endpoint.
