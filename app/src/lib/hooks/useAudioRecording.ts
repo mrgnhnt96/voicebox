@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { usePlatform } from '@/platform/PlatformContext';
-import { useCaptureSettings } from '@/lib/hooks/useSettings';
-import { openAudioInput } from '@/lib/utils/audioInput';
-import { convertToWav } from '@/lib/utils/audio';
 import type { RecordingStream } from '@/lib/audio/streamingAudio';
+import { useCaptureSettings } from '@/lib/hooks/useSettings';
+import { convertToWav } from '@/lib/utils/audio';
+import { openAudioInput } from '@/lib/utils/audioInput';
+import { usePlatform } from '@/platform/PlatformContext';
 
 interface UseAudioRecordingOptions {
   onRecordingStream?: (stream: MediaStream, context?: unknown) => Promise<RecordingStream>;
@@ -16,11 +16,14 @@ interface UseAudioRecordingOptions {
   onRecordingComplete?: (blob: Blob, duration?: number, context?: unknown) => void;
 }
 
-// Audio constraints for capture.
+// Audio constraints for capture. Echo cancellation switches macOS to its
+// voice-processing input, which delivers ~0.6s of silence after the mic
+// opens and swallows the first words. Nothing plays back during capture, so
+// there is no echo to cancel; Whisper handles the raw signal.
 const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
-  echoCancellation: true,
-  noiseSuppression: true,
-  autoGainControl: true,
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: false,
 };
 
 export function useAudioRecording({
@@ -270,13 +273,7 @@ export function useAudioRecording({
         setRecording(false);
       }
     },
-    [
-      maxDurationSeconds,
-      onRecordingComplete,
-      onRecordingStream,
-      acquireStream,
-      setRecording,
-    ],
+    [maxDurationSeconds, onRecordingComplete, onRecordingStream, acquireStream, setRecording],
   );
 
   const stopRecording = useCallback(() => {
