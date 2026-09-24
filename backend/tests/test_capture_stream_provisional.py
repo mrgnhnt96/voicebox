@@ -139,6 +139,10 @@ async def test_phrases_cleaned_while_speaking_are_offered_at_release(tmp_path, m
 
     async def recognize(pcm):
         heard.append(len(events))
+        if len(heard) == 2:
+            # Offering the earlier text must not hold up recognizing the rest.
+            assert not provisional(events)
+            await asyncio.sleep(0.01)
         return ["the first part", "and the rest"][len(heard) - 1]
 
     session.recognize = recognize
@@ -155,9 +159,10 @@ async def test_phrases_cleaned_while_speaking_are_offered_at_release(tmp_path, m
     assert session.refined == "The first part and the rest."
     shown = provisional(events)
     assert shown[0] == "The first part"
-    # Offered before the last phrase was even recognized.
+    # Offered while the last phrase was being recognized.
     first = next(i for i, e in enumerate(events) if e["type"] == "provisional")
-    assert first < heard[1]
+    last_transcript = max(i for i, e in enumerate(events) if e["type"] == "transcript")
+    assert first < last_transcript
     assert all(session.refined.startswith(text) for text in shown)
     session.close()
 

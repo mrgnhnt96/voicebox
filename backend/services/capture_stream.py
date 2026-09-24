@@ -278,6 +278,9 @@ class StreamingCapture:
             self.shown = stable
             await self.emit("provisional", text=stable)
 
+    async def show_cleaned_so_far(self) -> None:
+        await self.show(self.close_dictation(self.refined), 0)
+
     def _projection(self, prompt: str):
         """What finish would deliver if the cleanup of ``prompt`` ended now and passed the check.
 
@@ -430,15 +433,18 @@ class StreamingCapture:
                 await self.reconcile_full_audio()
                 return
             size = self.rate * 20 if forced else cut
+            offer = None
             if size is None and self.finished:
                 size = available
                 if size:
-                    # Released: what was cleaned while speaking can be shown
-                    # now, while the last phrase is recognized.
-                    await self.show(self.close_dictation(self.refined), 0)
+                    # Released: what was cleaned while speaking is offered
+                    # while the last phrase is recognized, not before it.
+                    offer = asyncio.create_task(self.show_cleaned_so_far())
             if size:
                 pcm = bytes(self.pending[: size * 2])
                 text = await self.recognize(pcm)
+                if offer is not None:
+                    await offer
                 if self.abort:
                     return
                 # Keep one second of context only for forced (unpaused) cuts.
