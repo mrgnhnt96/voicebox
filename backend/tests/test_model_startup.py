@@ -18,10 +18,16 @@ def startup(monkeypatch):
         self_correction=True,
         preserve_technical=True,
         punctuation_style="standard",
+        language="en",
     )
     monkeypatch.setattr(model_startup.session, "SessionLocal", MagicMock())
     monkeypatch.setattr(model_startup.settings, "get_capture_settings", lambda db: saved)
-    stt = SimpleNamespace(_is_model_cached=MagicMock(return_value=True), load_model=AsyncMock())
+    stt = SimpleNamespace(
+        _is_model_cached=MagicMock(return_value=True),
+        load_model=AsyncMock(),
+        is_loaded=MagicMock(return_value=True),
+        transcribe_array=AsyncMock(return_value=""),
+    )
     llm = SimpleNamespace(
         _is_model_cached=MagicMock(return_value=True),
         load_model=AsyncMock(),
@@ -95,22 +101,36 @@ async def test_unloaded_refinement_model_is_not_warmed(startup):
 
 
 @pytest.mark.asyncio
-async def test_warms_refinement_prompt_after_loading(startup):
+async def test_runs_whisper_once_so_the_first_dictation_is_warm(startup):
+    _, stt, _ = startup
     await model_startup.load_startup_models()
+    stt.transcribe_array.assert_awaited_once()
+    samples, rate = stt.transcribe_array.await_args.args[:2]
+    # One second at a Mac microphone's rate, so resampling is warmed too.
+    assert rate == 48000 and len(samples) == 48000
+    assert stt.transcribe_array.await_args.kwargs == {"language": "en", "model_size": "small"}
+
+
+@pytest.mark.asyncio
+async def test_auto_language_warms_with_detection(startup):
+    saved, stt, _ = startup
+    saved.language = "auto"
+    await model_startup.load_startup_models()
+    assert stt.transcribe_array.await_args.kwargs["language"] is None
+
+
+@pytest.mark.asyncio
+async def test_whisper_warm_up_failure_does_not_block_startup(startup, caplog):
+    _, stt, _ = startup
+    stt.transcribe_array.side_effect = RuntimeError("no GPU")
+    await model_startup.load_startup_models()
+    assert "Could not warm Whisper" in caplog.text
     model_startup.refinement.refine_transcript.assert_awaited_once()
-    assert model_startup.refinement.refine_transcript.await_args.kwargs == {"model_size": "1.7B"}
 
 
 @pytest.mark.asyncio
-async def test_warm_up_failure_does_not_block_startup(startup, caplog):
-    model_startup.refinement.refine_transcript.side_effect = RuntimeError("generate failed")
+async def test_unloaded_whisper_is_not_warmed(startup):
+    _, stt, _ = startup
+    stt.is_loaded.return_value = False
     await model_startup.load_startup_models()
-    assert "Could not warm the refinement prompt" in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_unloaded_refinement_model_is_not_warmed(startup):
-    _, _, llm = startup
-    llm.is_loaded.return_value = False
-    await model_startup.load_startup_models()
-    model_startup.refinement.refine_transcript.assert_not_awaited()
+    stt.transcribe_array.assert_not_awaited()

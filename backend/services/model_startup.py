@@ -3,10 +3,13 @@
 import logging
 import time
 
+import numpy as np
+
 from ..database import session
 from . import llm, refinement, settings, transcribe
 
 logger = logging.getLogger(__name__)
+WARM_RATE = 48000
 
 
 async def load_startup_models() -> None:
@@ -16,6 +19,7 @@ async def load_startup_models() -> None:
         stt_size = saved.stt_model
         llm_size = saved.llm_model
         auto_refine = saved.auto_refine
+        language = None if saved.language in (None, "auto") else saved.language
         flags = refinement.RefinementFlags(
             saved.smart_cleanup, saved.self_correction, saved.preserve_technical, saved.punctuation_style
         )
@@ -38,8 +42,28 @@ async def load_startup_models() -> None:
             # Keep setup and diagnostics available if an installed model fails.
             logger.exception("Could not load startup %s model %s", name, size)
 
+    await warm_whisper(stt_size, language)
     if auto_refine:
         await warm_refinement(flags, llm_size)
+
+
+async def warm_whisper(stt_size: str, language: str | None) -> None:
+    """Transcribe one second of faint noise so the first dictation is warm.
+
+    Loading Whisper doesn't run it; the first real transcription otherwise
+    pays ~0.3 s of one-time GPU setup after the user lets go of the keys.
+    """
+    backend = transcribe.get_whisper_model()
+    if not backend.is_loaded():
+        return
+    try:
+        started = time.monotonic()
+        # 48 kHz like a Mac microphone, so the resampling path is warm too.
+        noise = np.random.default_rng(0).integers(-30, 30, WARM_RATE, dtype=np.int16)
+        await backend.transcribe_array(noise, WARM_RATE, language=language, model_size=stt_size)
+        logger.info("Whisper warmed in %.3fs", time.monotonic() - started)
+    except Exception:
+        logger.exception("Could not warm Whisper")
 
 
 async def warm_refinement(flags, llm_size: str) -> None:
