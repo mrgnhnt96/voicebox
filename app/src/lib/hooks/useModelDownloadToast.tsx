@@ -94,7 +94,7 @@ export function useModelDownloadToast({
 
           switch (progress.status) {
             case 'complete':
-              statusIcon = <CheckCircle2 className="h-4 w-4 text-green-500" />;
+              statusIcon = <CheckCircle2 className="h-4 w-4 text-success" />;
               statusText = 'Download complete';
               break;
             case 'error':
@@ -152,7 +152,7 @@ export function useModelDownloadToast({
               toastUpdateRef.current({
                 title: (
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <CheckCircle2 className="h-4 w-4 text-success" />
                     <span>{displayName}</span>
                   </div>
                 ),
