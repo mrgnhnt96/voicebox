@@ -55,7 +55,9 @@ async def warm_whisper(stt_size: str, language: str | None) -> None:
     """Run Whisper once during startup so the first dictation is warm.
 
     Loading Whisper doesn't run it; the first real transcription otherwise
-    pays ~0.3 s of one-time setup after the user lets go of the keys. Faint
+    pays one-time setup after the user lets go of the keys: ~0.3 s for the
+    first run, and ~0.25 s more to find the ellipsis tokens that dictation
+    phrases suppress (see ``ellipsis_token_ids``). Faint
     noise barely decodes anything, so the user's most recent recording is
     used when there is one; its text is discarded.
     """
@@ -65,7 +67,10 @@ async def warm_whisper(stt_size: str, language: str | None) -> None:
     try:
         started = time.monotonic()
         samples, rate = _warm_audio()
-        await backend.transcribe_array(samples, rate, language=language, model_size=stt_size)
+        # Called the way streaming recognizes a dictation's first phrase
+        # (previous_text=""), which builds the phrase options, such as the
+        # suppressed ellipsis tokens, once per process.
+        await backend.transcribe_array(samples, rate, language=language, model_size=stt_size, previous_text="")
         logger.info("Whisper warmed in %.3fs", time.monotonic() - started)
     except Exception:
         logger.exception("Could not warm Whisper")

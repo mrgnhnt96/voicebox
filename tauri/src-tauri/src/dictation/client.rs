@@ -49,6 +49,7 @@ pub struct StreamClient {
     finish_requested: bool,
     finish_sent: bool,
     outcome: Option<Outcome>,
+    on_provisional: Option<Box<dyn Fn(String) + Send>>,
 }
 
 impl StreamClient {
@@ -68,7 +69,14 @@ impl StreamClient {
             finish_requested: false,
             finish_sent: false,
             outcome: None,
+            on_provisional: None,
         }
+    }
+
+    /// Receive provisional cleaned text for this take, after `finish`.
+    pub fn with_provisional(mut self, on_provisional: impl Fn(String) + Send + 'static) -> Self {
+        self.on_provisional = Some(Box::new(on_provisional));
+        self
     }
 
     pub fn is_ready(&self) -> bool {
@@ -106,7 +114,10 @@ impl StreamClient {
         ) {
             (true, true, false, Some(rate)) => {
                 self.start_sent = true;
-                vec![Action::Text(protocol::start_message(rate))]
+                vec![Action::Text(protocol::start_message(
+                    rate,
+                    self.on_provisional.is_some(),
+                ))]
             }
             _ => Vec::new(),
         }
@@ -172,6 +183,13 @@ impl StreamClient {
                     if self.finish_sent && protocol::is_valid_final(&event, id) {
                         self.outcome = Some(Outcome::Final(event));
                     }
+                }
+                Vec::new()
+            }
+            ServerEvent::Provisional { session_id, text } => {
+                let ours = session_id.is_none() || session_id == self.session_id;
+                if let (true, true, Some(sink)) = (self.finish_sent, ours, &self.on_provisional) {
+                    sink(text);
                 }
                 Vec::new()
             }
@@ -359,6 +377,35 @@ mod tests {
             Some(Outcome::Final(v)) => assert_eq!(v["capture"]["id"], "s1"),
             other => panic!("unexpected {other:?}"),
         }
+    }
+
+    #[test]
+    fn provisional_text_is_asked_for_only_with_a_sink() {
+        let mut client = StreamClient::new(1 << 20);
+        client.set_format(48_000);
+        assert_eq!(texts(&client.on_open())[0].get("provisional"), None);
+        let mut client = StreamClient::new(1 << 20).with_provisional(|_| {});
+        client.set_format(48_000);
+        assert_eq!(texts(&client.on_open())[0]["provisional"], true);
+    }
+
+    #[test]
+    fn provisional_text_after_finish_reaches_the_sink() {
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        let mut client =
+            StreamClient::new(1 << 20).with_provisional(move |t| sink.lock().unwrap().push(t));
+        client.set_format(48_000);
+        client.on_open();
+        ready(&mut client);
+        let event = r#"{"type":"provisional","session_id":"s1","text":"Hello"}"#;
+        // Before release there is no live text.
+        client.on_text(event);
+        client.request_finish();
+        client.on_text(event);
+        client.on_text(r#"{"type":"provisional","session_id":"other","text":"Nope"}"#);
+        assert_eq!(*seen.lock().unwrap(), vec!["Hello".to_string()]);
+        assert_eq!(client.outcome(), None);
     }
 
     #[test]

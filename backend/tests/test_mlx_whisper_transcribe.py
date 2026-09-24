@@ -37,7 +37,7 @@ class FakeWhisper:
 def stt(monkeypatch):
     from backend.backends import mlx_backend
 
-    monkeypatch.setattr(mlx_backend, "ellipsis_token_ids", lambda size, decode, eot: [1131])
+    monkeypatch.setattr(mlx_backend, "ellipsis_token_ids", lambda size, decode, eot, decode_batch=None: [1131])
     backend = mlx_backend.MLXSTTBackend("turbo")
     backend.model = FakeWhisper()
     return backend

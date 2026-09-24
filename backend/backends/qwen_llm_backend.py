@@ -7,7 +7,8 @@ STT engine.
 
 import logging
 import time
-from typing import Optional
+from contextvars import ContextVar
+from typing import Callable, Optional
 
 from . import LLMBackend, DEFAULT_LLM_MAX_TOKENS, DEFAULT_LLM_TEMPERATURE
 from .base import (
@@ -18,12 +19,34 @@ from ..services.mlx_thread import run_on_mlx_thread, clear_mlx_cache
 
 logger = logging.getLogger(__name__)
 
+# Set around a generate call to receive the text generated so far after each
+# token. Called on the MLX worker thread; it must be quick and thread-safe.
+generation_listener: ContextVar[Optional[Callable[[str], None]]] = ContextVar(
+    "generation_listener", default=None
+)
+
 
 MLX_HF_REPOS = {
     "0.6B": "mlx-community/Qwen3-0.6B-4bit",
     "1.7B": "mlx-community/Qwen3-1.7B-4bit",
     "4B": "mlx-community/Qwen3-4B-4bit",
 }
+
+
+def _reuse_detokenizer(tokenizer) -> None:
+    """Build mlx-lm's streaming detokenizer once and reset it for each call.
+
+    mlx-lm builds a new one per generation, mapping all ~151k vocabulary
+    entries (~75 ms) before the first token. Generation runs one call at a
+    time on the MLX worker, so a single reset instance is safe to share.
+    """
+    shared = tokenizer._detokenizer_class(tokenizer)
+
+    def reused(_wrapper):
+        shared.reset()
+        return shared
+
+    tokenizer._detokenizer_class = reused
 
 
 def _progress_name(model_size: str) -> str:
@@ -62,6 +85,7 @@ class MLXQwenLLMBackend:
         # reusing them keeps a warm 4B dictation cleanup well under a second.
         self._prompt_cache = None
         self._cached_tokens: list[int] = []
+        self._listener: Optional[Callable[[str], None]] = None
 
     def is_loaded(self) -> bool:
         return self.model is not None
@@ -124,6 +148,7 @@ class MLXQwenLLMBackend:
         # (model, tokenizer, config) when return_config=True.
         self.model = loaded[0]
         self.tokenizer = loaded[1]
+        _reuse_detokenizer(self.tokenizer)
 
         self._current_model_size = model_size
         self.model_size = model_size
@@ -152,6 +177,8 @@ class MLXQwenLLMBackend:
         examples: Optional[list[tuple[str, str]]] = None,
         adapter_path: Optional[str] = None,
     ) -> str:
+        listener = generation_listener.get()
+
         # Load-if-needed and inference run as one job on the MLX worker so a
         # concurrent unload or different-size load can't land between them.
         def _load_and_generate() -> str:
@@ -159,7 +186,11 @@ class MLXQwenLLMBackend:
                 self.unload_model()
                 self._adapter_path = adapter_path
             self._ensure_loaded_sync(model_size)
-            return self._generate_sync(prompt, system, max_tokens, temperature, examples)
+            self._listener = listener
+            try:
+                return self._generate_sync(prompt, system, max_tokens, temperature, examples)
+            finally:
+                self._listener = None
 
         return await run_on_mlx_thread(_load_and_generate)
 
@@ -202,6 +233,11 @@ class MLXQwenLLMBackend:
         ):
             text += response.text
             generated.append(response.token)
+            if self._listener is not None:
+                try:
+                    self._listener(text)
+                except Exception:
+                    logger.debug("Generation listener failed", exc_info=True)
         self._cached_tokens = tokens + generated
         logger.info(
             "Qwen3 generate: reused %d/%d prompt tokens, %d generated in %.3fs",

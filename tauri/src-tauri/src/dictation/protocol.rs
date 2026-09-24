@@ -24,17 +24,21 @@ pub fn encode_frame(sequence: u32, sample_offset: u32, pcm: &[i16]) -> Vec<u8> {
     frame
 }
 
-/// The JSON start object sent right after the socket opens.
-pub fn start_message(sample_rate: u32) -> String {
-    serde_json::json!({
+/// The JSON start object sent right after the socket opens. `provisional`
+/// asks for provisional cleaned text after release; older servers ignore it.
+pub fn start_message(sample_rate: u32, provisional: bool) -> String {
+    let mut start = serde_json::json!({
         "type": "start",
         "protocol_version": 1,
         "sample_rate": sample_rate,
         "channels": 1,
         "encoding": "pcm_s16le",
         "source": "dictation",
-    })
-    .to_string()
+    });
+    if provisional {
+        start["provisional"] = Value::Bool(true);
+    }
+    start.to_string()
 }
 
 pub fn finish_message() -> String {
@@ -53,6 +57,11 @@ pub enum ServerEvent {
     },
     /// The raw `final` event; validate it with [`is_valid_final`].
     Final(Value),
+    /// Cleaned text the server expects to keep, sent after `finish`.
+    Provisional {
+        session_id: Option<String>,
+        text: String,
+    },
     Error(String),
     /// `transcript` / `refined` updates and anything else informational.
     Update,
@@ -79,6 +88,16 @@ pub fn parse_server_event(text: &str) -> ServerEvent {
             None => ServerEvent::Invalid,
         },
         "final" => ServerEvent::Final(value),
+        "provisional" => match value.get("text").and_then(Value::as_str) {
+            Some(text) => ServerEvent::Provisional {
+                session_id: value
+                    .get("session_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                text: text.to_string(),
+            },
+            None => ServerEvent::Update,
+        },
         "error" => ServerEvent::Error(
             value
                 .get("message")
@@ -121,7 +140,7 @@ mod tests {
 
     #[test]
     fn start_message_matches_protocol_v1() {
-        let value: Value = serde_json::from_str(&start_message(48_000)).unwrap();
+        let value: Value = serde_json::from_str(&start_message(48_000, false)).unwrap();
         assert_eq!(
             value,
             serde_json::json!({
@@ -132,6 +151,29 @@ mod tests {
                 "encoding": "pcm_s16le",
                 "source": "dictation",
             })
+        );
+    }
+
+    #[test]
+    fn start_message_can_ask_for_provisional_text() {
+        let value: Value = serde_json::from_str(&start_message(16_000, true)).unwrap();
+        assert_eq!(value["provisional"], Value::Bool(true));
+        assert_eq!(value["protocol_version"], 1);
+    }
+
+    #[test]
+    fn parses_provisional_text() {
+        assert_eq!(
+            parse_server_event(r#"{"type":"provisional","session_id":"s1","text":"Hello there"}"#),
+            ServerEvent::Provisional {
+                session_id: Some("s1".into()),
+                text: "Hello there".into()
+            }
+        );
+        // Malformed provisional text is informational, never fatal.
+        assert_eq!(
+            parse_server_event(r#"{"type":"provisional"}"#),
+            ServerEvent::Update
         );
     }
 

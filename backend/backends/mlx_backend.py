@@ -24,6 +24,19 @@ from ..services.mlx_thread import run_on_mlx_thread, clear_mlx_cache
 from . import mlx_whisper_loader, whisper_audio
 
 
+def vocabulary_decoder(tokenizer):
+    """Decode many token sequences in one call, or None if unavailable.
+
+    mlx-audio's tokenizer wraps a Hugging Face fast tokenizer; its Rust
+    backend decodes a batch without a Python round trip per token. Special
+    tokens are kept, as the wrapper's own ``decode`` keeps them.
+    """
+    backend = getattr(getattr(tokenizer, "hf_tokenizer", None), "backend_tokenizer", None)
+    if backend is None or not hasattr(backend, "decode_batch"):
+        return None
+    return lambda sequences: backend.decode_batch(sequences, skip_special_tokens=False)
+
+
 class MLXSTTBackend:
     """MLX-based STT backend using mlx-audio Whisper."""
 
@@ -154,7 +167,10 @@ class MLXSTTBackend:
                 decode_options["language"] = language
             if previous_text is not None:
                 tokenizer = self.model.get_tokenizer(language=language or "en")
-                decode_options["suppress_tokens"] = [-1, *ellipsis_token_ids(self.model_size, tokenizer.decode, tokenizer.eot)]
+                decode_options["suppress_tokens"] = [
+                    -1,
+                    *ellipsis_token_ids(self.model_size, tokenizer.decode, tokenizer.eot, vocabulary_decoder(tokenizer)),
+                ]
                 if previous_text:
                     decode_options["initial_prompt"] = previous_text
 
