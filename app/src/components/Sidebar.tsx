@@ -1,12 +1,11 @@
 import { Link, useMatchRoute } from '@tanstack/react-router';
-import { AudioLines, Box, Captions, type LucideIcon, Mic, Settings, Volume2, Wand2 } from 'lucide-react';
+import { Box, Captions, type LucideIcon, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import voiceboxLogo from '@/assets/voicebox-logo.png';
 import { cn } from '@/lib/utils/cn';
 import { usePlatform } from '@/platform/PlatformContext';
 import type { UpdateStatus } from '@/platform/types';
-import { usePlayerStore } from '@/stores/playerStore';
 import { version } from '../../package.json';
 
 interface SidebarProps {
@@ -20,11 +19,7 @@ const tabs: Array<{
   labelKey?: string;
   label?: string;
 }> = [
-  { id: 'main', path: '/', icon: Volume2, labelKey: 'nav.generate' },
-  { id: 'stories', path: '/stories', icon: AudioLines, labelKey: 'nav.stories' },
   { id: 'captures', path: '/captures', icon: Captions, labelKey: 'nav.captures' },
-  { id: 'voices', path: '/voices', icon: Mic, labelKey: 'nav.voices' },
-  { id: 'effects', path: '/effects', icon: Wand2, labelKey: 'nav.effects' },
   { id: 'models', path: '/models', icon: Box, labelKey: 'nav.models' },
   { id: 'settings', path: '/settings', icon: Settings, labelKey: 'nav.settings' },
 ];
@@ -32,7 +27,6 @@ const tabs: Array<{
 export function Sidebar({ isMacOS }: SidebarProps) {
   const { t } = useTranslation();
   const matchRoute = useMatchRoute();
-  const isPlayerOpen = !!usePlayerStore((s) => s.audioUrl);
   const platform = usePlatform();
 
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>(platform.updater.getStatus());
@@ -92,10 +86,7 @@ export function Sidebar({ isMacOS }: SidebarProps) {
       </div>
 
       {/* Version */}
-      <div
-        className="mt-auto flex flex-col items-center gap-1.5 transition-all duration-300"
-        style={{ paddingBottom: isPlayerOpen ? '7rem' : undefined }}
-      >
+      <div className="mt-auto flex flex-col items-center gap-1.5">
         <span className="text-[10px] text-muted-foreground/50">v{version}</span>
         {updateStatus.available && (
           <Link

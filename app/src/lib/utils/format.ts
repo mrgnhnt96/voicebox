@@ -2,12 +2,6 @@ import { formatDistance } from 'date-fns';
 import { es, fr, ja, zhCN, zhTW } from 'date-fns/locale';
 import i18n from '@/i18n';
 
-export function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
 function getDateLocale() {
   switch (i18n.language) {
     case 'es':
@@ -53,27 +47,4 @@ export function formatAbsoluteDate(date: string | Date): string {
     hour: 'numeric',
     minute: '2-digit',
   });
-}
-
-const ENGINE_DISPLAY_NAMES: Record<string, string> = {
-  qwen: 'Qwen',
-  luxtts: 'LuxTTS',
-  chatterbox: 'Chatterbox',
-  chatterbox_turbo: 'Chatterbox Turbo',
-};
-
-export function formatEngineName(engine?: string, modelSize?: string): string {
-  const name = ENGINE_DISPLAY_NAMES[engine ?? 'qwen'] ?? engine ?? 'Qwen';
-  if (engine === 'qwen' && modelSize) {
-    return `${name} ${modelSize}`;
-  }
-  return name;
-}
-
-export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${Math.round((bytes / k ** i) * 100) / 100} ${sizes[i]}`;
 }

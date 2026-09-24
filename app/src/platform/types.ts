@@ -35,19 +35,10 @@ export interface PlatformUpdater {
   subscribe(callback: (status: UpdateStatus) => void): () => void;
 }
 
-export interface AudioDevice {
-  id: string;
-  name: string;
-  is_default: boolean;
-}
-
 export interface PlatformAudio {
   isSystemAudioSupported(): Promise<boolean>;
   startSystemAudioCapture(maxDurationSecs: number): Promise<void>;
   stopSystemAudioCapture(): Promise<Blob>;
-  listOutputDevices(): Promise<AudioDevice[]>;
-  playToDevices(audioData: Uint8Array, deviceIds: string[]): Promise<void>;
-  stopPlayback(): void;
 }
 
 export interface ServerLogEntry {
@@ -61,7 +52,6 @@ export interface PlatformLifecycle {
   restartApp(): Promise<void>;
   restartServer(modelsDir?: string | null): Promise<string>;
   setKeepServerRunning(keep: boolean): Promise<void>;
-  setBackendOverride(backend?: string | null): Promise<void>;
   setupWindowCloseHandler(): Promise<void>;
   subscribeToServerLogs(callback: (entry: ServerLogEntry) => void): () => void;
   onServerReady?: () => void;

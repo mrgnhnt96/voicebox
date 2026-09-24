@@ -53,26 +53,14 @@ function isPortInUseError(error: unknown): boolean {
 }
 
 const LOADING_MESSAGES = [
-  'Warming up tensors...',
-  'Calibrating synthesizer engine...',
-  'Initializing voice models...',
-  'Loading neural networks...',
-  'Preparing audio pipelines...',
-  'Optimizing waveform generators...',
-  'Tuning frequency analyzers...',
-  'Building voice embeddings...',
-  'Configuring text-to-speech cores...',
-  'Syncing audio buffers...',
-  'Establishing model connections...',
-  'Preprocessing training data...',
-  'Validating voice samples...',
-  'Compiling inference engines...',
-  'Mapping phoneme sequences...',
-  'Aligning prosody parameters...',
-  'Activating speech synthesis...',
-  'Fine-tuning acoustic models...',
-  'Preparing voice cloning matrices...',
-  'Initializing Qwen TTS framework...',
+  'Starting the dictation server...',
+  'Loading the speech recognizer...',
+  'Warming up Whisper...',
+  'Preparing the cleanup model...',
+  'Loading your writing style...',
+  'Opening the captures library...',
+  'Tuning the microphone pipeline...',
+  'Almost ready to listen...',
 ];
 
 function App() {

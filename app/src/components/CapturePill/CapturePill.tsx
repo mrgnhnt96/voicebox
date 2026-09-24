@@ -7,25 +7,17 @@ import { cn } from '@/lib/utils/cn';
  * Pill state machine shared between the settings preview and the live
  * recording pill in the Captures tab.
  */
-export type PillState =
-  | 'preparing'
-  | 'recording'
-  | 'transcribing'
-  | 'refining'
-  | 'speaking'
-  | 'rest'
-  | 'error';
+export type PillState = 'preparing' | 'recording' | 'transcribing' | 'refining' | 'rest' | 'error';
 
 const PILL_LABEL_KEYS: Record<Exclude<PillState, 'rest' | 'error'>, string> = {
   preparing: 'captures.pill.preparing',
   recording: 'captures.pill.recording',
   transcribing: 'captures.pill.transcribing',
   refining: 'captures.pill.refining',
-  speaking: 'captures.pill.speaking',
 };
 
 function barModeFor(state: Exclude<PillState, 'error'>): 'generating' | 'playing' | 'idle' {
-  if (state === 'recording' || state === 'speaking') return 'playing';
+  if (state === 'recording') return 'playing';
   if (state === 'rest') return 'idle';
   return 'generating';
 }

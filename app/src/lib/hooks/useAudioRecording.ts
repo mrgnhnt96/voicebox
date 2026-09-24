@@ -7,7 +7,6 @@ import { usePlatform } from '@/platform/PlatformContext';
 
 interface UseAudioRecordingOptions {
   onRecordingStream?: (stream: MediaStream, context?: unknown) => Promise<RecordingStream>;
-  maxDurationSeconds?: number;
   deviceId?: string | null;
   // ``context`` is whatever was handed to ``startRecording`` for this take,
   // threaded back untouched so callers can correlate the result with the
@@ -27,7 +26,6 @@ const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
 };
 
 export function useAudioRecording({
-  maxDurationSeconds,
   deviceId,
   onRecordingComplete,
   onRecordingStream,
@@ -236,22 +234,6 @@ export function useAudioRecording({
           if (startTimeRef.current) {
             const elapsed = (Date.now() - startTimeRef.current) / 1000;
             setDuration(elapsed);
-
-            // Auto-stop at max duration when the caller opts in — dictation
-            // sessions pass undefined and run until the user releases the
-            // chord or hits stop; voice-clone sample recorders pass 29s to
-            // keep reference clips short.
-            if (maxDurationSeconds !== undefined && elapsed >= maxDurationSeconds) {
-              if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-                finishingRef.current = true;
-                mediaRecorderRef.current.stop();
-                setRecording(false);
-                if (timerRef.current !== null) {
-                  clearInterval(timerRef.current);
-                  timerRef.current = null;
-                }
-              }
-            }
           }
         }, 100);
       } catch (err) {
@@ -273,7 +255,7 @@ export function useAudioRecording({
         setRecording(false);
       }
     },
-    [maxDurationSeconds, onRecordingComplete, onRecordingStream, acquireStream, setRecording],
+    [onRecordingComplete, onRecordingStream, acquireStream, setRecording],
   );
 
   const stopRecording = useCallback(() => {

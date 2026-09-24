@@ -5,7 +5,6 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { writeFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import {
   Captions,
-  Check,
   ChevronDown,
   CircleDot,
   Copy,
@@ -19,11 +18,9 @@ import {
   Square,
   Trash2,
   Upload,
-  Volume2,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AudioBars } from '@/components/AudioBars';
 import { CapturePill } from '@/components/CapturePill/CapturePill';
 import { CaptureFeedback } from '@/components/CapturesTab/CaptureFeedback';
 import { CaptureInlinePlayer } from '@/components/CapturesTab/CaptureInlinePlayer';
@@ -61,22 +58,13 @@ import { useToast } from '@/components/ui/use-toast';
 import { StyleCalibrationPrompt } from '@/components/WritingStyle/StyleCalibrationPrompt';
 import { RefinementReviewNotice } from '@/components/CapturesTab/RefinementReviewNotice';
 import { apiClient } from '@/lib/api/client';
-import type {
-  CaptureListResponse,
-  CaptureResponse,
-  CaptureSource,
-  VoiceProfileResponse,
-} from '@/lib/api/types';
-import type { LanguageCode } from '@/lib/constants/languages';
-import { BOTTOM_SAFE_AREA_PADDING } from '@/lib/constants/ui';
+import type { CaptureListResponse, CaptureResponse, CaptureSource } from '@/lib/api/types';
 import { useCaptureRecordingSession } from '@/lib/hooks/useCaptureRecordingSession';
 import { useDictationReadiness } from '@/lib/hooks/useDictationReadiness';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
 import { cn } from '@/lib/utils/cn';
 import { formatAbsoluteDate, formatDate } from '@/lib/utils/format';
 import { displayLabelForKey, modifierSideHint } from '@/lib/utils/keyCodes';
-import { useGenerationStore } from '@/stores/generationStore';
-import { usePlayerStore } from '@/stores/playerStore';
 
 const CAPTURE_AUDIO_MIME = 'audio/*,.wav,.mp3,.m4a,.flac,.ogg,.webm';
 
@@ -132,8 +120,6 @@ function SourceBadge({ source }: { source: CaptureSource }) {
   );
 }
 
-type PlaybackState = 'idle' | 'generating' | 'playing';
-
 export function CapturesTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -149,20 +135,9 @@ export function CapturesTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [showRefined, setShowRefined] = useState(true);
-  const [launchedPlayAsId, setLaunchedPlayAsId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const audioUrl = usePlayerStore((s) => s.audioUrl);
-  const playerAudioId = usePlayerStore((s) => s.audioId);
-  const playerIsPlaying = usePlayerStore((s) => s.isPlaying);
-  const isPlayerVisible = !!audioUrl;
-
-  const setIsPlaying = usePlayerStore((s) => s.setIsPlaying);
-
-  const addPendingGeneration = useGenerationStore((s) => s.addPendingGeneration);
-  const pendingGenerationIds = useGenerationStore((s) => s.pendingGenerationIds);
-
-  const { settings: captureSettings, update: updateCaptureSettings } = useCaptureSettings();
+  const { settings: captureSettings } = useCaptureSettings();
   const sttModel = captureSettings?.stt_model ?? 'turbo';
   const llmModel = captureSettings?.llm_model ?? '0.6B';
   const hotkeyEnabled = captureSettings?.hotkey_enabled ?? false;
@@ -177,11 +152,6 @@ export function CapturesTab() {
   const { data: capturesData, isLoading: capturesLoading } = useQuery({
     queryKey: ['captures'],
     queryFn: () => apiClient.listCaptures(200, 0),
-  });
-
-  const { data: profiles } = useQuery({
-    queryKey: ['profiles'],
-    queryFn: () => apiClient.listProfiles(),
   });
 
   const captures = capturesData?.items ?? [];
@@ -241,14 +211,6 @@ export function CapturesTab() {
   }, [search, captures]);
 
   const selected = captures.find((c) => c.id === selectedId) ?? null;
-  // Source of truth is capture_settings.default_playback_voice_id, shared
-  // with Settings → Captures and the MCP global default. Stale ids (e.g.
-  // referenced profile was deleted) fall through to the first profile.
-  const storedVoiceId = captureSettings?.default_playback_voice_id ?? null;
-  const playAsVoice =
-    (storedVoiceId && profiles?.find((p) => p.id === storedVoiceId)) || profiles?.[0] || null;
-  const playAsVoiceId = playAsVoice?.id ?? null;
-
   const deleteMutation = useMutation({
     mutationFn: async (captureId: string) => apiClient.deleteCapture(captureId),
     onSuccess: () => {
@@ -263,60 +225,6 @@ export function CapturesTab() {
       });
     },
   });
-
-  const playAsMutation = useMutation({
-    mutationFn: async ({
-      capture,
-      voice,
-    }: {
-      capture: CaptureResponse;
-      voice: VoiceProfileResponse;
-    }) => {
-      const text = capture.transcript_refined || capture.transcript_raw;
-      if (!text.trim()) throw new Error(t('captures.noTranscriptError'));
-      const language = (capture.language || voice.language) as LanguageCode;
-      // Preset profiles (Kokoro etc.) reject the qwen default — honor the
-      // profile's stored engine preference. Cloned profiles without an
-      // override fall through to whatever the backend picks.
-      const engine = voice.default_engine as
-        | 'qwen'
-        | 'qwen_custom_voice'
-        | 'luxtts'
-        | 'chatterbox'
-        | 'chatterbox_turbo'
-        | 'tada'
-        | 'kokoro'
-        | undefined;
-      return apiClient.generateSpeech({
-        profile_id: voice.id,
-        text,
-        language,
-        engine,
-      });
-    },
-    onSuccess: (result) => {
-      // /generate is queue-based — it returns a generating row with an empty
-      // audio_path. Hand the id to the global SSE handler which polls
-      // /generation/{id}/status and triggers autoplay on completion.
-      setLaunchedPlayAsId(result.id);
-      addPendingGeneration(result.id);
-    },
-    onError: (err: Error) => {
-      toast({
-        title: t('captures.toast.playAsFailed'),
-        description: err.message,
-        variant: 'destructive',
-      });
-    },
-  });
-
-  const playbackState: PlaybackState = playAsMutation.isPending
-    ? 'generating'
-    : launchedPlayAsId && pendingGenerationIds.has(launchedPlayAsId)
-      ? 'generating'
-      : launchedPlayAsId && playerAudioId === launchedPlayAsId && playerIsPlaying
-        ? 'playing'
-        : 'idle';
 
   const handleUploadClick = () => uploadInputRef.current?.click();
 
@@ -431,29 +339,6 @@ export function CapturesTab() {
     }
   };
 
-  const handlePlayAs = (voice?: VoiceProfileResponse) => {
-    if (!selected) return;
-    // Stop the current playback when the button is in its 'playing' state
-    // and the user clicked the main button without picking a new voice.
-    if (!voice && playbackState === 'playing') {
-      setIsPlaying(false);
-      return;
-    }
-    const target = voice ?? playAsVoice;
-    if (!target) {
-      toast({
-        title: t('captures.toast.noVoice'),
-        description: t('captures.toast.noVoiceDescription'),
-        variant: 'destructive',
-      });
-      return;
-    }
-    if (voice && voice.id !== playAsVoiceId) {
-      updateCaptureSettings({ default_playback_voice_id: voice.id });
-    }
-    playAsMutation.mutate({ capture: selected, voice: target });
-  };
-
   return (
     <div className="h-full flex gap-0 overflow-hidden -mx-8">
       <input
@@ -491,7 +376,7 @@ export function CapturesTab() {
             />
           </ListPaneHeader>
 
-          <ListPaneScroll className={cn(isPlayerVisible && BOTTOM_SAFE_AREA_PADDING)}>
+          <ListPaneScroll>
             <div className="px-4 pb-6 space-y-1">
               <StyleCalibrationPrompt hasCaptures={captures.length > 0} />
               {capturesLoading ? (
@@ -642,12 +527,7 @@ export function CapturesTab() {
         </div>
 
         {selected ? (
-          <div
-            className={cn(
-              'flex-1 overflow-y-auto pt-20 px-8 pb-8',
-              isPlayerVisible && BOTTOM_SAFE_AREA_PADDING,
-            )}
-          >
+          <div className="flex-1 overflow-y-auto pt-20 px-8 pb-8">
             {/* Meta row */}
             <div className="flex items-center gap-3 mb-4 text-xs text-muted-foreground">
               <span>{formatAbsoluteDate(selected.created_at)}</span>
@@ -736,75 +616,6 @@ export function CapturesTab() {
 
             {/* Bottom actions */}
             <div className="flex items-center gap-2 mt-4 flex-wrap">
-              <div className="inline-flex">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePlayAs()}
-                  disabled={!playAsVoice || playAsMutation.isPending}
-                  className={cn(
-                    'gap-2 rounded-r-none border-r-0 pr-3 pl-2 transition-colors',
-                    playbackState !== 'idle' &&
-                      'border-accent/50 text-foreground bg-accent/10 hover:bg-accent/15 hover:text-foreground hover:border-accent/50',
-                  )}
-                >
-                  {playbackState === 'generating' ? (
-                    <>
-                      <AudioBars mode="generating" className="h-3.5" />
-                      {t('captures.actions.playAsGenerating')}
-                    </>
-                  ) : playbackState === 'playing' ? (
-                    <>
-                      <Square className="h-3 w-3 fill-current" />
-                      {playAsVoice
-                        ? t('captures.actions.playAsStop', { name: playAsVoice.name })
-                        : t('captures.actions.playAsStopFallback')}
-                    </>
-                  ) : (
-                    <>
-                      <Volume2 className="h-3.5 w-3.5" />
-                      {playAsVoice
-                        ? t('captures.actions.playAs', { name: playAsVoice.name })
-                        : t('captures.actions.playAsFallback')}
-                    </>
-                  )}
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={cn(
-                        'rounded-l-none px-2 transition-colors',
-                        playbackState !== 'idle' &&
-                          'border-accent/50 bg-accent/10 hover:bg-accent/15 hover:text-foreground hover:border-accent/50',
-                      )}
-                      disabled={!profiles || !profiles.length}
-                    >
-                      <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-64">
-                    <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                      {t('captures.actions.playAsDropdownLabel')}
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {profiles?.map((v) => (
-                      <DropdownMenuItem key={v.id} onClick={() => handlePlayAs(v)} className="py-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">{v.name}</div>
-                          <div className="text-[11px] text-muted-foreground truncate">
-                            {v.description || v.language.toUpperCase()}
-                          </div>
-                        </div>
-                        {v.id === playAsVoiceId && (
-                          <Check className="h-3.5 w-3.5 text-accent shrink-0" />
-                        )}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
               <Button variant="outline" size="sm" onClick={handleCopy}>
                 <Copy className="h-3.5 w-3.5 mr-1.5" />
                 {t('captures.actions.copy')}

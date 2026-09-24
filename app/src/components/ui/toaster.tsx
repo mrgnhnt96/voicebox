@@ -1,4 +1,3 @@
-import { usePlayerStore } from '@/stores/playerStore';
 import {
   Toast,
   ToastClose,
@@ -11,7 +10,6 @@ import { useToast } from './use-toast';
 
 export function Toaster() {
   const { toasts } = useToast();
-  const isPlayerOpen = !!usePlayerStore((s) => s.audioUrl);
 
   return (
     <ToastProvider>
@@ -25,7 +23,7 @@ export function Toaster() {
           <ToastClose />
         </Toast>
       ))}
-      <ToastViewport className={isPlayerOpen ? 'sm:bottom-44' : ''} />
+      <ToastViewport />
     </ToastProvider>
   );
 }

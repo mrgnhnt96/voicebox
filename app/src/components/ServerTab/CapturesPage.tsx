@@ -1,4 +1,4 @@
-import { Check, ChevronDown, FolderOpen, Info, Keyboard, Laptop, Lock, Volume2 } from 'lucide-react';
+import { FolderOpen, Info, Keyboard, Laptop, Lock } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AccessibilityNotice } from '@/components/AccessibilityGate/AccessibilityGate';
@@ -7,14 +7,6 @@ import { CapturePill, type PillState } from '@/components/CapturePill/CapturePil
 import { DictationReadinessChecklist } from '@/components/CapturesTab/DictationReadinessChecklist';
 import { ChordPicker } from '@/components/ChordPicker/ChordPicker';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
@@ -30,12 +22,11 @@ import { inputDevicePickerValue, useNativeInputDevices } from '@/lib/hooks/useNa
 import { useDictationReadiness } from '@/lib/hooks/useDictationReadiness';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
 import { useWritingStyle } from '@/lib/hooks/useWritingStyle';
-import { useProfiles } from '@/lib/hooks/useProfiles';
 import { usePlatform } from '@/platform/PlatformContext';
 import { useServerStore } from '@/stores/serverStore';
 import { cn } from '@/lib/utils/cn';
 import { defaultChordKeys, displayLabelForKey, modifierSideHint } from '@/lib/utils/keyCodes';
-import type { PunctuationStyle, Qwen3ModelSize, VoiceProfileResponse, WhisperModelSize } from '@/lib/api/types';
+import type { PunctuationStyle, Qwen3ModelSize, WhisperModelSize } from '@/lib/api/types';
 import { SettingRow, SettingSection } from './SettingRow';
 
 function ChordPreview({ keys }: { keys: string[] }) {
@@ -129,7 +120,6 @@ export function CapturesPage() {
   const platform = usePlatform();
   const serverUrl = useServerStore((state) => state.serverUrl);
   const { settings, update } = useCaptureSettings();
-  const { data: profiles } = useProfiles();
   const { toast } = useToast();
   const readiness = useDictationReadiness();
   const sttModel = settings?.stt_model ?? 'turbo';
@@ -142,7 +132,6 @@ export function CapturesPage() {
   const punctuationStyle = settings?.punctuation_style ?? 'standard';
   const { data: writingStyle } = useWritingStyle();
   const allowAutoPaste = settings?.allow_auto_paste ?? true;
-  const defaultVoiceId = settings?.default_playback_voice_id ?? null;
   const hotkeyEnabled = settings?.hotkey_enabled ?? false;
   const inputDeviceId = settings?.input_device_id ?? null;
   // The desktop app captures dictation natively, so it lists native devices
@@ -184,10 +173,6 @@ export function CapturesPage() {
       setOpening(false);
     }
   }, [platform, capturesPath]);
-
-  const voices: VoiceProfileResponse[] = profiles ?? [];
-  const defaultVoice =
-    voices.find((v) => v.id === defaultVoiceId) ?? null;
 
   return (
     <div className="flex gap-8 items-start max-w-5xl">
@@ -528,64 +513,6 @@ export function CapturesPage() {
       <WritingStyleSettings />
 
       <SettingSection
-        title={t('settings.captures.playback.title')}
-        description={t('settings.captures.playback.description')}
-      >
-        <SettingRow
-          title={t('settings.captures.playback.defaultVoice.title')}
-          description={t('settings.captures.playback.defaultVoice.description')}
-          action={
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 min-w-[220px] justify-between"
-                  disabled={voices.length === 0}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    {defaultVoice ? (
-                      <span className="truncate">{defaultVoice.name}</span>
-                    ) : (
-                      <span className="truncate text-muted-foreground">
-                        {voices.length === 0
-                          ? t('settings.captures.playback.defaultVoice.noClonedVoices')
-                          : t('settings.captures.playback.defaultVoice.noneSelected')}
-                      </span>
-                    )}
-                  </div>
-                  <ChevronDown className="h-3.5 w-3.5 opacity-60 shrink-0" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                  {t('settings.captures.playback.defaultVoice.clonedVoices')}
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {voices.map((v) => (
-                  <DropdownMenuItem
-                    key={v.id}
-                    onClick={() => update({ default_playback_voice_id: v.id })}
-                    className="gap-2.5 py-2"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{v.name}</div>
-                      {v.description ? (
-                        <div className="text-[11px] text-muted-foreground truncate">
-                          {v.description}
-                        </div>
-                      ) : null}
-                    </div>
-                    {v.id === defaultVoiceId && <Check className="h-3.5 w-3.5 text-accent shrink-0" />}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          }
-        />
-      </SettingSection>
-
-      <SettingSection
         title={t('settings.captures.storage.title')}
         description={t('settings.captures.storage.description')}
       >
@@ -623,15 +550,6 @@ export function CapturesPage() {
               <span className="leading-relaxed">
                 <span className="text-foreground font-medium">{t('settings.captures.sidebar.local.title')}</span>{' '}
                 {t('settings.captures.sidebar.local.body')}
-              </span>
-            </li>
-            <li className="flex gap-2.5">
-              <Volume2 className="h-4 w-4 shrink-0 mt-0.5 text-accent" />
-              <span className="leading-relaxed">
-                <span className="text-foreground font-medium">
-                  {t('settings.captures.sidebar.playAs.title')}
-                </span>{' '}
-                {t('settings.captures.sidebar.playAs.body')}
               </span>
             </li>
             <li className="flex gap-2.5">

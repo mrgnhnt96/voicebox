@@ -1,22 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiClient } from '@/lib/api/client';
 import type { ActiveDownloadTask } from '@/lib/api/types';
-import { useGenerationStore } from '@/stores/generationStore';
 
 // Polling interval in milliseconds
 const POLL_INTERVAL = 30000;
 
 /**
- * Hook to monitor active tasks (downloads and generations).
+ * Hook to monitor active model downloads.
  * Polls the server periodically to catch downloads triggered from anywhere
- * (transcription, generation, explicit download, etc.).
+ * (transcription, refinement, explicit download, etc.).
  *
  * Returns the active downloads so components can render download toasts.
  */
 export function useRestoreActiveTasks() {
   const [activeDownloads, setActiveDownloads] = useState<ActiveDownloadTask[]>([]);
-  const setActiveGenerationId = useGenerationStore((state) => state.setActiveGenerationId);
-  const addPendingGeneration = useGenerationStore((state) => state.addPendingGeneration);
 
   // Track which downloads we've seen to detect new ones
   const seenDownloadsRef = useRef<Set<string>>(new Set());
@@ -24,19 +21,6 @@ export function useRestoreActiveTasks() {
   const fetchActiveTasks = useCallback(async () => {
     try {
       const tasks = await apiClient.getActiveTasks();
-
-      // Restore pending generations (e.g., after page refresh)
-      if (tasks.generations.length > 0) {
-        setActiveGenerationId(tasks.generations[0].task_id);
-        for (const gen of tasks.generations) {
-          addPendingGeneration(gen.task_id);
-        }
-      } else {
-        const currentId = useGenerationStore.getState().activeGenerationId;
-        if (currentId) {
-          setActiveGenerationId(null);
-        }
-      }
 
       // Update active downloads
       // Keep track of all active downloads (including new ones)
@@ -59,7 +43,7 @@ export function useRestoreActiveTasks() {
       // Silently fail - server might be temporarily unavailable
       console.debug('Failed to fetch active tasks:', error);
     }
-  }, [setActiveGenerationId, addPendingGeneration]);
+  }, []);
 
   useEffect(() => {
     // Fetch immediately on mount
@@ -78,8 +62,6 @@ export function useRestoreActiveTasks() {
  * Map model names to display names for download toasts.
  */
 export const MODEL_DISPLAY_NAMES: Record<string, string> = {
-  'qwen-tts-1.7B': 'Qwen TTS 1.7B',
-  'qwen-tts-0.6B': 'Qwen TTS 0.6B',
   'whisper-base': 'Whisper Base',
   'whisper-small': 'Whisper Small',
   'whisper-medium': 'Whisper Medium',

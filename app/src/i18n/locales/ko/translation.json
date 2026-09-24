@@ -12,12 +12,7 @@
     "unknownError": "알 수 없는 오류"
   },
   "nav": {
-    "generate": "생성",
-    "stories": "스토리",
     "captures": "캡처",
-    "voices": "음성",
-    "effects": "효과",
-    "audio": "오디오",
     "models": "모델",
     "settings": "설정",
     "updateBadge": "업데이트"
@@ -27,7 +22,6 @@
     "beta": "베타",
     "searchPlaceholder": "대본 검색…",
     "snippetEmpty": "(대본 없음)",
-    "noTranscriptError": "아직 대본이 없는 캡처입니다",
     "captureCardLabel": "캡처 · {{when}}",
     "header": {
       "modelSummary": "Whisper {{stt}} · Qwen3 · {{llm}}"
@@ -57,13 +51,7 @@
       "exportAudio": "오디오 (WAV)",
       "exportTranscript": "대본 (TXT)",
       "exportMarkdown": "마크다운 (MD)",
-      "delete": "삭제",
-      "playAs": "{{name}}로 재생",
-      "playAsFallback": "다른 음성으로 재생…",
-      "playAsGenerating": "생성 중…",
-      "playAsStop": "중지 · {{name}}",
-      "playAsStopFallback": "중지 · 음성",
-      "playAsDropdownLabel": "대본을 다음 음성으로 재생"
+      "delete": "삭제"
     },
     "empty": {
       "noMatches": "\"{{query}}\"와 일치하는 캡처가 없습니다",
@@ -83,9 +71,6 @@
     },
     "toast": {
       "deleteFailed": "삭제 실패",
-      "playAsFailed": "음성 재생 실패",
-      "noVoice": "음성 프로필 없음",
-      "noVoiceDescription": "Play as를 사용하려면 먼저 음성 프로필을 생성하세요.",
       "transcriptCopied": "대본이 복사되었습니다",
       "copyFailed": "복사 실패",
       "exportSuccess": "{{path}}로 내보내기 완료",
@@ -99,7 +84,6 @@
       "recording": "녹음 중",
       "transcribing": "변환 중",
       "refining": "정제 중",
-      "speaking": "말하는 중",
       "completed": "완료",
       "stopAria": "녹음 중지",
       "errorFallback": "문제가 발생했습니다",
@@ -165,583 +149,10 @@
       }
     }
   },
-  "voicesTab": {
-    "title": "음성",
-    "loading": "음성 로딩 중…",
-    "searchPlaceholder": "음성 검색…",
-    "newVoice": "새 음성",
-    "avatarAlt": "{{name}} 아바타",
-    "selectChannels": "채널 선택…",
-    "channelDefaultLabel": "{{name}} (기본값)",
-    "columns": {
-      "name": "이름",
-      "language": "언어",
-      "generations": "생성 횟수",
-      "samples": "샘플",
-      "effects": "효과",
-      "channels": "채널"
-    }
-  },
-  "voiceInspector": {
-    "loading": "로딩 중…",
-    "defaultEffectsHint": "이 음성으로 새로 생성할 때 자동으로 적용됩니다.",
-    "fields": {
-      "description": "설명"
-    },
-    "toast": {
-      "invalidImageFormat": "PNG, JPG 또는 WebP를 선택해 주세요",
-      "avatarUpdated": "아바타 업데이트됨",
-      "savedDescription": "\"{{name}}\" 저장됨."
-    }
-  },
-  "audioChannels": {
-    "title": "오디오 채널",
-    "newChannel": "새 채널",
-    "loading": "로딩 중…",
-    "confirmDelete": "이 채널을 삭제할까요?",
-    "noVoicesAssigned": "할당된 음성이 없습니다",
-    "selectDevice": "기기 선택",
-    "addDevice": "기기 추가",
-    "addVoice": "음성 추가",
-    "defaultSuffix": "기본값",
-    "empty": {
-      "message": "아직 오디오 채널이 없습니다. 첫 번째 채널을 만들어 음성을 특정 기기로 라우팅하세요.",
-      "action": "채널 만들기"
-    },
-    "labels": {
-      "outputDevices": "출력 기기",
-      "assignedVoices": "할당된 음성"
-    },
-    "devices": {
-      "title": "사용 가능한 기기",
-      "defaultNote": "기본 채널은 시스템 기본 기기를 사용합니다",
-      "toggleHint": "기기를 클릭하여 선택한 채널에 추가하거나 제거하세요",
-      "selectHint": "채널을 선택하여 기기를 할당하세요",
-      "empty": "오디오 기기를 찾을 수 없습니다",
-      "requiresTauri": "오디오 기기 선택에는 Tauri가 필요합니다"
-    },
-    "fields": {
-      "name": "채널 이름",
-      "namePlaceholder": "예: 가상 케이블, 방송"
-    },
-    "createDialog": {
-      "title": "오디오 채널 만들기",
-      "description": "새 오디오 채널(버스)을 만들어 음성을 특정 출력 기기로 라우팅합니다.",
-      "action": "만들기"
-    },
-    "editDialog": {
-      "title": "채널 편집",
-      "description": "채널 설정과 음성 할당을 업데이트합니다."
-    }
-  },
-  "profileForm": {
-    "createTitle": "음성 만들기",
-    "editTitle": "음성 편집",
-    "createDescription": "오디오 샘플 또는 내장 음성으로 새 음성 프로필을 만듭니다.",
-    "editDescription": "음성 프로필 세부 정보를 업데이트하고 샘플을 관리합니다.",
-    "draftRestored": "임시 저장이 복원되었습니다",
-    "discard": "취소",
-    "source": {
-      "clone": "오디오에서 복제",
-      "builtin": "내장 음성"
-    },
-    "builtin": {
-      "hint": "미리 제작된 음성을 선택하세요. 오디오 샘플이 필요하지 않습니다.",
-      "badge": "내장 음성",
-      "note": "이 프로필은 내장 음성을 사용합니다. 생성 후에는 음성을 변경할 수 없습니다."
-    },
-    "sampleTabs": {
-      "upload": "업로드",
-      "record": "녹음",
-      "system": "시스템 오디오"
-    },
-    "fields": {
-      "engine": "엔진",
-      "voice": "음성",
-      "name": "이름",
-      "namePlaceholder": "내 음성",
-      "descriptionLabel": "설명 (선택사항)",
-      "descriptionPlaceholder": "이 음성에 대해 설명해 주세요…",
-      "language": "언어",
-      "referenceText": "참조 텍스트",
-      "referenceTextPlaceholder": "오디오에서 말한 텍스트를 정확히 입력하세요…",
-      "defaultEngine": "기본 엔진",
-      "noPreference": "선택 안 함",
-      "defaultEngineHint": "프로필을 선택할 때 이 엔진이 자동으로 선택됩니다.",
-      "defaultEffects": "기본 효과",
-      "defaultEffectsHint": "이 음성으로 새로 생성할 때 자동으로 적용되는 효과입니다.",
-      "personalityLabel": "성격",
-      "personalityPlaceholder": "예: \"항상 해양 은유로 말하는 심술궂은 해적\"",
-      "personalityHint": "이 음성이 누구인지, 어떻게 말하는지를 정의합니다. 생성 페이지의 작성 버튼과 역할극 전환 토글을 제어합니다. 비워두면 둘 다 숨겨집니다."
-    },
-    "avatar": {
-      "alt": "아바타 미리보기"
-    },
-    "actions": {
-      "saving": "저장 중…",
-      "saveChanges": "변경사항 저장",
-      "createProfile": "프로필 만들기"
-    },
-    "validation": {
-      "nameRequired": "이름은 필수입니다",
-      "referenceRequired": "샘플을 추가할 때는 참조 텍스트가 필요합니다",
-      "sampleRequired": "오디오 샘플이 필요합니다",
-      "referenceTextRequired": "참조 텍스트가 필요합니다",
-      "audioTooLong": "오디오가 너무 깁니다 ({{duration}}). 최대 길이는 {{max}}입니다.",
-      "audioFailed": "오디오 파일 검증에 실패했습니다. 다른 파일을 시도해 주세요."
-    },
-    "toast": {
-      "recordingComplete": "녹음 완료",
-      "recordingCompleteDescription": "오디오가 성공적으로 녹음되었습니다.",
-      "recordingError": "녹음 오류",
-      "systemAudioCaptured": "시스템 오디오 캡처됨",
-      "systemAudioCapturedDescription": "오디오가 성공적으로 캡처되었습니다.",
-      "systemAudioError": "시스템 오디오 캡처 오류",
-      "transcribeFailed": "변환 실패",
-      "transcribeFailedFallback": "오디오 변환에 실패했습니다",
-      "noFile": "선택된 파일 없음",
-      "noFileDescription": "먼저 오디오 파일을 선택해 주세요.",
-      "invalidFile": "잘못된 파일 형식",
-      "invalidImageFormat": "이미지 파일을 선택해 주세요 (PNG, JPG, WebP)",
-      "fileTooLarge": "파일이 너무 큽니다",
-      "imageTooLargeDescription": "이미지는 5MB 미만이어야 합니다",
-      "avatarRemoved": "아바타 제거됨",
-      "avatarRemovedDescription": "아바타 이미지가 성공적으로 제거되었습니다.",
-      "avatarRemoveFailed": "아바타 제거 실패",
-      "avatarUploadFailed": "아바타 업로드 실패",
-      "avatarUploadFailedFallback": "아바타 업로드에 실패했습니다",
-      "effectsUpdateFailed": "효과 업데이트 실패",
-      "effectsUpdateFailedFallback": "효과 체인 저장에 실패했습니다",
-      "voiceUpdated": "음성 업데이트됨",
-      "voiceUpdatedDescription": "\"{{name}}\"이(가) 성공적으로 업데이트되었습니다.",
-      "noVoiceSelected": "선택된 음성 없음",
-      "noVoiceSelectedDescription": "내장 음성을 선택해 주세요.",
-      "profileCreated": "프로필 생성됨",
-      "profileCreatedBuiltin": "\"{{name}}\"이(가) 내장 음성으로 생성되었습니다.",
-      "profileCreatedSample": "\"{{name}}\"이(가) 샘플로 생성되었습니다.",
-      "sampleRequired": "오디오 샘플 필요",
-      "sampleRequiredDescription": "음성 프로필을 만들려면 오디오 샘플을 제공해 주세요.",
-      "referenceTextRequired": "참조 텍스트 필요",
-      "referenceTextRequiredDescription": "오디오 샘플의 참조 텍스트를 제공해 주세요.",
-      "invalidAudio": "잘못된 오디오 파일",
-      "invalidAudioDescription": "오디오 길이가 {{duration}}입니다. 최대 길이는 {{max}}입니다.",
-      "validationError": "검증 오류",
-      "rollbackFailed": "롤백 실패",
-      "rollbackFailedDescription": "샘플 업로드 실패 후 생성된 프로필을 제거할 수 없습니다.",
-      "profileRolledBack": "프로필이 롤백되었습니다.",
-      "sampleFailed": "샘플 추가 실패",
-      "sampleFailedDescription": "샘플 추가에 실패했습니다.",
-      "sampleFailedRolledBack": "샘플 추가에 실패했습니다. 프로필이 롤백되었습니다.",
-      "saveFailed": "프로필 저장에 실패했습니다"
-    }
-  },
-  "audioSample": {
-    "chooseFile": "파일 선택",
-    "uploadHint": "클릭하여 파일을 선택하거나 드래그 앤 드롭하세요. 최대 길이: 30초.",
-    "fileUploaded": "파일 업로드됨",
-    "fileLabel": "파일: {{name}}",
-    "play": "재생",
-    "pause": "일시정지",
-    "transcribe": "변환",
-    "transcribing": "변환 중…",
-    "remove": "제거",
-    "startRecording": "녹음 시작",
-    "recordHint": "클릭하여 녹음을 시작하세요. 최대 길이: 30초.",
-    "stopRecording": "녹음 중지",
-    "remaining": "{{time}} 남음",
-    "recordingComplete": "녹음 완료",
-    "recordAgain": "다시 녹음",
-    "startCapture": "캡처 시작",
-    "systemHint": "시스템에서 오디오를 캡처합니다. 최대 길이: 30초.",
-    "stopCapture": "캡처 중지",
-    "captureComplete": "캡처 완료",
-    "captureAgain": "다시 캡처"
-  },
-  "sampleList": {
-    "loading": "샘플 로딩 중…",
-    "empty": {
-      "title": "아직 샘플이 없습니다",
-      "hint": "첫 번째 오디오 샘플을 추가하여 시작하세요"
-    },
-    "editing": "대본 편집 중",
-    "placeholder": "참조 텍스트 입력…",
-    "saving": "저장 중…",
-    "editTranscription": "대본 편집",
-    "deleteSample": "샘플 삭제",
-    "addSample": "샘플 추가",
-    "note": "참고: 30초짜리 샘플 하나가 가장 적합합니다. 여러 샘플을 추가하면 오히려 품질이 떨어질 수 있습니다. 향후 업데이트에서 샘플을 교체하고 다양한 스타일로 태그할 수 있게 될 예정입니다.",
-    "deleteDialog": {
-      "title": "샘플 삭제",
-      "description": "이 오디오 샘플을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
-      "deleting": "삭제 중…"
-    },
-    "player": {
-      "play": "샘플 재생",
-      "pause": "샘플 일시정지",
-      "stop": "중지",
-      "stopAria": "재생 중지",
-      "position": "샘플 재생 위치",
-      "positionValue": "{{current}} / {{total}}"
-    },
-    "toast": {
-      "invalidText": "잘못된 텍스트",
-      "invalidTextDescription": "참조 텍스트는 비워둘 수 없습니다.",
-      "updated": "샘플 업데이트됨",
-      "updatedDescription": "참조 텍스트가 성공적으로 업데이트되었습니다.",
-      "updateFailed": "업데이트 실패",
-      "updateFailedFallback": "샘플 업데이트에 실패했습니다"
-    }
-  },
-  "profiles": {
-    "card": {
-      "noDescription": "설명 없음",
-      "designed": "디자인됨",
-      "export": "프로필 내보내기",
-      "edit": "프로필 편집",
-      "delete": "프로필 삭제",
-      "selectLabel": "{{name}}, {{language}}. 생성할 음성으로 선택하세요.",
-      "selectLabelSelected": "{{name}}, {{language}}. 생성할 음성으로 선택됨."
-    },
-    "list": {
-      "errorLoading": "프로필 로딩 오류: {{message}}",
-      "empty": "아직 음성 프로필이 없습니다. 첫 번째 프로필을 만들어 시작하세요.",
-      "createVoice": "음성 만들기",
-      "unsupportedNote": "현재 모델에서 지원되는 음성 프로필만 선택할 수 있습니다."
-    },
-    "deleteDialog": {
-      "title": "프로필 삭제",
-      "body": "\"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
-      "deleting": "삭제 중…"
-    }
-  },
-  "effects": {
-    "title": "효과",
-    "newPreset": "새 프리셋",
-    "noDescription": "설명 없음",
-    "placeholder": "프리셋을 선택하거나 새로 만드세요",
-    "effectCount_one": "효과 {{count}}개",
-    "effectCount_other": "효과 {{count}}개",
-    "sections": {
-      "builtin": "내장",
-      "custom": "사용자 정의",
-      "new": "새로 만들기"
-    },
-    "badge": {
-      "builtin": "내장"
-    },
-    "unsaved": {
-      "title": "저장되지 않은 프리셋",
-      "hint": "오른쪽 패널에서 효과를 구성하세요."
-    },
-    "detail": {
-      "newTitle": "새 프리셋",
-      "editTitle": "프리셋 편집",
-      "savePreset": "프리셋 저장",
-      "saveAsCustom": "사용자 정의로 저장",
-      "saving": "저장 중…",
-      "deleting": "삭제 중…"
-    },
-    "fields": {
-      "name": "이름",
-      "namePlaceholder": "내 프리셋…",
-      "description": "설명",
-      "descriptionPlaceholder": "이 프리셋이 무엇을 하는지 설명해 주세요…"
-    },
-    "preview": {
-      "label": "미리보기",
-      "button": "미리보기",
-      "processing": "처리 중…",
-      "hint": "미리보기는 저장하지 않고 클린 버전에 효과를 적용합니다."
-    },
-    "saveAs": {
-      "title": "사용자 정의 프리셋으로 저장",
-      "description": "현재 효과 체인을 기반으로 새 사용자 정의 프리셋을 만듭니다.",
-      "suggestedName": "{{name}} (복사본)"
-    },
-    "toast": {
-      "saved": "프리셋 저장됨",
-      "createdDescription": "\"{{name}}\"이(가) 생성되었습니다.",
-      "updated": "프리셋 업데이트됨",
-      "deleted": "프리셋 삭제됨",
-      "saveFailed": "저장 실패",
-      "deleteFailed": "삭제 실패",
-      "previewFailed": "미리보기 실패",
-      "nameRequired": "이름이 필요합니다"
-    },
-    "chain": {
-      "loadPreset": "프리셋 불러오기…",
-      "addEffect": "효과 추가…",
-      "clear": "초기화",
-      "enable": "활성화",
-      "disable": "비활성화",
-      "remove": "제거"
-    },
-    "types": {
-      "chorus": {
-        "label": "코러스 / 플랜저",
-        "params": {
-          "rate_hz": "LFO 속도 (Hz)",
-          "depth": "변조 깊이",
-          "feedback": "피드백 양",
-          "centre_delay_ms": "센터 딜레이 (ms)",
-          "mix": "Wet/dry 믹스"
-        }
-      },
-      "reverb": {
-        "label": "리버브",
-        "params": {
-          "room_size": "룸 크기",
-          "damping": "고주파 감쇠",
-          "wet_level": "Wet 레벨",
-          "dry_level": "Dry 레벨",
-          "width": "스테레오 폭"
-        }
-      },
-      "delay": {
-        "label": "딜레이",
-        "params": {
-          "delay_seconds": "딜레이 시간 (초)",
-          "feedback": "피드백 양",
-          "mix": "Wet/dry 믹스"
-        }
-      },
-      "compressor": {
-        "label": "컴프레서",
-        "params": {
-          "threshold_db": "임계값 (dB)",
-          "ratio": "압축 비율",
-          "attack_ms": "어택 시간 (ms)",
-          "release_ms": "릴리즈 시간 (ms)"
-        }
-      },
-      "gain": {
-        "label": "게인",
-        "params": {
-          "gain_db": "게인 (dB)"
-        }
-      },
-      "highpass": {
-        "label": "하이패스 필터",
-        "params": {
-          "cutoff_frequency_hz": "차단 주파수 (Hz)"
-        }
-      },
-      "lowpass": {
-        "label": "로우패스 필터",
-        "params": {
-          "cutoff_frequency_hz": "차단 주파수 (Hz)"
-        }
-      },
-      "pitch_shift": {
-        "label": "피치 시프트",
-        "params": {
-          "semitones": "변경할 반음 수"
-        }
-      }
-    },
-    "builtinPresets": {
-      "Robotic": {
-        "name": "로봇 음성",
-        "description": "금속성 로봇 음성 (느린 LFO와 높은 피드백의 플랜저)"
-      },
-      "Radio": {
-        "name": "라디오",
-        "description": "얇은 AM 라디오 음성 (대역통과 필터링 + 가벼운 압축)"
-      },
-      "Echo Chamber": {
-        "name": "에코 챔버",
-        "description": "트레일링 에코가 있는 공간감 있는 리버브"
-      },
-      "Deep Voice": {
-        "name": "깊은 목소리",
-        "description": "낮은 피치와 따뜻함이 더해진 음성"
-      }
-    }
-  },
-  "stories": {
-    "title": "스토리",
-    "newStory": "새 스토리",
-    "loading": "스토리 로딩 중…",
-    "searchPlaceholder": "스토리 검색…",
-    "empty": {
-      "title": "아직 스토리가 없습니다",
-      "hint": "첫 번째 스토리를 만들어 시작하세요",
-      "noMatches": "\"{{query}}\"와 일치하는 스토리가 없습니다"
-    },
-    "row": {
-      "itemCount_one": "항목 {{count}}개",
-      "itemCount_other": "항목 {{count}}개",
-      "ariaLabel": "스토리 {{name}}, 항목 {{count}}개, {{updated}}",
-      "actionsLabel": "{{name}}에 대한 작업"
-    },
-    "createDialog": {
-      "title": "새 스토리 만들기",
-      "description": "음성 생성물을 대화로 구성하는 새 스토리를 만듭니다.",
-      "action": "만들기",
-      "creating": "만드는 중…"
-    },
-    "editDialog": {
-      "title": "스토리 편집",
-      "description": "스토리 이름과 설명을 업데이트합니다.",
-      "saving": "저장 중…"
-    },
-    "deleteDialog": {
-      "title": "확실하신가요?",
-      "description": "이 스토리와 모든 항목이 영구적으로 삭제됩니다. 되돌릴 수 없습니다.",
-      "deleting": "삭제 중…"
-    },
-    "fields": {
-      "name": "이름",
-      "namePlaceholder": "내 스토리",
-      "descriptionLabel": "설명 (선택사항)",
-      "descriptionPlaceholder": "대화 내용…"
-    },
-    "toast": {
-      "nameRequired": "이름이 필요합니다",
-      "nameRequiredDescription": "스토리 이름을 입력해 주세요",
-      "created": "스토리 생성됨",
-      "createdDescription": "\"{{name}}\"이(가) 생성되었습니다",
-      "createFailed": "스토리 생성 실패",
-      "updateFailed": "스토리 업데이트 실패",
-      "deleteFailed": "스토리 삭제 실패"
-    }
-  },
-  "storyContent": {
-    "selectStory": {
-      "title": "스토리 선택",
-      "hint": "목록에서 스토리를 선택하여 내용을 확인하세요"
-    },
-    "loading": "스토리 로딩 중…",
-    "notFound": {
-      "title": "스토리를 찾을 수 없습니다",
-      "hint": "선택한 스토리를 불러올 수 없습니다"
-    },
-    "generatingCount_one": "오디오 {{count}}개 생성 중",
-    "generatingCount_other": "오디오 {{count}}개 생성 중",
-    "add": "추가",
-    "searchPlaceholder": "이름 또는 대본으로 검색…",
-    "searchNoMatches": "일치하는 생성물이 없습니다",
-    "searchNoAvailable": "사용 가능한 생성물이 없습니다",
-    "exportAudio": "오디오 내보내기",
-    "empty": {
-      "title": "이 스토리에 항목이 없습니다",
-      "hint": "아래 상자를 사용하여 음성을 생성하고 항목을 추가하세요"
-    },
-    "itemActions": {
-      "playFromHere": "여기서부터 재생",
-      "regenerate": "다시 생성",
-      "removeFromStory": "스토리에서 제거"
-    },
-    "importAudio": "오디오 가져오기…",
-    "importing": "가져오는 중…",
-    "dropToImport": "오디오를 드롭하여 가져오기",
-    "toast": {
-      "removeFailed": "항목 제거 실패",
-      "reorderFailed": "항목 순서 변경 실패",
-      "exportFailed": "오디오 내보내기 실패",
-      "addFailed": "생성물 추가 실패",
-      "regenerateFailed": "재생성 실패",
-      "importFailed": "오디오 가져오기 실패"
-    }
-  },
-  "history": {
-    "empty": "아직 생성된 음성이 없습니다…",
-    "actions": {
-      "menu": "작업",
-      "play": "재생",
-      "exportAudio": "오디오 내보내기",
-      "exportPackage": "패키지 내보내기",
-      "applyEffects": "효과 적용",
-      "regenerate": "다시 생성"
-    },
-    "deleteDialog": {
-      "title": "생성물 삭제",
-      "body": "\"{{name}}\"의 이 생성물을 삭제하시겠습니까? 되돌릴 수 없습니다.",
-      "deleting": "삭제 중…"
-    },
-    "clearFailedDialog": {
-      "title": "실패한 생성물 지우기",
-      "body_one": "실패한 생성물 {{count}}개가 영구적으로 삭제됩니다. 되돌릴 수 없습니다.",
-      "body_other": "실패한 생성물 {{count}}개가 영구적으로 삭제됩니다. 되돌릴 수 없습니다.",
-      "clearing": "지우는 중…",
-      "clearAll": "모두 지우기"
-    },
-    "importDialog": {
-      "title": "생성물 가져오기",
-      "body": "\"{{name}}\"의 생성물을 가져옵니다. 기록에 추가됩니다.",
-      "importing": "가져오는 중…",
-      "action": "가져오기"
-    },
-    "effectsDialog": {
-      "title": "효과 적용",
-      "body": "이 생성물에 적용할 후처리 효과를 구성합니다. 새 버전이 생성됩니다.",
-      "sourceLabel": "소스",
-      "sourcePlaceholder": "소스 버전 선택",
-      "apply": "적용",
-      "applying": "적용 중…"
-    }
-  },
-  "generation": {
-    "placeholder": {
-      "storyWithEffects": "\"{{name}}\"의 음성 생성… (/를 입력하면 효과)",
-      "story": "\"{{name}}\"의 음성 생성…",
-      "profile": "{{name}}로 음성 생성…",
-      "effectsHint": "/를 입력하여 [laugh], [sigh] 효과 추가…",
-      "selectVoice": "위에서 음성 프로필을 선택하세요…"
-    },
-    "button": {
-      "generate": "음성 생성",
-      "generating": "생성 중…",
-      "selectFirst": "먼저 음성 프로필을 선택하세요"
-    },
-    "instruct": {
-      "show": "전달 지시사항 보기",
-      "hide": "전달 지시사항 숨기기",
-      "tooltip": "전달 지시사항 (톤, 감정, 속도)",
-      "placeholder": "전달 지시사항 — 예: 천천히 따뜻하게 말하기, 권위적으로 명확하게…"
-    },
-    "voiceSelector": {
-      "placeholder": "음성 선택…"
-    },
-    "effects": {
-      "none": "효과 없음",
-      "profileDefault": "프로필 기본값"
-    },
-    "compose": {
-      "tooltip": "작성",
-      "ariaLabel": "캐릭터에 맞는 대사 작성",
-      "failedTitle": "작성 실패",
-      "failedDescription": "이 성격으로 텍스트를 생성할 수 없습니다."
-    },
-    "persona": {
-      "tooltipActive": "캐릭터로 말하는 중",
-      "tooltipInactive": "캐릭터로 말하기",
-      "ariaLabelActive": "캐릭터로 말하는 중",
-      "ariaLabelInactive": "캐릭터로 말하기"
-    }
-  },
-  "main": {
-    "importVoice": "음성 가져오기",
-    "createVoice": "음성 만들기",
-    "import": {
-      "invalidTitle": "잘못된 파일 형식",
-      "invalidDescription": "올바른 .voicebox.zip 파일을 선택해 주세요",
-      "successTitle": "프로필 가져오기 완료",
-      "successDescription": "음성 프로필을 성공적으로 가져왔습니다",
-      "failedTitle": "프로필 가져오기 실패",
-      "dialogTitle": "프로필 가져오기",
-      "dialogDescription": "\"{{name}}\"의 프로필을 가져옵니다. 모든 샘플이 포함된 새 프로필이 생성됩니다.",
-      "importing": "가져오는 중…",
-      "action": "가져오기"
-    }
-  },
   "settings": {
     "tabs": {
       "general": "일반",
-      "generation": "생성",
       "captures": "캡처",
-      "mcp": "MCP",
-      "gpu": "GPU",
       "logs": "로그",
       "changelog": "변경 내역",
       "about": "정보"
@@ -760,8 +171,6 @@
       }
     },
     "general": {
-      "docs": { "title": "문서 읽기" },
-      "discord": { "title": "Discord 참여하기", "subtitle": "도움말 & 음성 공유" },
       "serverUrl": {
         "title": "서버 URL",
         "description": "voicebox 백엔드 서버 주소입니다.",
@@ -822,55 +231,9 @@
         "description": "<code>{{url}}</code>에서 REST API를 통해 Voicebox를 워크플로우에 통합하세요.",
         "viewReference": "전체 API 참조 보기",
         "endpoints": {
-          "generate": "음성 생성",
           "health": "서버 상태",
-          "profiles": "음성 목록",
-          "history": "과거 생성물"
-        }
-      }
-    },
-    "generation": {
-      "title": "생성",
-      "description": "긴 텍스트 생성 설정입니다. 모든 엔진에 적용됩니다.",
-      "chunkLimit": {
-        "title": "자동 청크 분할 한도",
-        "description": "긴 텍스트는 문장 경계에서 청크로 분할됩니다. 값을 낮추면 긴 출력의 품질이 향상될 수 있습니다.",
-        "value": "{{chars}}자"
-      },
-      "crossfade": {
-        "title": "청크 크로스페이드",
-        "description": "청크 간 오디오를 블렌딩하여 전환을 부드럽게 합니다. 0으로 설정하면 하드 컷됩니다.",
-        "cut": "컷",
-        "ms": "{{ms}}ms"
-      },
-      "normalize": {
-        "title": "오디오 노멀라이즈",
-        "description": "출력 볼륨을 생성물 간에 일관된 레벨로 조정합니다."
-      },
-      "autoplay": {
-        "title": "생성 시 자동 재생",
-        "description": "생성이 완료되면 자동으로 오디오를 재생합니다."
-      },
-      "folder": {
-        "title": "생성물 폴더",
-        "description": "생성된 오디오 파일이 저장되는 위치입니다.",
-        "open": "열기"
-      },
-      "sidebar": {
-        "aboutTitle": "음성 생성 정보",
-        "aboutBody": "짧은 샘플로 음성을 복제하고, 모든 언어로 모든 음성으로 음성을 생성하세요. TTS를 AI 에이전트, 게임, 팟캐스트, 장편 내레이션에 적용하세요.",
-        "differencesTitle": "차이점",
-        "clone": {
-          "title": "몇 초 만에 음성 복제.",
-          "body": "몇 초의 참조 오디오면 충분합니다. 원할 경우 여러 샘플로 더 높은 품질 지원."
-        },
-        "engines": {
-          "title": "7개 엔진, 23개 언어.",
-          "body": "품질, 속도, 다국어 지원 중 원하는 트레이드오프를 선택하세요."
-        },
-        "agentReady": {
-          "title": "에이전트 지원.",
-          "body": "프로필별 제어가 가능한 REST API — 복제한 음성으로 모든 AI에 목소리를 주세요."
+          "captures": "캡처 목록",
+          "createCapture": "오디오 업로드 후 받아쓰기"
         }
       }
     },
@@ -979,17 +342,6 @@
           "description": "코드 식별자, 명령 이름, 약어를 말한 그대로 유지합니다. 코드 프롬프트에 받아쓰기할 때 켜세요."
         }
       },
-      "playback": {
-        "title": "재생",
-        "description": "캡처 탭의 \\\"Play as\\\" 작업에 사용할 기본 음성입니다.",
-        "defaultVoice": {
-          "title": "기본 음성",
-          "description": "음성을 먼저 선택하지 않고 Play as를 클릭할 때 사용됩니다. 캡처별로 변경할 수 있습니다.",
-          "noClonedVoices": "아직 복제된 음성이 없습니다",
-          "noneSelected": "선택 안 됨",
-          "clonedVoices": "복제된 음성"
-        }
-      },
       "storage": {
         "title": "저장소",
         "description": "캡처는 Voicebox 데이터 디렉토리에 오디오와 대본 파일 쌍으로 저장됩니다.",
@@ -1009,15 +361,11 @@
       },
       "sidebar": {
         "aboutTitle": "캡처 정보",
-        "aboutBody": "어디서든 단축키를 누르고 말하면 Voicebox가 음성을 텍스트로 변환합니다. 복제된 음성으로 재생하고, 앱에 붙여넣고, 코딩 에이전트로 보내세요.",
+        "aboutBody": "어디서든 단축키를 누르고 말하면 Voicebox가 음성을 텍스트로 변환합니다. 앱에 붙여넣거나 코딩 에이전트로 보내세요.",
         "differencesTitle": "차이점",
         "local": {
           "title": "완전 로컬.",
           "body": "Whisper와 정제 LLM이 기기에서 실행됩니다. 클라우드 없음, 계정 없음, 음성이 기기를 떠나지 않습니다."
-        },
-        "playAs": {
-          "title": "모든 음성으로 재생.",
-          "body": "복제한 모든 프로필로 대본을 읽을 수 있습니다."
         },
         "crossPlatform": {
           "title": "크로스 플랫폼.",
@@ -1027,135 +375,6 @@
           "title": "Windows 참고사항",
           "body": "Voicebox 자체 또는 관리자 권한으로 실행 중인 앱이 포커스된 경우 단축키가 작동하지 않습니다. 개선 중입니다."
         }
-      }
-    },
-    "mcp": {
-      "install": {
-        "title": "에이전트에 설치",
-        "description": "Voicebox는 앱이 열려 있을 때 로컬 MCP 서버를 제공합니다. 다음 중 하나를 에이전트의 MCP 설정에 붙여넣으세요.",
-        "http": {
-          "title": "HTTP (권장)",
-          "description": "HTTP MCP를 사용하는 클라이언트용 — Claude Code, Cursor, Windsurf, VS Code."
-        },
-        "claudeCode": {
-          "title": "Claude Code 원라인",
-          "description": "Claude Code CLI를 통해 등록합니다."
-        },
-        "stdio": {
-          "title": "Stdio (대체)",
-          "description": "stdio 프로세스만 실행하는 클라이언트용. shim 바이너리가 앱에 포함되어 있습니다."
-        },
-        "copy": "복사",
-        "copied": "복사됨"
-      },
-      "defaultVoice": {
-        "title": "기본 음성",
-        "description": "에이전트가 특정 프로필 없이 voicebox.speak를 호출하고 클라이언트별 바인딩도 없을 때 사용됩니다.",
-        "label": "기본 재생 음성",
-        "labelHint": "캡처 탭의 'Play as 음성' 드롭다운과 공유 — 수동 재생용 기본 음성입니다.",
-        "none": "(없음)"
-      },
-      "bindings": {
-        "title": "에이전트별 음성",
-        "description": "특정 에이전트를 특정 음성에 바인딩하여 누가 말하는지 바로 알 수 있습니다. 에이전트는 X-Voicebox-Client-Id 헤더(또는 stdio용 VOICEBOX_CLIENT_ID 환경변수)로 자신을 식별합니다.",
-        "empty": "아직 바인딩이 없습니다. 아래에서 추가한 후 MCP 클라이언트가 일치하는 <code>X-Voicebox-Client-Id</code>를 보내도록 설정하세요.",
-        "lastSeen": "마지막 접속 {{when}}",
-        "lastSeenTitle": "마지막 접속 {{when}}",
-        "neverConnected": "연결된 적 없음",
-        "defaultOption": "(기본값)",
-        "removeAria": "{{client}} 바인딩 제거",
-        "add": {
-          "title": "바인딩 추가",
-          "clientIdPlaceholder": "클라이언트 ID (예: claude-code)",
-          "labelPlaceholder": "레이블 (선택사항)",
-          "action": "바인딩 추가"
-        }
-      },
-      "sidebar": {
-        "aboutTitle": "MCP 정보",
-        "aboutBody": "Model Context Protocol을 통해 AI 코딩 에이전트(Claude Code, Cursor, Windsurf)가 Voicebox 도구를 호출할 수 있습니다. 복제된 음성으로 말하고, 오디오를 변환하고, 캡처를 탐색하세요.",
-        "toolsTitle": "사용 가능한 도구",
-        "tools": {
-          "speak": "음성 프로필로 텍스트 읽기.",
-          "transcribe": "Whisper STT로 클립 변환.",
-          "listCaptures": "최근 받아쓰기/녹음 목록.",
-          "listProfiles": "사용 가능한 음성 프로필 목록."
-        },
-        "postSpeak": "쉘 스크립트, ACP, A2A용 <code>POST /speak</code>로도 제공됩니다."
-      }
-    },
-    "gpu": {
-      "cpuOnly": "CPU 전용",
-      "vramUsed": "VRAM {{mb}} MB",
-      "noAcceleration": "GPU 가속이 감지되지 않았습니다",
-      "active": "활성",
-      "cuda": {
-        "title": "CUDA 백엔드",
-        "activeTitle": "CUDA 백엔드 활성",
-        "description": "다운로드 가능한 CUDA 백엔드를 통한 NVIDIA GPU 가속.",
-        "downloading": "CUDA 백엔드 다운로드 중…",
-        "downloadingShort": "다운로드 중…",
-        "updating": "업데이트 중…"
-      },
-      "activeBackend": {
-        "description": "GPU 가속이 현재 활성화되어 있습니다."
-      },
-      "restart": {
-        "ready": "서버가 성공적으로 재시작되었습니다",
-        "waiting": "서버 재시작 중…",
-        "stopping": "서버 중지 중…"
-      },
-      "download": {
-        "title": "CUDA 백엔드 다운로드",
-        "description": "~2.4 GB 다운로드. NVIDIA GPU와 CUDA 지원이 필요합니다.",
-        "button": "다운로드"
-      },
-      "switchToCuda": {
-        "title": "CUDA 백엔드로 전환",
-        "description": "CUDA 백엔드가 다운로드되어 준비되었습니다. 재시작하여 활성화하세요.",
-        "button": "재시작"
-      },
-      "switchToCpu": {
-        "title": "CPU 백엔드로 전환",
-        "description": "GPU 가속을 비활성화합니다. 나중에 CUDA를 다시 다운로드할 수 있습니다.",
-        "button": "전환"
-      },
-      "remove": {
-        "title": "CUDA 백엔드 제거",
-        "description": "다운로드된 CUDA 바이너리를 삭제하여 디스크 공간을 확보합니다.",
-        "button": "제거"
-      },
-      "errors": {
-        "downloadFailed": "다운로드 실패",
-        "downloadStart": "다운로드 시작 실패",
-        "restartFailed": "재시작 실패",
-        "switchCpu": "CPU 전환 실패",
-        "deleteCuda": "CUDA 백엔드 삭제 실패",
-        "deleteRocm": "ROCm 백엔드 삭제 실패"
-      },
-      "footer": "Voicebox는 시스템에서 사용 가능한 최고의 GPU를 자동으로 감지하여 사용합니다. Apple Silicon Mac에서는 Metal Performance Shaders(MPS)를 통해 MLX 백엔드가 Neural Engine과 GPU에서 기본 실행되며 추가 설정이 필요하지 않습니다. Windows에서는 선택적 CUDA(NVIDIA) 또는 ROCm(AMD) 백엔드를 다운로드하여 하드웨어 가속 추론을 사용할 수 있습니다. Intel XPU와 DirectML도 PyTorch를 통해 지원됩니다. GPU가 감지되지 않으면 Voicebox가 CPU로 대체됩니다 — 모든 엔진이 작동하지만 더 느립니다.",
-      "rocm": {
-        "title": "AMD ROCm 백엔드",
-        "activeTitle": "ROCm 백엔드 활성",
-        "description": "다운로드 가능한 ROCm 백엔드를 통한 AMD GPU 가속.",
-        "downloading": "ROCm 백엔드 다운로드 중…",
-        "downloadingShort": "다운로드 중…",
-        "updating": "업데이트 중…"
-      },
-      "downloadRocm": {
-        "title": "AMD ROCm 백엔드 다운로드",
-        "description": "약 2~3GB를 다운로드합니다. ROCm을 지원하는 AMD Radeon GPU가 필요합니다.",
-        "button": "다운로드"
-      },
-      "switchToRocm": {
-        "title": "ROCm 백엔드로 전환",
-        "description": "ROCm 백엔드가 다운로드되어 준비되었습니다. 활성화하려면 재시작하세요.",
-        "button": "재시작"
-      },
-      "removeRocm": {
-        "title": "ROCm 백엔드 제거",
-        "description": "다운로드된 ROCm 바이너리를 삭제하여 디스크 공간을 확보합니다.",
-        "button": "제거"
       }
     },
     "logs": {
@@ -1173,7 +392,7 @@
       "showMore": "더 보기"
     },
     "about": {
-      "tagline": "오픈소스 음성 합성 스튜디오. 음성 복제, 음성 생성, 효과 적용, 음성 기반 앱 구축 — 모두 기기에서 로컬로 실행됩니다.",
+      "tagline": "macOS용 로컬 받아쓰기. 어디서든 말하면 내 말투 그대로 바로 보낼 수 있는 깔끔한 텍스트가 됩니다 — 모두 기기에서 로컬로 실행됩니다.",
       "createdBy": "만든 사람",
       "buyCoffee": "커피 한 잔 사주기",
       "license": "<link>MIT</link> 라이선스"
@@ -1181,11 +400,10 @@
   },
   "models": {
     "title": "모델",
-    "subtitle": "음성 생성 및 변환을 위한 AI 모델 다운로드 및 관리",
+    "subtitle": "받아쓰기 및 텍스트 정리를 위한 AI 모델 다운로드 및 관리",
     "defaultName": "모델",
     "unknownSize": "알 수 없는 크기",
     "sections": {
-      "voiceGeneration": "음성 생성",
       "transcription": "변환",
       "languageModels": "언어 모델"
     },

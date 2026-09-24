@@ -7,23 +7,15 @@ import {
 } from '@tanstack/react-router';
 import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { CapturesTab } from '@/components/CapturesTab/CapturesTab';
-import { EffectsTab } from '@/components/EffectsTab/EffectsTab';
-import { MainEditor } from '@/components/MainEditor/MainEditor';
 import { ModelsTab } from '@/components/ModelsTab/ModelsTab';
 import { AboutPage } from '@/components/ServerTab/AboutPage';
 import { CapturesPage } from '@/components/ServerTab/CapturesPage';
 import { ChangelogPage } from '@/components/ServerTab/ChangelogPage';
 import { GeneralPage } from '@/components/ServerTab/GeneralPage';
-import { GenerationPage } from '@/components/ServerTab/GenerationPage';
-import { GpuPage } from '@/components/ServerTab/GpuPage';
 import { LogsPage } from '@/components/ServerTab/LogsPage';
-import { MCPPage } from '@/components/ServerTab/MCPPage';
 import { SettingsLayout } from '@/components/ServerTab/ServerTab';
 import { Sidebar } from '@/components/Sidebar';
-import { StoriesTab } from '@/components/StoriesTab/StoriesTab';
 import { Toaster } from '@/components/ui/toaster';
-import { VoicesTab } from '@/components/VoicesTab/VoicesTab';
-import { useGenerationProgress } from '@/lib/hooks/useGenerationProgress';
 import { useModelDownloadToast } from '@/lib/hooks/useModelDownloadToast';
 import { MODEL_DISPLAY_NAMES, useRestoreActiveTasks } from '@/lib/hooks/useRestoreActiveTasks';
 
@@ -32,11 +24,8 @@ const isMacOS = () => navigator.platform.toLowerCase().includes('mac');
 
 // Root layout component
 function RootLayout() {
-  // Monitor active downloads/generations and show toasts for them
+  // Monitor active model downloads and show toasts for them
   const activeDownloads = useRestoreActiveTasks();
-
-  // Subscribe to SSE for pending generations — handles completion, auto-play, and history refresh
-  useGenerationProgress();
 
   return (
     <AppFrame>
@@ -92,39 +81,20 @@ const rootRoute = createRootRoute({
   component: RootLayout,
 });
 
-// Index route (main/generate)
+// Index route — dictation is the whole app, so land on Captures.
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: MainEditor,
+  beforeLoad: () => {
+    throw redirect({ to: '/captures' });
+  },
 });
 
-// Stories route
-const storiesRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/stories',
-  component: StoriesTab,
-});
-
-// Voices route
-const voicesRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/voices',
-  component: VoicesTab,
-});
-
-// Captures route (prototype — will replace AudioTab once the new flow is ready)
+// Captures route
 const capturesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/captures',
   component: CapturesTab,
-});
-
-// Effects route
-const effectsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/effects',
-  component: EffectsTab,
 });
 
 // Models route
@@ -148,28 +118,10 @@ const settingsGeneralRoute = createRoute({
   component: GeneralPage,
 });
 
-const settingsGenerationRoute = createRoute({
-  getParentRoute: () => settingsRoute,
-  path: '/generation',
-  component: GenerationPage,
-});
-
 const settingsCapturesRoute = createRoute({
   getParentRoute: () => settingsRoute,
   path: '/captures',
   component: CapturesPage,
-});
-
-const settingsMCPRoute = createRoute({
-  getParentRoute: () => settingsRoute,
-  path: '/mcp',
-  component: MCPPage,
-});
-
-const settingsGpuRoute = createRoute({
-  getParentRoute: () => settingsRoute,
-  path: '/gpu',
-  component: GpuPage,
 });
 
 const settingsChangelogRoute = createRoute({
@@ -202,17 +154,11 @@ const serverRedirectRoute = createRoute({
 // Route tree
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  storiesRoute,
   capturesRoute,
-  voicesRoute,
-  effectsRoute,
   modelsRoute,
   settingsRoute.addChildren([
     settingsGeneralRoute,
-    settingsGenerationRoute,
     settingsCapturesRoute,
-    settingsMCPRoute,
-    settingsGpuRoute,
     settingsLogsRoute,
     settingsChangelogRoute,
     settingsAboutRoute,
