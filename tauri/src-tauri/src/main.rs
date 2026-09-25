@@ -744,8 +744,8 @@ async fn restart_server(
 
 /// Identifier of the Voicebox app itself — used to short-circuit auto-paste
 /// when the user fires a chord while focus was inside one of our own
-/// windows. Paste into Voicebox-internal targets is step 6 territory and
-/// goes through a different (JS-side) injection path.
+/// windows. Dictation into Voicebox goes through the main window's DOM
+/// instead (`dictation::insert_in_app`).
 ///
 /// Value matches the reverse-DNS bundle id `focus_capture::capture_focus`
 /// writes into `FocusSnapshot::bundle_id`.
@@ -962,9 +962,8 @@ fn open_input_monitoring_settings(app: tauri::AppHandle) -> Result<(), String> {
 /// clipboard stuck on the transcript.
 ///
 /// Skips (returns `false`) without touching anything when:
-/// - `focus.bundle_id` is Voicebox itself — step 6 will inject directly
-///   into our own webview; pasting would just double-insert or miss the
-///   real target.
+/// - `focus.bundle_id` is Voicebox itself — native dictation inserts into
+///   our own webview through the DOM (`dictation::insert_in_app`).
 /// - Accessibility is not trusted — `CGEventPost` would silently drop the
 ///   keystroke, leaving the user's clipboard clobbered with nothing to
 ///   show for it.

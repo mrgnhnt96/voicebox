@@ -25,7 +25,7 @@ use std::sync::{mpsc as std_mpsc, Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Listener, Manager};
 
 use crate::focus_capture::FocusSnapshot;
 use crate::DICTATE_WINDOW_LABEL;
@@ -41,6 +41,10 @@ pub const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:17493";
 /// server's own pending-audio bound. Beyond it the take uses the batch path.
 const MAX_PENDING_BYTES: usize = 48_000 * 2 * 60;
 const LEARNING_PAUSE_INTERVAL: Duration = Duration::from_secs(30);
+/// Label of Voicebox's main window (Tauri's default for the configured one).
+const MAIN_WINDOW_LABEL: &str = "main";
+/// How long the main window has to report an in-app insertion.
+const IN_APP_INSERT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Where and how to capture. Pushed by the dictate webview, which owns the
 /// server URL and capture settings.
@@ -240,6 +244,38 @@ fn target_app(focus: &Mutex<Option<FocusSnapshot>>) -> Option<TargetApp> {
         bundle_id: focus.bundle_id,
         name: focus.app_name,
     })
+}
+
+/// Type `text` into the field focused in Voicebox's own window, for a
+/// shortcut take whose target is Voicebox (a correction, for example).
+/// Synthetic ⌘V and Accessibility insertion are aimed at other apps; the
+/// main window inserts through the DOM instead, so React sees the edit.
+async fn insert_in_app(app: &AppHandle, take_id: u64, text: String) -> Result<bool, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+    let tx = Mutex::new(Some(tx));
+    let listener = app.listen("dictation:inserted", move |event| {
+        let Ok(reply) = serde_json::from_str::<Value>(event.payload()) else {
+            return;
+        };
+        if reply.get("take").and_then(Value::as_u64) != Some(take_id) {
+            return;
+        }
+        let inserted = reply.get("inserted").and_then(Value::as_bool) == Some(true);
+        if let Some(tx) = tx.lock().ok().and_then(|mut slot| slot.take()) {
+            let _ = tx.send(inserted);
+        }
+    });
+    let payload = serde_json::json!({ "take": take_id, "text": text });
+    let result = match app.emit_to(MAIN_WINDOW_LABEL, "dictation:insert", payload) {
+        Ok(()) => Ok(tokio::time::timeout(IN_APP_INSERT_TIMEOUT, rx)
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or(false)),
+        Err(e) => Err(format!("Could not reach the Voicebox window: {e}")),
+    };
+    app.unlisten(listener);
+    result
 }
 
 /// Record the paste target for a take (captured right after [`start`], so
@@ -452,6 +488,8 @@ impl TakeEnv for AppEnv {
         let prepared = self.clipboard.lock().ok().and_then(|mut c| c.take());
         let pastes = self.pastes;
         let live = self.live.clone();
+        let app = self.app.clone();
+        let take_id = self.take_id;
         async move {
             if !pastes {
                 // Started from Voicebox itself: the capture is the result.
@@ -462,6 +500,9 @@ impl TakeEnv for AppEnv {
                 return result;
             }
             match focus {
+                Some(focus) if focus.bundle_id.as_deref() == Some(crate::VOICEBOX_BUNDLE_ID) => {
+                    insert_in_app(&app, take_id, text).await
+                }
                 Some(focus) => crate::paste_final_text_with(text, focus, prepared).await,
                 None => Err(delivery::NO_FOCUS_MESSAGE.to_string()),
             }

@@ -7,8 +7,9 @@ import { TitleBarDragRegion } from '@/components/TitleBarDragRegion';
 import { useThemeSync } from '@/hooks/useThemeSync';
 import { apiClient } from '@/lib/api/client';
 import type { HealthResponse } from '@/lib/api/types';
-import { useChordSync } from '@/lib/hooks/useChordSync';
 import { TOP_SAFE_AREA_PADDING } from '@/lib/constants/ui';
+import { useChordSync } from '@/lib/hooks/useChordSync';
+import { useInAppDictationInsert } from '@/lib/hooks/useInAppDictationInsert';
 import { cn } from '@/lib/utils/cn';
 import { usePlatform } from '@/platform/PlatformContext';
 import { router } from '@/router';
@@ -81,6 +82,8 @@ function MainApp() {
   // Replay the saved chord into the Rust hotkey listener every time
   // capture_settings resolves or the user edits the chord.
   useChordSync();
+  // Dictation into Voicebox's own fields arrives here instead of as a paste.
+  useInAppDictationInsert();
 
   // Setup lifecycle callbacks
   useEffect(() => {
