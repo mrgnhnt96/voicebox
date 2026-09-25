@@ -89,6 +89,16 @@ class SpeechDetector:
         low, high = start * RATE / self.rate, end * RATE / self.rate
         return any(low < offset + WINDOW and offset < high for offset in self.voiced)
 
+    def quiet(self) -> int:
+        """Source samples since the last voice, over the audio run so far.
+
+        0 when the model can't be loaded, so no pause is ever found.
+        """
+        if self.session is None:
+            return 0
+        last = self.voiced[-1] + WINDOW if self.voiced else 0
+        return round((self.analyzed - last) * self.rate / RATE)
+
     def _probability(self, window: np.ndarray) -> float:
         frame = np.concatenate([self.context, window])[np.newaxis]
         probability, self.state = self.session.run(

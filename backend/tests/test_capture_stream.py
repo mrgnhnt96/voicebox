@@ -34,6 +34,9 @@ class HeardWhenLoud:
     def heard(self, start, end):
         return any(low < end and start < high for low, high in self.loud)
 
+    def quiet(self):
+        return self.samples - (self.loud[-1][1] if self.loud else 0)
+
 
 def make_session(tmp_path, monkeypatch, **settings):
     monkeypatch.setattr(config, "_data_dir", tmp_path)
@@ -272,6 +275,30 @@ async def test_a_take_with_noise_but_no_voice_never_reaches_whisper(tmp_path, mo
     await session.run()
     assert session.raw == ""
     stt.transcribe_array.assert_not_awaited()
+    session.close()
+
+
+class VoiceBetween(HeardWhenLoud):
+    """Hears a voice only between the given sample offsets, however loud the rest is."""
+
+    def __init__(self, rate, spans):
+        super().__init__(rate)
+        self.spans = spans
+
+    def quiet(self):
+        ended = [end for start, end in self.spans if start < self.samples]
+        return self.samples - min(max(ended, default=0), self.samples)
+
+
+def test_a_pause_under_a_loud_hum_still_ends_a_phrase(tmp_path, monkeypatch):
+    # A fan's hum measured ~1000 RMS on the user's microphone, as loud as their
+    # voice, so the audio never got quiet enough to count as a pause.
+    session, _ = make_session(tmp_path, monkeypatch)
+    rate = session.rate
+    session.speech = VoiceBetween(rate, [(0, 2 * rate), (3 * rate, 5 * rate)])
+    for _ in range(50):
+        append(session, 0.1, amplitude=1000)
+    assert session.cuts == [round(2.7 * rate)]
     session.close()
 
 

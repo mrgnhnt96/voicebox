@@ -61,8 +61,24 @@ def test_streamed_audio_says_where_the_voice_was(rate):
     assert not detector.heard(len(audio) - rate // 2, len(audio))
 
 
+def test_quiet_counts_the_audio_since_the_last_voice():
+    rate = 16000
+    detector = SpeechDetector(rate)
+    detector.feed(np.zeros(rate, dtype=np.int16))
+    assert detector.quiet() >= rate * 0.95  # all but a partial window
+    detector.feed(voice(1.5)[::3])
+    after_voice = detector.quiet()
+    assert after_voice < rate * 1.5  # counted from the voice, not the start
+    detector.feed(np.zeros(rate, dtype=np.int16))
+    assert abs(detector.quiet() - after_voice - rate) <= speech_detect.WINDOW
+
+
 def test_without_the_model_everything_counts_as_speech(monkeypatch):
     monkeypatch.setattr(speech_detect, "_session", None)
     monkeypatch.setattr(speech_detect, "_unavailable", True)
     assert has_speech(np.zeros(RATE, dtype=np.int16), RATE)
     assert SpeechDetector(RATE).heard(0, RATE)
+    # And no pause is ever found, so phrases are all recognized at finish.
+    detector = SpeechDetector(RATE)
+    detector.feed(np.zeros(RATE, dtype=np.int16))
+    assert detector.quiet() == 0

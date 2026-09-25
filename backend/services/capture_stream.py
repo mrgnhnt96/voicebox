@@ -136,7 +136,6 @@ class StreamingCapture:
         self.offset = 0
         self.samples = 0
         self.sequence = 0
-        self.silence = 0
         self.last_cut = 0
         self.revision = 0
         self.covered = 0
@@ -211,14 +210,12 @@ class StreamingCapture:
             return
         self.pending.extend(pcm)
         self.peak_backlog = max(self.peak_backlog, len(self.pending) / (self.rate * 2))
-        # A conservative energy gate avoids treating ordinary short gaps as a
-        # phrase boundary. It does not suppress audio from the recognizer.
-        rms = float(np.sqrt(np.mean(np.frombuffer(pcm, dtype="<i2").astype(np.float32) ** 2)))
-        self.silence = self.silence + count if rms < 250 else 0
-        if self.samples - self.last_cut >= self.rate * 2 and self.silence >= self.rate * 0.7:
+        # A phrase ends at 0.7 s without a voice. Loudness can't tell: a fan's
+        # hum on one microphone is as loud as speech on another, and it never
+        # let a pause register. Nothing is removed from the recognizer's audio.
+        if self.samples - self.last_cut >= self.rate * 2 and self.speech.quiet() >= self.rate * 0.7:
             self.cuts.append(self.samples)
             self.last_cut = self.samples
-            self.silence = 0
         self.wake.set()
 
     def _spent(self, stage: str, started: float) -> None:
