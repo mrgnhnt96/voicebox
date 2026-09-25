@@ -217,3 +217,28 @@ async def test_a_stopped_cleanup_is_redone_when_the_rest_was_only_noise(tmp_path
     session.close()
     assert stops[0].is_set()
     assert session.refined == "First part."
+
+
+@pytest.mark.asyncio
+async def test_each_cleanup_is_told_what_the_tail_cleaned_to_last_time(tmp_path, monkeypatch):
+    hints = []
+    outputs = {
+        "the fix is merged we are waiting on": "The fix is merged. We are waiting on.",
+        "we are waiting on QA": "We are waiting on QA.",
+        "we are waiting on QA today.": "We are waiting on QA today.",
+    }
+
+    async def refine(prompt, flags, model_size=None):
+        hints.append(qwen_llm_backend.generation_hint.get())
+        return outputs[prompt], "4B"
+
+    session, _ = refining_session(tmp_path, monkeypatch, refine)
+    await session.accept("the fix is merged we are waiting on-", paused=True)
+    await session.accept("QA.", paused=True)
+    session.finish()
+    await session.accept("today.")
+    await session.run()
+    session.close()
+    # Most of each cleanup repeats the last one, which the model checks in
+    # large steps instead of generating again.
+    assert hints == ["", "We are waiting on.", "We are waiting on QA."]

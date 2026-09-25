@@ -9,6 +9,12 @@ Whisper is given the earlier text when it recognizes a phrase, so the casing of
 its first word says whether the speaker continued the sentence. A capitalized
 first word is only treated as a new sentence when it is a common sentence
 opener; anything else is assumed to be a name continuing the sentence.
+
+Streaming cleanup now sees a whole open sentence at a time
+(sentence_tail.py), so joins happen only where a long tail is settled
+mid-sentence. Before cleanup, ``strip_pause_mark`` and ``continue_phrase``
+remove the ending and capital Whisper gives a phrase only because the audio
+paused.
 """
 
 import re

@@ -36,7 +36,7 @@ import wave
 import numpy as np
 
 from .. import config, models
-from ..backends.qwen_llm_backend import generation_listener, generation_stop
+from ..backends.qwen_llm_backend import generation_hint, generation_listener, generation_stop
 from ..database import Capture
 from .captures import _to_response
 from .content_check import Verdict, check_refinement, summarize_reviews
@@ -439,6 +439,7 @@ class StreamingCapture:
         settled, gap, raw, reviews = self.last_settle
         self.settled, self.settled_gap, self.settled_reviews = settled, gap, reviews
         self.tail_raw = f"{raw} {self.tail_raw}".strip()
+        self.tail_cleaned = ""
         self.last_settle = None
 
     def settle(self, text, raw, gap):
@@ -461,14 +462,16 @@ class StreamingCapture:
         if self.finished:
             self.release_tail_words = len(prompt.split())
         started = time.monotonic()
-        token = generation_stop.set(stop)
+        # The last cleanup of this tail: most of the new one repeats it.
+        tokens = generation_stop.set(stop), generation_hint.set(self.tail_cleaned)
         try:
             async with self.streaming_cleanup(prompt):
                 refined, self.llm_model = await refine_transcript(
                     prompt, self.flags, model_size=self.settings.llm_model
                 )
         finally:
-            generation_stop.reset(token)
+            generation_stop.reset(tokens[0])
+            generation_hint.reset(tokens[1])
             self.stop_cleanup = None
             self._spent("refine", started)
         if stop is not None and stop.is_set():
