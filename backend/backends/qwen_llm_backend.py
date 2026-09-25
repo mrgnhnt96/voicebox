@@ -6,6 +6,7 @@ STT engine.
 """
 
 import logging
+import threading
 import time
 from contextvars import ContextVar
 from typing import Callable, Optional
@@ -24,6 +25,12 @@ logger = logging.getLogger(__name__)
 generation_listener: ContextVar[Optional[Callable[[str], None]]] = ContextVar(
     "generation_listener", default=None
 )
+
+# Set around a generate call to end it early: generation stops before the next
+# token once the event is set, and returns the text so far. Streaming dictation
+# sets it when a cleanup started while speaking is superseded at release, so
+# the final cleanup doesn't wait for work it would throw away.
+generation_stop: ContextVar[Optional[threading.Event]] = ContextVar("generation_stop", default=None)
 
 
 MLX_HF_REPOS = {
@@ -86,6 +93,7 @@ class MLXQwenLLMBackend:
         self._prompt_cache = None
         self._cached_tokens: list[int] = []
         self._listener: Optional[Callable[[str], None]] = None
+        self._stop: Optional[threading.Event] = None
 
     def is_loaded(self) -> bool:
         return self.model is not None
@@ -178,6 +186,7 @@ class MLXQwenLLMBackend:
         adapter_path: Optional[str] = None,
     ) -> str:
         listener = generation_listener.get()
+        stop = generation_stop.get()
 
         # Load-if-needed and inference run as one job on the MLX worker so a
         # concurrent unload or different-size load can't land between them.
@@ -187,10 +196,12 @@ class MLXQwenLLMBackend:
                 self._adapter_path = adapter_path
             self._ensure_loaded_sync(model_size)
             self._listener = listener
+            self._stop = stop
             try:
                 return self._generate_sync(prompt, system, max_tokens, temperature, examples)
             finally:
                 self._listener = None
+                self._stop = None
 
         return await run_on_mlx_thread(_load_and_generate)
 
@@ -238,6 +249,11 @@ class MLXQwenLLMBackend:
                     self._listener(text)
                 except Exception:
                     logger.debug("Generation listener failed", exc_info=True)
+            if self._stop is not None and self._stop.is_set():
+                # Every token yielded so far has been fed to the model, so the
+                # cache still holds exactly tokens + generated.
+                logger.info("Qwen3 generate: stopped after %d tokens", len(generated))
+                break
         self._cached_tokens = tokens + generated
         logger.info(
             "Qwen3 generate: reused %d/%d prompt tokens, %d generated in %.3fs",

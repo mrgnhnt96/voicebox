@@ -80,3 +80,23 @@ async def test_a_failing_listener_never_breaks_generation(monkeypatch):
         assert await backend.generate("hi", model_size="0.6B") == "Hi."
     finally:
         qwen_llm_backend.generation_listener.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_a_set_stop_flag_ends_generation_between_tokens(monkeypatch):
+    backend = backend_with_fakes(monkeypatch, ["One", " two", " three", " four"])
+    stop = threading.Event()
+
+    def listener(text):
+        if text == "One two":
+            stop.set()
+
+    tokens = qwen_llm_backend.generation_listener.set(listener), qwen_llm_backend.generation_stop.set(stop)
+    try:
+        result = await backend.generate("one two three four", model_size="0.6B")
+    finally:
+        qwen_llm_backend.generation_listener.reset(tokens[0])
+        qwen_llm_backend.generation_stop.reset(tokens[1])
+    assert result == "One two"
+    # The prompt cache still describes exactly what the model saw.
+    assert backend._cached_tokens == [*[ord(c) for c in "one two three four"], 0, 1]
