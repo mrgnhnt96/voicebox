@@ -7,7 +7,7 @@ import { useServerHealth } from '@/lib/hooks/useServer';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
 import { useWritingStyle } from '@/lib/hooks/useWritingStyle';
 import { cn } from '@/lib/utils/cn';
-import { formatDuration } from '@/lib/utils/duration';
+import { serverStats } from '@/lib/utils/serverStats';
 import { usePlatform } from '@/platform/PlatformContext';
 
 /**
@@ -178,24 +178,10 @@ function Permission({
   );
 }
 
-/** "Running for 2h 14m" and what the server is, for the hover tip. */
+/** "Running for: 2h 14m" and the rest of what the server is, for the hover tip. */
 function serverDetails(health: HealthResponse): string {
-  const lines = [
-    health.started_at
-      ? `Running for ${formatDuration(Date.now() / 1000 - health.started_at)}`
-      : 'Running',
-    health.version && `Voicebox server ${health.version}`,
-    health.gpu_type,
-    health.model_loaded
-      ? `Whisper ${health.model_size ?? ''} in memory`.replace('  ', ' ')
-      : 'Whisper not loaded',
-    health.peak_memory_mb && `Peak memory ${formatMemory(health.peak_memory_mb)}`,
-    health.pid && `Process ${health.pid}`,
+  return [
+    ...serverStats(health).map((stat) => `${stat.label}: ${stat.value}`),
     'Click for server settings.',
-  ];
-  return lines.filter(Boolean).join('\n');
-}
-
-function formatMemory(mb: number): string {
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
+  ].join('\n');
 }

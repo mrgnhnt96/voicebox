@@ -9,3 +9,31 @@ describe('server uptime in the status bar tip', () => {
     expect(formatDuration(3 * 86400 + 5 * 3600)).toBe('3d 5h');
   });
 });
+
+describe('server stats', () => {
+  it('lists what the server reports, running time first', async () => {
+    const { serverStats } = await import('../src/lib/utils/serverStats');
+    const stats = serverStats(
+      {
+        status: 'healthy',
+        model_loaded: true,
+        model_size: 'turbo',
+        gpu_available: true,
+        gpu_type: 'Metal (Apple Silicon via MLX)',
+        version: '0.5.0',
+        started_at: 1000,
+        pid: 42,
+        peak_memory_mb: 4083,
+      },
+      (1000 + 3 * 3600 + 5 * 60) * 1000,
+    );
+    expect(stats.map((s) => `${s.label}: ${s.value}`)).toEqual([
+      'Running for: 3h 5m',
+      'Version: 0.5.0',
+      'Whisper: turbo in memory',
+      'Acceleration: Metal (Apple Silicon via MLX)',
+      'Peak memory: 4.0 GB',
+      'Process: 42',
+    ]);
+  });
+});

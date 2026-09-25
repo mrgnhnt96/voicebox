@@ -3,8 +3,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
+import type { HealthResponse } from '@/lib/api/types';
 import { useServerHealth } from '@/lib/hooks/useServer';
 import { cn } from '@/lib/utils/cn';
+import { serverStats } from '@/lib/utils/serverStats';
 import { usePlatform } from '@/platform/PlatformContext';
 import { SERVER_URL } from '@/stores/serverStore';
 import { SettingRow, SettingSection } from './SettingRow';
@@ -26,7 +28,9 @@ export function GeneralPage() {
           action={
             <ConnectionStatus health={health} isLoading={isLoading} healthError={healthError} />
           }
-        />
+        >
+          {health && <ServerStats health={health} />}
+        </SettingRow>
 
         {platform.metadata.isTauri && (
           <SettingRow
@@ -71,6 +75,32 @@ export function GeneralPage() {
         <CapturesFolderRow />
       </SettingSection>
     </>
+  );
+}
+
+/** What the server reports about itself, as cards. The running time ticks. */
+function ServerStats({ health }: { health: HealthResponse }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return (
+    <dl className="mt-3 grid grid-cols-3 gap-2.5">
+      {serverStats(health, now).map((stat) => (
+        <div
+          key={stat.key}
+          className="flex min-w-0 flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2.5"
+        >
+          <dt className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+            {stat.label}
+          </dt>
+          <dd className="truncate text-[13px]" title={stat.value}>
+            {stat.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
