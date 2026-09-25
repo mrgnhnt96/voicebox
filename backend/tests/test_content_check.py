@@ -40,6 +40,25 @@ def test_a_cleanup_mostly_of_new_words_is_rejected():
     assert (verdict.outcome, verdict.reason) == ("reject", "answered")
 
 
+@pytest.mark.parametrize(
+    ("said", "cleaned"),
+    [
+        ("Is this working better?", "Yes, it's working better."),
+        ("Can you merge it?", "Yes, I can merge it."),
+        ("Why is it?", "Because I'm pretty happy with how this is working."),
+    ],
+)
+def test_answering_a_question_is_rejected(said, cleaned):
+    # A question that comes back as a statement was answered, not cleaned,
+    # even when the answer reuses the speaker's words.
+    assert (check(said, cleaned).outcome, check(said, cleaned).reason) == ("reject", "answered")
+
+
+def test_a_question_cleaned_up_stays_a_question():
+    assert check("is this working better", "Is this working better?").outcome == "ok"
+    assert check("so um is this working better?", "Is this working better?").outcome == "ok"
+
+
 def test_replying_to_a_short_dictation_is_rejected():
     # Keeping none of the speaker's words is a reply, however short.
     verdict = check("Thank you.", "You're welcome.")
