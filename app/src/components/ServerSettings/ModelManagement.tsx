@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { useSearch } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Loader2 } from 'lucide-react';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiClient } from '@/lib/api/client';
 import { useCaptureSettings } from '@/lib/hooks/useSettings';
@@ -21,8 +20,11 @@ export function ModelManagement() {
   const { t } = useTranslation();
   const platform = usePlatform();
   const { settings, update } = useCaptureSettings();
-  const { model: linkedName } = useSearch({ from: '/models' });
-  const [selectedName, setSelectedName] = useState<string | null>(linkedName ?? null);
+  // The selected model lives in the URL, so a link to another model (the
+  // status bar's) switches to it even while this tab is open.
+  const { model: selectedName } = useSearch({ from: '/models' });
+  const navigate = useNavigate({ from: '/models' });
+  const setSelectedName = (model: string) => navigate({ search: { model }, replace: true });
 
   const { data: modelStatus, isLoading } = useQuery({
     queryKey: ['modelStatus'],
