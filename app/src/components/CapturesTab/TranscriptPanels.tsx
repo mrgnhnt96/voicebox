@@ -1,5 +1,5 @@
 import { Copy } from 'lucide-react';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -128,11 +128,11 @@ function CopyButton({ text, label }: { text: string; label: string }) {
  * RAW and REFINED side by side. The raw text strikes through the words
  * refinement dropped; the refined text highlights the words it put in.
  * The Teach field corrects the refined text, or the raw text when there is
- * no refinement; "Correct" on the raw panel opens one there too.
+ * no refinement. Fixing a misheard word there teaches it too, so the raw
+ * panel has no correction of its own.
  */
 export function TranscriptPanels({ capture }: { capture: CaptureResponse }) {
   const { t } = useTranslation();
-  const [teachRaw, setTeachRaw] = useState(false);
   const raw = capture.transcript_raw || '';
   const refined = capture.transcript_refined || null;
   const diff = useMemo(() => (refined ? diffWords(raw, refined) : null), [raw, refined]);
@@ -148,25 +148,7 @@ export function TranscriptPanels({ capture }: { capture: CaptureResponse }) {
         tone="raw"
         label={rawLabel}
         meta={t('captures.panel.words', { count: countWords(raw) })}
-        action={
-          <>
-            {refined && (
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-pressed={teachRaw}
-                className={cn(
-                  'h-6 px-1.5 font-mono text-[11px] text-muted-foreground',
-                  teachRaw && 'bg-secondary text-foreground',
-                )}
-                onClick={() => setTeachRaw((open) => !open)}
-              >
-                {t('captures.teach.correctRaw')}
-              </Button>
-            )}
-            <CopyButton text={raw} label={t('captures.panel.copyRaw')} />
-          </>
-        }
+        action={<CopyButton text={raw} label={t('captures.panel.copyRaw')} />}
         capture={capture}
         text={raw}
         body={
@@ -180,7 +162,6 @@ export function TranscriptPanels({ capture }: { capture: CaptureResponse }) {
             <span className="text-muted-foreground">{t('captures.snippetEmpty')}</span>
           )
         }
-        teach={refined && teachRaw ? 'raw' : undefined}
       />
       <TranscriptPanel
         tone="refined"

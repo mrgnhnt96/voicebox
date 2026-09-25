@@ -134,7 +134,7 @@
       "saved": "Saved. Voicebox will use this on your next dictations.",
       "failed": "Could not save correction",
       "history": "Your corrections ({{count}})",
-      "export": "Export all corrections (JSON)",
+      "about": "About corrections",
       "exportFailed": "Could not export corrections",
       "loadFailed": "Could not load saved corrections",
       "learning": {
@@ -223,8 +223,7 @@
       "undo": "Undo",
       "undoFailed": "Could not undo the correction",
       "corrected": "corrected",
-      "editedByYou": "edited by you",
-      "correctRaw": "Correct"
+      "editedByYou": "edited by you"
     },
     "source": {
       "dictation": "Dictation",
@@ -690,6 +689,11 @@
         "again": "Run again"
       },
       "learnsFrom": "What Voicebox learns from",
+      "export": {
+        "title": "Export corrections",
+        "description": "Save every correction you've made as a JSON file.",
+        "action": "Export…"
+      },
       "reset": {
         "title": "Reset writing style",
         "description": "Forget your calibration rewrites and the punctuation habits learned from them and from corrections. Match my writing switches back to Standard.",
