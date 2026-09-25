@@ -5,7 +5,13 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import type { CaptureResponse } from '@/lib/api/types';
 import { cn } from '@/lib/utils/cn';
-import { LearnedNotice, TeachField, type TeachTarget, useTeachCorrection } from './TeachCorrection';
+import {
+  EditableTranscript,
+  LearnedNotice,
+  TeachActions,
+  type TeachTarget,
+  useTeachCorrection,
+} from './TeachCorrection';
 import { countWords, type DiffSegment, diffWords } from './wordDiff';
 
 type Mark = 'removed' | 'added' | 'corrected';
@@ -36,9 +42,9 @@ function Marked({ segments, mark }: { segments: DiffSegment[]; mark: Mark }) {
 }
 
 /**
- * One transcript panel. With `teach`, it carries the inline correction flow:
- * the text dims while the user types the fix, and after saving it shows the
- * corrected text with the learned confirmation.
+ * One transcript panel. With `teach`, its text is editable in place: the
+ * user fixes it where it is, and after saving it shows the corrected text
+ * with the learned confirmation.
  */
 function TranscriptPanel({
   tone,
@@ -63,6 +69,10 @@ function TranscriptPanel({
   const { t } = useTranslation();
   const teachState = useTeachCorrection(capture, teach ?? tone, text);
   const learned = teach ? teachState.learned : null;
+  const textClass =
+    tone === 'raw'
+      ? 'font-mono text-[13px] leading-[1.7] text-foreground/75'
+      : 'text-base leading-[1.65] text-foreground';
   const corrected = useMemo(
     () => (learned ? diffWords(text, learned.expected_text).after : null),
     [learned, text],
@@ -85,21 +95,19 @@ function TranscriptPanel({
           {action}
         </span>
       </div>
-      <p
-        className={cn(
-          'm-0 whitespace-pre-wrap break-words',
-          tone === 'raw'
-            ? 'font-mono text-[13px] leading-[1.7] text-foreground/75'
-            : 'text-base leading-[1.65] text-foreground',
-          teach && teachState.changed && 'text-muted-foreground',
-        )}
-      >
-        {corrected ? <Marked segments={corrected} mark="corrected" /> : body}
-      </p>
+      {teach && !learned ? (
+        <EditableTranscript teach={teachState} className={textClass}>
+          {body}
+        </EditableTranscript>
+      ) : (
+        <p className={cn('m-0 whitespace-pre-wrap break-words', textClass)}>
+          {corrected ? <Marked segments={corrected} mark="corrected" /> : body}
+        </p>
+      )}
       {teach && (
         <>
           <div className="flex-1" />
-          {learned ? <LearnedNotice teach={teachState} /> : <TeachField teach={teachState} />}
+          {learned ? <LearnedNotice teach={teachState} /> : <TeachActions teach={teachState} />}
         </>
       )}
     </section>
@@ -127,8 +135,8 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 /**
  * RAW and REFINED side by side. The raw text strikes through the words
  * refinement dropped; the refined text highlights the words it put in.
- * The Teach field corrects the refined text, or the raw text when there is
- * no refinement. Fixing a misheard word there teaches it too, so the raw
+ * Clicking the refined text corrects it, or the raw text when there is no
+ * refinement. Fixing a misheard word there teaches it too, so the raw
  * panel has no correction of its own.
  */
 export function TranscriptPanels({ capture }: { capture: CaptureResponse }) {

@@ -212,8 +212,7 @@
       "copyRaw": "Copy raw transcript"
     },
     "teach": {
-      "label": "Teach: what did you mean?",
-      "placeholder": "Type the fix and press ⏎ — Voicebox learns from it",
+      "editHint": "Click to correct this. Voicebox learns from your fix.",
       "save": "Save correction",
       "learned": "Learned",
       "moreChanges_one": "+{{count}} more change",

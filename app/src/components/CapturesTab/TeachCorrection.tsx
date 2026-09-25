@@ -1,16 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
-import { useId, useMemo, useState } from 'react';
+import { type ReactNode, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
-import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { PERSONAL_EXAMPLES_KEY } from '@/components/WritingStyle/PersonalExamples';
 import { apiClient } from '@/lib/api/client';
 import type { CaptureFeedbackResponse, CaptureResponse } from '@/lib/api/types';
 import { useWritingStyle, WRITING_STYLE_KEY } from '@/lib/hooks/useWritingStyle';
+import { cn } from '@/lib/utils/cn';
 import { type DiffHunk, diffWords } from './wordDiff';
 
 export type TeachTarget = 'raw' | 'refined';
@@ -94,7 +94,7 @@ export function useTeachCorrection(
       setDraft(null);
       setNotes('');
     },
-    /** Drops an untouched draft when focus leaves, back to the empty field. */
+    /** Drops an untouched draft when focus leaves, back to the plain text. */
     settle: () => {
       if (!changed && !notes) setDraft(null);
     },
@@ -132,22 +132,8 @@ export function HunkList({ hunks, className }: { hunks: DiffHunk[]; className?: 
   );
 }
 
-/**
- * The "Teach: what did you mean?" field. Focusing it fills in the current
- * text to edit; once it differs, the change shows as a diff with an optional
- * note, and ⏎ saves it (⇧⏎ adds a line, esc cancels).
- */
-export function TeachField({ teach }: { teach: TeachState }) {
-  const { t } = useTranslation();
-  const fieldId = useId();
-  const notesId = useId();
-  const hunks = useMemo(
-    () =>
-      teach.changed && teach.draft !== null ? diffWords(teach.original, teach.draft).hunks : [],
-    [teach.changed, teach.draft, teach.original],
-  );
-
-  const onKeyDown = (event: React.KeyboardEvent) => {
+function onTeachKeyDown(teach: TeachState) {
+  return (event: React.KeyboardEvent) => {
     if (event.key === 'Escape') {
       event.preventDefault();
       teach.cancel();
@@ -157,65 +143,138 @@ export function TeachField({ teach }: { teach: TeachState }) {
       teach.save();
     }
   };
+}
 
+/**
+ * The transcript itself, editable in place: click the text and fix it. It
+ * looks like the text it replaces and grows with it. ⏎ saves the fix, ⇧⏎
+ * adds a line, esc cancels, and leaving an unchanged edit puts the text back.
+ */
+export function EditableTranscript({
+  teach,
+  className,
+  children,
+}: {
+  teach: TeachState;
+  className: string;
+  /** The text as shown when not editing, with its highlights. */
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const field = useRef<HTMLTextAreaElement>(null);
+  const editing = teach.draft !== null;
+
+  // Grow with the text; field-sizing isn't in every WebKit this ships on.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resize when the draft changes
+  useLayoutEffect(() => {
+    const element = field.current;
+    if (!element) return;
+    element.style.height = 'auto';
+    element.style.height = `${element.scrollHeight}px`;
+  }, [teach.draft]);
+
+  const surface = 'm-0 -mx-1.5 -my-1 rounded-md px-1.5 py-1 whitespace-pre-wrap break-words';
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        title={t('captures.teach.editHint')}
+        aria-label={t('captures.teach.editHint')}
+        onClick={teach.begin}
+        className={cn(
+          surface,
+          className,
+          'block w-[calc(100%+0.75rem)] text-left cursor-text hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        )}
+      >
+        {children}
+      </button>
+    );
+  }
+  return (
+    <textarea
+      ref={field}
+      // biome-ignore lint/a11y/noAutofocus: opened by clicking the text, which the user expects to edit
+      autoFocus
+      onFocus={(event) => {
+        const end = event.target.value.length;
+        event.target.setSelectionRange(end, end);
+      }}
+      rows={1}
+      value={teach.draft ?? ''}
+      aria-label={t('captures.teach.editHint')}
+      maxLength={100000}
+      disabled={teach.saving}
+      onBlur={teach.settle}
+      onChange={(event) => teach.setDraft(event.target.value)}
+      onKeyDown={onTeachKeyDown(teach)}
+      className={cn(
+        surface,
+        className,
+        'block w-[calc(100%+0.75rem)] resize-none overflow-hidden border-0 bg-foreground/[0.04] outline-none ring-1 ring-ring',
+      )}
+    />
+  );
+}
+
+/**
+ * Under an edited transcript: what changed, an optional note and Save. Shown
+ * only once the text differs from what Voicebox wrote.
+ */
+export function TeachActions({ teach }: { teach: TeachState }) {
+  const { t } = useTranslation();
+  const notesId = useId();
+  const hunks = useMemo(
+    () =>
+      teach.changed && teach.draft !== null ? diffWords(teach.original, teach.draft).hunks : [],
+    [teach.changed, teach.draft, teach.original],
+  );
+
+  if (teach.draft === '') {
+    return <p className="text-xs text-muted-foreground">{t('captures.feedback.emptyHint')}</p>;
+  }
+  if (!teach.changed) return null;
   return (
     <div className="flex flex-col gap-3.5">
+      {hunks.length > 0 && <HunkList hunks={hunks} className="space-y-0.5" />}
       <div className="flex flex-col gap-1.5">
-        <label htmlFor={fieldId} className="text-xs text-muted-foreground">
-          {t('captures.teach.label')}
+        <label htmlFor={notesId} className="text-xs text-muted-foreground">
+          {t('captures.feedback.notes')}
         </label>
-        <Textarea
-          id={fieldId}
-          rows={1}
-          value={teach.draft ?? ''}
-          placeholder={t('captures.teach.placeholder')}
-          maxLength={100000}
+        <Input
+          id={notesId}
+          value={teach.notes}
+          maxLength={5000}
           disabled={teach.saving}
-          onFocus={teach.begin}
-          onBlur={teach.settle}
-          onChange={(event) => teach.setDraft(event.target.value)}
-          onKeyDown={onKeyDown}
-          className="min-h-9 py-2 bg-background resize-none [field-sizing:content] max-h-48"
+          onChange={(event) => teach.setNotes(event.target.value)}
+          onKeyDown={onTeachKeyDown(teach)}
+          className="h-9 bg-background"
         />
-        {teach.draft === '' && (
-          <p className="text-xs text-muted-foreground">{t('captures.feedback.emptyHint')}</p>
-        )}
       </div>
-
-      {teach.changed && (
-        <>
-          {hunks.length > 0 && <HunkList hunks={hunks} className="space-y-0.5" />}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={notesId} className="text-xs text-muted-foreground">
-              {t('captures.feedback.notes')}
-            </label>
-            <Input
-              id={notesId}
-              value={teach.notes}
-              maxLength={5000}
-              disabled={teach.saving}
-              onChange={(event) => teach.setNotes(event.target.value)}
-              onKeyDown={onKeyDown}
-              className="h-9 bg-background"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" disabled={teach.saving} onClick={teach.cancel}>
-              {t('common.cancel')}
-              <Kbd className="border-0 px-0">esc</Kbd>
-            </Button>
-            <Button
-              size="sm"
-              className="font-semibold"
-              disabled={teach.saving}
-              onClick={teach.save}
-            >
-              {t('captures.teach.save')}
-              <Kbd className="border-0 px-0 text-accent-foreground">⏎</Kbd>
-            </Button>
-          </div>
-        </>
-      )}
+      <div className="flex justify-end gap-2">
+        {/* Keeps the edit open while the pointer is down, so Cancel and Save
+            aren't removed by the text losing focus first. */}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={teach.saving}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={teach.cancel}
+        >
+          {t('common.cancel')}
+          <Kbd className="border-0 px-0">esc</Kbd>
+        </Button>
+        <Button
+          size="sm"
+          className="font-semibold"
+          disabled={teach.saving}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={teach.save}
+        >
+          {t('captures.teach.save')}
+          <Kbd className="border-0 px-0 text-accent-foreground">⏎</Kbd>
+        </Button>
+      </div>
     </div>
   );
 }
