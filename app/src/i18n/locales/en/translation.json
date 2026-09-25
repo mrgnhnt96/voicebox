@@ -453,7 +453,7 @@
         "description": "Pick which speech-to-text model runs on your captures.",
         "model": {
           "title": "Transcription model",
-          "description": "Whisper ships with Voicebox and runs entirely on your machine.",
+          "description": "Whisper runs entirely on your machine. Choose it in the Models tab.",
           "base": "Whisper Base · 74M · {{tail}}",
           "small": "Whisper Small · 244M · {{tail}}",
           "medium": "Whisper Medium · 769M · {{tail}}",
@@ -493,7 +493,7 @@
         },
         "model": {
           "title": "Refinement model",
-          "description": "Larger models are slower but handle subtle self-corrections and technical vocabulary better.",
+          "description": "Larger models are slower but handle subtle self-corrections and technical vocabulary better. Choose it in the Models tab.",
           "size06": "Qwen3 · 0.6B · 400 MB · {{tail}}",
           "size17": "Qwen3 · 1.7B · 1.1 GB · {{tail}}",
           "size40": "Qwen3 · 4B · 2.5 GB · {{tail}}",
@@ -540,7 +540,8 @@
           "description": "Where capture audio and transcripts are stored on disk.",
           "open": "Open"
         }
-      }
+      },
+      "changeModel": "Change…"
     },
     "logs": {
       "title": "Server Logs",
@@ -626,6 +627,7 @@
       "notDownloaded": "not downloaded"
     },
     "actions": {
+      "use": "Use for {{role}}",
       "download": "Download",
       "retry": "Retry download",
       "dismiss": "Dismiss",

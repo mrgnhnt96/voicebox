@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useSearch } from '@tanstack/react-router';
 import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -9,7 +10,7 @@ import { ModelDetailPane } from './ModelDetailPane';
 import { ModelList } from './ModelList';
 import { ModelProblems } from './ModelProblems';
 import { ModelStorage } from './ModelStorage';
-import { groupModels, modelFamily, modelsInUse } from './modelCatalog';
+import { groupModels, modelFamily, modelsInUse, settingFor } from './modelCatalog';
 import { useModelDownloads } from './useModelDownloads';
 
 /**
@@ -19,8 +20,9 @@ import { useModelDownloads } from './useModelDownloads';
 export function ModelManagement() {
   const { t } = useTranslation();
   const platform = usePlatform();
-  const { settings } = useCaptureSettings();
-  const [selectedName, setSelectedName] = useState<string | null>(null);
+  const { settings, update } = useCaptureSettings();
+  const { model: linkedName } = useSearch({ from: '/models' });
+  const [selectedName, setSelectedName] = useState<string | null>(linkedName ?? null);
 
   const { data: modelStatus, isLoading } = useQuery({
     queryKey: ['modelStatus'],
@@ -89,6 +91,10 @@ export function ModelManagement() {
           stateOf={downloads.stateOf}
           onSelect={setSelectedName}
           cacheDir={platform.metadata.isTauri ? cacheDir?.path : undefined}
+          onUse={() => {
+            const setting = settingFor(selected.model_name);
+            if (setting) update(setting);
+          }}
           onDownload={() => downloads.download(selected.model_name)}
           onCancel={() => downloads.cancel(selected.model_name)}
           cancelling={downloads.isCancelling(selected.model_name)}

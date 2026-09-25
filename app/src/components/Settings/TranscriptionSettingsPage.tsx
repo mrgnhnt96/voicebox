@@ -1,5 +1,7 @@
+import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { SettingRow, SettingSection } from '@/components/ServerTab/SettingRow';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -32,7 +34,22 @@ const QWEN_MODELS: Array<{ value: Qwen3ModelSize; key: string; tail: string }> =
   { value: '4B', key: 'size40', tail: 'fullQuality' },
 ];
 
-/** Transcription (Whisper) and refinement (Qwen3) settings. */
+/** The model dictation uses, and a link to change it in the Models tab. */
+function ModelInUse({ label, model }: { label: string; model: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-[13px] text-muted-foreground">{label}</span>
+      <Button asChild size="sm" variant="outline">
+        <Link to="/models" search={{ model }}>
+          {t('settings.captures.changeModel')}
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+/** Transcription (Whisper) and refinement (Qwen3) settings. Models are chosen in the Models tab. */
 export function TranscriptionSettingsPage() {
   const { t } = useTranslation();
   const { settings, update } = useCaptureSettings();
@@ -41,6 +58,7 @@ export function TranscriptionSettingsPage() {
   const language = settings?.language ?? 'auto';
   const autoRefine = settings?.auto_refine ?? true;
   const llmModel = settings?.llm_model ?? '0.6B';
+  const qwen = QWEN_MODELS.find((m) => m.value === llmModel) ?? QWEN_MODELS[0];
   const smartCleanup = settings?.smart_cleanup ?? true;
   const selfCorrection = settings?.self_correction ?? true;
   const preserveTechnical = settings?.preserve_technical ?? true;
@@ -53,21 +71,14 @@ export function TranscriptionSettingsPage() {
           title={t(`${P}.model.title`)}
           description={t(`${P}.model.description`)}
           action={
-            <Select
-              value={sttModel}
-              onValueChange={(v) => update({ stt_model: v as WhisperModelSize })}
-            >
-              <SelectTrigger className="h-8 w-[300px]" aria-label={t(`${P}.model.title`)}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {WHISPER_MODELS.map((m) => (
-                  <SelectItem key={m.value} value={m.value}>
-                    {t(`${P}.model.${m.value}`, { tail: t(`${P}.model.tail.${m.tail}`) })}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <ModelInUse
+              label={t(`${P}.model.${sttModel}`, {
+                tail: t(
+                  `${P}.model.tail.${WHISPER_MODELS.find((m) => m.value === sttModel)?.tail ?? 'fast'}`,
+                ),
+              })}
+              model={`whisper-${sttModel}`}
+            />
           }
         />
 
@@ -109,22 +120,10 @@ export function TranscriptionSettingsPage() {
           title={t(`${R}.model.title`)}
           description={t(`${R}.model.description`)}
           action={
-            <Select
-              value={llmModel}
-              onValueChange={(v) => update({ llm_model: v as Qwen3ModelSize })}
-              disabled={!autoRefine}
-            >
-              <SelectTrigger className="h-8 w-[300px]" aria-label={t(`${R}.model.title`)}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {QWEN_MODELS.map((m) => (
-                  <SelectItem key={m.value} value={m.value}>
-                    {t(`${R}.model.${m.key}`, { tail: t(`${R}.model.tail.${m.tail}`) })}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <ModelInUse
+              label={t(`${R}.model.${qwen.key}`, { tail: t(`${R}.model.tail.${qwen.tail}`) })}
+              model={`qwen3-${llmModel.toLowerCase()}`}
+            />
           }
         />
 

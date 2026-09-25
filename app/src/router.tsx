@@ -108,6 +108,10 @@ const modelsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/models',
   component: ModelsTab,
+  // `?model=<name>` opens that model (Settings links here to change one).
+  validateSearch: (search: Record<string, unknown>): { model?: string } => ({
+    model: typeof search.model === 'string' ? search.model : undefined,
+  }),
 });
 
 // Settings layout route (parent for sub-tabs)

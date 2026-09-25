@@ -48,6 +48,27 @@ export function groupModels(models: ModelStatus[]): ModelGroup[] {
  * The models dictation is set to use, keyed by model name. Mirrors the
  * backend's naming: `whisper-<size>` and `qwen3-<size lowercased>`.
  */
+/** What dictation would use a model for, if anything. */
+export function roleOf(modelName: string): ModelRole | undefined {
+  const family = modelFamily(modelName);
+  if (family === 'whisper') return 'transcription';
+  if (family === 'qwen3') return 'refinement';
+  return undefined;
+}
+
+/** The capture setting that makes dictation use a model. */
+export function settingFor(
+  modelName: string,
+): Pick<CaptureSettings, 'stt_model'> | Pick<CaptureSettings, 'llm_model'> | undefined {
+  const size = modelName.slice(modelName.indexOf('-') + 1);
+  if (roleOf(modelName) === 'transcription')
+    return { stt_model: size as CaptureSettings['stt_model'] };
+  // "qwen3-0.6b" is the "0.6B" refinement size.
+  if (roleOf(modelName) === 'refinement')
+    return { llm_model: size.toUpperCase() as CaptureSettings['llm_model'] };
+  return undefined;
+}
+
 export function modelsInUse(settings: CaptureSettings | undefined): Map<string, ModelRole> {
   const inUse = new Map<string, ModelRole>();
   if (!settings) return inUse;

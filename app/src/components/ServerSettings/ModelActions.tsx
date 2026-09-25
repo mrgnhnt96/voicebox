@@ -17,12 +17,16 @@ import { useToast } from '@/components/ui/use-toast';
 import { apiClient } from '@/lib/api/client';
 import type { ModelStatus } from '@/lib/api/types';
 import { usePlatform } from '@/platform/PlatformContext';
-import { formatSizeMb, hfCacheFolder } from './modelCatalog';
+import { formatSizeMb, hfCacheFolder, roleOf } from './modelCatalog';
 import type { ModelDownloadState } from './useModelDownloads';
 
 interface ModelActionsProps {
   model: ModelStatus;
   state: ModelDownloadState;
+  /** Whether dictation already uses this model. */
+  inUse: boolean;
+  /** Makes dictation use this model. */
+  onUse: () => void;
   /** The Hugging Face cache folder, when the desktop app knows it. */
   cacheDir: string | undefined;
   onDownload: () => void;
@@ -35,7 +39,9 @@ interface ModelActionsProps {
 export function ModelActions({
   model,
   state,
+  inUse,
   cacheDir,
+  onUse,
   onDownload,
   onCancel,
   cancelling,
@@ -111,8 +117,14 @@ export function ModelActions({
       </Button>
     );
   } else if (model.downloaded) {
+    const role = roleOf(model.model_name);
     actions = (
       <>
+        {role && !inUse && (
+          <Button onClick={onUse}>
+            {t('models.actions.use', { role: t(`models.roles.${role}`).toLowerCase() })}
+          </Button>
+        )}
         {model.loaded && (
           <Button
             variant="secondary"

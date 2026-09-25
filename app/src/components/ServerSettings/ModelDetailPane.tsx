@@ -23,6 +23,8 @@ interface ModelDetailPaneProps {
   stateOf: (model: ModelStatus) => ModelDownloadState;
   onSelect: (modelName: string) => void;
   cacheDir: string | undefined;
+  /** Makes dictation use this model. */
+  onUse: () => void;
   onDownload: () => void;
   onCancel: () => void;
   cancelling: boolean;
@@ -37,6 +39,7 @@ export function ModelDetailPane({
   stateOf,
   onSelect,
   cacheDir,
+  onUse,
   onDownload,
   onCancel,
   cancelling,
@@ -102,7 +105,9 @@ export function ModelDetailPane({
       <ModelActions
         model={model}
         state={state}
+        inUse={!!role}
         cacheDir={cacheDir}
+        onUse={onUse}
         onDownload={onDownload}
         onCancel={onCancel}
         cancelling={cancelling}
