@@ -6,6 +6,7 @@ import { Kbd } from '@/components/ui/kbd';
 import { StyleCalibrationPrompt } from '@/components/WritingStyle/StyleCalibrationPrompt';
 import type { CaptureResponse } from '@/lib/api/types';
 import { cn } from '@/lib/utils/cn';
+import { AppIcon } from './AppIcon';
 import {
   type CaptureFilter,
   type CaptureTag,
@@ -96,10 +97,13 @@ function CaptureRow({
           {formatRowTime(capture.created_at, t('captures.list.yesterday'))}
         </span>
         <span
-          className="w-[70px] shrink-0 uppercase truncate"
+          className="w-24 shrink-0 flex items-center gap-1.5 min-w-0"
           title={capture.app_name ?? undefined}
         >
-          {capture.app_name ?? t(`captures.source.${capture.source}`)}
+          <AppIcon bundleId={capture.app_bundle_id} />
+          <span className="uppercase truncate">
+            {capture.app_name ?? t(`captures.source.${capture.source}`)}
+          </span>
         </span>
         <span className={cn('px-1.5 rounded-[3px] leading-4', TAG_CLASS[tag])}>
           {t(`captures.tag.${tag}`)}

@@ -3,6 +3,7 @@ import { Settings2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import type { CaptureResponse } from '@/lib/api/types';
+import { AppIcon } from './AppIcon';
 import { formatDuration, formatStamp } from './captureFormat';
 
 /**
@@ -23,6 +24,7 @@ export function CaptureDetailHeader({ capture }: { capture: CaptureResponse | nu
 
   return (
     <header className="h-16 shrink-0 flex items-center gap-2 px-6 border-b border-border">
+      <AppIcon bundleId={capture?.app_bundle_id} className="size-4" />
       <p className="flex-1 min-w-0 truncate font-mono text-xs text-muted-foreground">
         {meta.join(' · ')}
       </p>

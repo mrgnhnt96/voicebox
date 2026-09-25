@@ -99,12 +99,12 @@ mod ffi {
     // instead (see `cf_string_const` in focus_capture.rs).
 }
 
-struct AutoreleasePool {
+pub(crate) struct AutoreleasePool {
     pool: Id,
 }
 
 impl AutoreleasePool {
-    unsafe fn new() -> Self {
+    pub(crate) unsafe fn new() -> Self {
         let pool: Id = msg_send![class!(NSAutoreleasePool), alloc];
         let pool: Id = msg_send![pool, init];
         Self { pool }
@@ -119,7 +119,7 @@ impl Drop for AutoreleasePool {
     }
 }
 
-unsafe fn ns_string_to_rust(s: Id) -> Option<String> {
+pub(crate) unsafe fn ns_string_to_rust(s: Id) -> Option<String> {
     if s.is_null() {
         return None;
     }

@@ -1,4 +1,5 @@
 mod accessibility;
+mod app_icon;
 mod clipboard;
 #[cfg(desktop)]
 mod dictation;
@@ -761,6 +762,12 @@ const POST_ACTIVATE_SETTLE_MS: u64 = 120;
 /// the user sees our text if they look at their clipboard manager.
 const PASTE_CONSUME_MS: u64 = 400;
 
+/// The icon of the app with `bundle_id` as a PNG data URL, for Captures.
+#[command]
+fn app_icon(bundle_id: String) -> Option<String> {
+    app_icon::icon_data_url(&bundle_id)
+}
+
 /// Reports whether the process currently has macOS Accessibility trust.
 /// Used by the settings UI and the paste debug harness to decide whether
 /// synthetic key events will actually land.
@@ -1240,6 +1247,7 @@ pub fn run() {
             debug_paste_text,
             debug_capture_focus,
             debug_focus_roundtrip,
+            app_icon,
             check_accessibility_permission,
             check_input_monitoring_permission,
             open_accessibility_settings,
