@@ -239,14 +239,6 @@
       "importing": "Uploading…",
       "dictate": "Dictate",
       "stop": "Stop",
-      "copy": "Copy",
-      "refine": "Refine",
-      "reRefine": "Re-refine",
-      "export": "Export",
-      "exportDropdownLabel": "Export capture as",
-      "exportAudio": "Audio (WAV)",
-      "exportTranscript": "Transcript (TXT)",
-      "exportMarkdown": "Markdown (MD)",
       "delete": "Delete"
     },
     "empty": {

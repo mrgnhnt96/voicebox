@@ -1,7 +1,6 @@
 import { apiClient } from '@/lib/api/client';
 import type { CaptureResponse } from '@/lib/api/types';
 import { CaptureActionBar } from './CaptureActionBar';
-import type { CaptureSession } from './CaptureDetailHeader';
 import { CaptureFeedback } from './CaptureFeedback';
 import { CaptureInlinePlayer } from './CaptureInlinePlayer';
 import { RefinementReviewNotice } from './RefinementReviewNotice';
@@ -12,13 +11,7 @@ import { TranscriptPanels } from './TranscriptPanels';
  * transcripts with the inline Teach flow, the saved corrections, and the
  * action bar. Mount it keyed by capture id so drafts reset between captures.
  */
-export function CaptureDetail({
-  capture,
-  session,
-}: {
-  capture: CaptureResponse;
-  session: CaptureSession;
-}) {
+export function CaptureDetail({ capture }: { capture: CaptureResponse }) {
   return (
     <>
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -34,11 +27,7 @@ export function CaptureDetail({
           <CaptureFeedback capture={capture} />
         </div>
       </div>
-      <CaptureActionBar
-        capture={capture}
-        isRefining={session.isRefining}
-        onRefine={session.refine}
-      />
+      <CaptureActionBar capture={capture} />
     </>
   );
 }

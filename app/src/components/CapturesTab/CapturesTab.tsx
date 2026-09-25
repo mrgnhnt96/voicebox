@@ -144,7 +144,7 @@ export function CapturesTab() {
       <div className="flex-1 min-w-0 flex flex-col">
         <CaptureDetailHeader capture={selected} session={session} canRecord={readiness.canRecord} />
         {selected ? (
-          <CaptureDetail key={selected.id} capture={selected} session={session} />
+          <CaptureDetail key={selected.id} capture={selected} />
         ) : (
           <EmptyDetail
             loading={capturesLoading}
