@@ -151,7 +151,8 @@ async def test_pause_commits_phrase_before_finish(tmp_path, monkeypatch):
     append(session, 0.8, amplitude=0)
     worker = asyncio.create_task(session.run())
     await asyncio.sleep(0)
-    assert events[-1]["accepted_text"] == "One phrase."
+    # The period Whisper gave the phrase because the audio paused isn't kept.
+    assert events[-1]["accepted_text"] == "One phrase"
     session.finish()
     await worker
     assert session.recognize.await_count == 1
@@ -562,7 +563,7 @@ async def test_rejected_phrase_uses_raw_and_flags_the_capture(tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_learned_tail_change_forces_correction_reconciliation(tmp_path, monkeypatch):
+async def test_a_correction_after_a_learned_change_is_cleaned_from_what_was_said(tmp_path, monkeypatch):
     from backend.services import correction_learning
 
     session, _ = make_session(tmp_path, monkeypatch)
@@ -572,24 +573,20 @@ async def test_learned_tail_change_forces_correction_reconciliation(tmp_path, mo
         "apply_learned_corrections",
         lambda text, _: text.replace("Tuesday", "Friday"),
     )
-    refine = AsyncMock(
-        side_effect=[
-            ("Meeting Tuesday", "0.6B"),
-            ("Meeting Tuesday actually Wednesday", "0.6B"),
-            ("Meeting Wednesday", "0.6B"),
-        ]
-    )
+    refine = AsyncMock(side_effect=[("Meeting Tuesday", "0.6B"), ("Meeting Wednesday.", "0.6B")])
     monkeypatch.setattr(capture_stream, "refine_transcript", refine)
     stt = type("STT", (), {"transcribe": AsyncMock()})()
     monkeypatch.setattr(capture_stream, "get_whisper_model", lambda: stt)
-    await session.accept("Meeting Tuesday")
-    await session.accept("actually Wednesday")
-    assert session.needs_final_refinement
-    assert session.refined == "Meeting Friday actually Wednesday"
+    await session.accept("Meeting Tuesday", paused=True)
+    assert session.refined == "Meeting Friday"
+    await session.accept("actually Wednesday", paused=True)
+    # The open sentence is cleaned again from what was said, so a learned
+    # substitution in the shown text can't get in the way.
+    assert refine.await_args.args[0] == "Meeting Tuesday actually Wednesday"
+    assert not session.needs_final_refinement
     session.finish()
     await session.run()
-    assert session.refined == "Meeting Wednesday"
-    assert refine.await_args.args[0] == "Meeting Tuesday actually Wednesday"
+    assert session.refined == "Meeting Wednesday."
     stt.transcribe.assert_not_awaited()
     session.close()
 
@@ -640,9 +637,10 @@ async def _dictate(tmp_path, monkeypatch, style, phrases):
     from backend.services import correction_learning
 
     monkeypatch.setattr(correction_learning, "apply_learned_corrections", lambda text, _: text)
-    for phrase in phrases:
-        await session.accept(phrase)
+    for phrase in phrases[:-1]:
+        await session.accept(phrase, paused=True)
     session.finish()
+    await session.accept(phrases[-1])
     await session.run()
     session.close()
     return session.refined
@@ -655,27 +653,41 @@ async def test_pause_inside_a_sentence_does_not_add_a_period(tmp_path, monkeypat
 
 
 @pytest.mark.asyncio
-async def test_standard_style_starts_a_new_sentence_after_a_pause(tmp_path, monkeypatch):
+async def test_the_cleanup_decides_sentences_across_a_pause(tmp_path, monkeypatch):
+    # Whisper's capital after the pause isn't taken as a sentence start; the
+    # cleanup sees both phrases and decides.
     refined = await _dictate(tmp_path, monkeypatch, "standard", ["It might", "But we'll see"])
-    assert refined == "It might. But we'll see."
+    assert refined == "It might but we'll see."
 
 
 @pytest.mark.asyncio
-async def test_casual_style_joins_thoughts_with_a_comma(tmp_path, monkeypatch):
-    refined = await _dictate(tmp_path, monkeypatch, "casual", ["It might", "But we'll see"])
-    assert refined == "It might, but we'll see."
+async def test_a_long_tail_settled_mid_sentence_joins_the_style_way(tmp_path, monkeypatch):
+    monkeypatch.setattr(capture_stream, "MAX_OPEN_WORDS", 1)
+    refined = await _dictate(tmp_path, monkeypatch, "casual", ["It might.", "Is it?", "We'll see"])
+    assert refined == "It might is it? We'll see."
 
 
 @pytest.mark.asyncio
-async def test_learned_style_joins_and_finishes_the_way_the_user_writes(tmp_path, monkeypatch):
+async def test_learned_style_finishes_the_way_the_user_writes(tmp_path, monkeypatch):
     # Stand-in habits: sentence breaks become commas and the final period goes.
     monkeypatch.setattr(
         capture_stream,
         "apply_learned",
         lambda text: text.replace(". B", ", b").removesuffix("."),
     )
-    refined = await _dictate(tmp_path, monkeypatch, "learned", ["It might", "But we'll see"])
-    assert refined == "It might, but we'll see"
+    session, _ = make_session(tmp_path, monkeypatch, punctuation_style="learned")
+    session.settings.auto_refine = True
+    session.flags.punctuation_style = "learned"
+    monkeypatch.setattr(capture_stream, "refine_transcript", AsyncMock(return_value=("It might. But we'll see.", "4B")))
+    from backend.services import correction_learning
+
+    monkeypatch.setattr(correction_learning, "apply_learned_corrections", lambda text, _: text)
+    await session.accept("it might", paused=True)
+    session.finish()
+    await session.accept("but we'll see")
+    await session.run()
+    session.close()
+    assert session.refined == "It might, but we'll see"
 
 
 @pytest.mark.asyncio

@@ -135,7 +135,9 @@ async def test_phrases_cleaned_while_speaking_are_offered_at_release(tmp_path, m
     monkeypatch.setattr(
         capture_stream,
         "refine_transcript",
-        streaming_refine([["The", " first", " part", "."], ["and", " the", " rest", "."]]),
+        streaming_refine(
+            [["The", " first", " part", " is", " done", ".", " And", " then", "."], ["And", " then", " the", " rest", "."]]
+        ),
     )
     heard = []
 
@@ -145,7 +147,7 @@ async def test_phrases_cleaned_while_speaking_are_offered_at_release(tmp_path, m
             # Offering the earlier text must not hold up recognizing the rest.
             assert not provisional(events)
             await asyncio.sleep(0.01)
-        return ["the first part", "and the rest"][len(heard) - 1]
+        return ["The first part is done. And then", "the rest"][len(heard) - 1]
 
     session.recognize = recognize
     worker = asyncio.create_task(session.run())
@@ -158,9 +160,10 @@ async def test_phrases_cleaned_while_speaking_are_offered_at_release(tmp_path, m
     append(session, 1)
     session.finish()
     await worker
-    assert session.refined == "The first part and the rest."
+    assert session.refined == "The first part is done. And then the rest."
     shown = provisional(events)
-    assert shown[0] == "The first part"
+    # Only settled sentences are offered; "And then" was still open.
+    assert shown[0] == "The first part is done"
     # Offered while the last phrase was being recognized.
     first = next(i for i, e in enumerate(events) if e["type"] == "provisional")
     last_transcript = max(i for i, e in enumerate(events) if e["type"] == "transcript")
