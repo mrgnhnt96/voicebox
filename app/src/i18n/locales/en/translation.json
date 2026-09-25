@@ -439,6 +439,10 @@
         "autoPaste": {
           "title": "Paste at cursor",
           "description": "Types the refined text into the focused field. Needs Accessibility. Voicebox saves and restores whatever was on your clipboard."
+        },
+        "liveText": {
+          "title": "Show text as it's written",
+          "description": "Types the cleaned text into the app while cleanup is still finishing, so the first words appear sooner. Only where Voicebox can type directly: not in terminals or apps it pastes into. Undo may take a few presses."
         }
       },
       "transcription": {

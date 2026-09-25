@@ -33,6 +33,9 @@ class CaptureSettings(Base):
     preserve_technical = Column(Boolean, nullable=False, default=True)
     punctuation_style = Column(String, nullable=False, default="standard")
     allow_auto_paste = Column(Boolean, nullable=False, default=True)
+    # Type cleaned text into the app while cleanup is still writing it
+    # (docs/plans/STREAMING_INSERTION.md). Off until checked in more apps.
+    live_text = Column(Boolean, nullable=False, default=False)
     # Configured audio input deviceId (None means system default microphone)
     input_device_id = Column(String, nullable=True, default=None)
     # Default OFF — opting in is what triggers the macOS Input Monitoring TCC

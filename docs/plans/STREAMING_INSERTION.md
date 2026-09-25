@@ -6,9 +6,10 @@ Builds on [TEXT_INSERTION.md](TEXT_INSERTION.md) (direct AX insertion) and
 
 ## Verdict
 
-It is implemented, tested, and **off by default**. To try it, start the app
-with `VOICEBOX_LIVE_TEXT=1`. Without that variable, the client doesn't ask for
-provisional text, so the server sends none and nothing changes.
+It is implemented, tested, and **off by default**. To try it, turn on
+Settings → Dictation → "Show text as it's written" (the `live_text` capture
+setting). While it is off, the client doesn't ask for provisional text, so the
+server sends none and nothing changes.
 
 - **Correct in every replayed take.** Across 87 takes that had provisional
   text, none needed a revision: every provisional text was a prefix of the
@@ -259,7 +260,7 @@ directory and uses `config.set_data_dir`, like
 - **User typing during the ~0.5 s window.** Detected; the rest is not
   inserted, and the pill tells the user the text is in Captures.
 
-## Manual checklist (with `VOICEBOX_LIVE_TEXT=1`, dev build from a terminal)
+## Manual checklist (with "Show text as it's written" on)
 
 For each target, dictate two takes:
 

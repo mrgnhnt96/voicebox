@@ -112,6 +112,7 @@ class CaptureSettingsResponse(BaseModel):
     preserve_technical: bool = True
     punctuation_style: str = Field(default="standard", pattern="^(standard|casual|learned)$")
     allow_auto_paste: bool = True
+    live_text: bool = False
     input_device_id: Optional[str] = Field(
         default=None, description="Configured audio input deviceId (None means default microphone)"
     )
@@ -139,6 +140,7 @@ class CaptureSettingsUpdate(BaseModel):
     preserve_technical: Optional[bool] = None
     punctuation_style: Optional[str] = Field(default=None, pattern="^(standard|casual|learned)$")
     allow_auto_paste: Optional[bool] = None
+    live_text: Optional[bool] = None
     input_device_id: Optional[str] = Field(
         default=None, description="Configured audio input deviceId (None means default microphone)"
     )

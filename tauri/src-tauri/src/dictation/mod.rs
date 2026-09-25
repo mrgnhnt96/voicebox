@@ -41,12 +41,6 @@ pub const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:17493";
 const MAX_PENDING_BYTES: usize = 48_000 * 2 * 60;
 const LEARNING_PAUSE_INTERVAL: Duration = Duration::from_secs(30);
 
-/// Live text (docs/plans/STREAMING_INSERTION.md) is off unless the app is
-/// started with `VOICEBOX_LIVE_TEXT=1`, until it has been checked by hand in
-/// the apps people dictate into.
-fn live_text_enabled() -> bool {
-    std::env::var("VOICEBOX_LIVE_TEXT").is_ok_and(|v| v == "1")
-}
 
 /// Where and how to capture. Pushed by the dictate webview, which owns the
 /// server URL and capture settings.
@@ -56,6 +50,10 @@ struct Config {
     /// The webview's origin, sent only to a non-loopback server.
     origin: Option<String>,
     input_device_id: Option<String>,
+    /// Live text (docs/plans/STREAMING_INSERTION.md): type cleaned text into
+    /// the app while cleanup is still writing it. The "Show text as it's
+    /// written" setting; off by default.
+    live_text: bool,
 }
 
 impl Default for Config {
@@ -64,6 +62,7 @@ impl Default for Config {
             server_url: DEFAULT_SERVER_URL.to_string(),
             origin: None,
             input_device_id: None,
+            live_text: false,
         }
     }
 }
@@ -111,6 +110,7 @@ pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin) -> Option<u6
         return None;
     }
     let config = state.config.lock().map(|c| c.clone()).unwrap_or_default();
+    let live_text = config.live_text;
     let take_id = state.next_take.fetch_add(1, Ordering::Relaxed) + 1;
     let focus: Arc<Mutex<Option<FocusSnapshot>>> = Arc::new(Mutex::new(None));
     let released: Arc<OnceLock<Instant>> = Arc::new(OnceLock::new());
@@ -187,7 +187,7 @@ pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin) -> Option<u6
 
     tauri::async_runtime::spawn(async move {
         let client = StreamClient::new(MAX_PENDING_BYTES);
-        let client = if live_text_enabled() {
+        let client = if live_text {
             let offer = live.clone();
             client.with_provisional(move |text| offer.offer(text))
         } else {
@@ -484,8 +484,12 @@ pub fn dictation_configure(
     origin: Option<String>,
     input_device_id: Option<String>,
     device_known: Option<bool>,
+    live_text: Option<bool>,
 ) -> Result<(), String> {
     let mut config = state.config.lock().map_err(|e| e.to_string())?;
+    if let Some(live_text) = live_text {
+        config.live_text = live_text;
+    }
     config.server_url = server_url
         .filter(|u| !u.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_SERVER_URL.to_string());

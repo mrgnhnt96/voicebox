@@ -47,6 +47,7 @@ export function useNativeDictationSession(): NativeDictationSession {
   // Until settings load, say nothing about the microphone so Rust keeps the
   // one it remembered from the last launch.
   const deviceKnown = settings !== undefined;
+  const liveText = settings?.live_text ?? false;
 
   const [pillState, setPillState] = useState<CapturePillState>('hidden');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -75,8 +76,9 @@ export function useNativeDictationSession(): NativeDictationSession {
       origin: window.location.origin,
       inputDeviceId,
       deviceKnown,
+      liveText,
     }).catch((err) => console.warn('[dictate] dictation_configure failed:', err));
-  }, [inputDeviceId, deviceKnown]);
+  }, [inputDeviceId, deviceKnown, liveText]);
 
   useEffect(() => {
     const apply = (event: NativeDictationEvent) => {

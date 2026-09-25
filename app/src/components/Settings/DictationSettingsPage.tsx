@@ -33,6 +33,7 @@ export function DictationSettingsPage() {
   const readiness = useDictationReadiness();
   const hotkeyEnabled = settings?.hotkey_enabled ?? false;
   const allowAutoPaste = settings?.allow_auto_paste ?? true;
+  const liveText = settings?.live_text ?? false;
   const pushToTalkKeys = settings?.chord_push_to_talk_keys ?? defaultChordKeys('push');
   const toggleToTalkKeys = settings?.chord_toggle_to_talk_keys ?? defaultChordKeys('toggle');
   const [chordEditor, setChordEditor] = useState<ChordMode | null>(null);
@@ -130,6 +131,19 @@ export function DictationSettingsPage() {
           </RowLayout>
           <AccessibilityNotice />
         </div>
+        <SettingRow
+          htmlFor="liveText"
+          title={t('settings.captures.dictation.liveText.title')}
+          description={t('settings.captures.dictation.liveText.description')}
+          action={
+            <Toggle
+              id="liveText"
+              checked={liveText}
+              onCheckedChange={(v) => update({ live_text: v })}
+              disabled={!hotkeyEnabled || !allowAutoPaste}
+            />
+          }
+        />
       </SettingSection>
     </>
   );

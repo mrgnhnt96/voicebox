@@ -29,3 +29,17 @@ def test_microphone_migration_preserves_existing_settings_and_is_idempotent():
 def test_resetting_microphone_is_distinct_from_omitting_the_setting():
     assert CaptureSettingsUpdate().model_dump(exclude_unset=True) == {}
     assert CaptureSettingsUpdate(input_device_id=None).model_dump(exclude_unset=True) == {'input_device_id': None}
+
+
+def test_live_text_is_off_until_turned_on(tmp_path):
+    from sqlalchemy import create_engine, text
+
+    from backend.database.migrations import run_migrations
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE capture_settings (id INTEGER PRIMARY KEY, stt_model VARCHAR)"))
+        connection.execute(text("INSERT INTO capture_settings (id, stt_model) VALUES (1, 'turbo')"))
+    run_migrations(engine)
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT live_text FROM capture_settings")).scalar_one() == 0
