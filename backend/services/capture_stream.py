@@ -40,7 +40,7 @@ from ..backends.qwen_llm_backend import generation_hint, generation_listener, ge
 from ..database import Capture
 from .captures import _to_response
 from .content_check import Verdict, check_refinement, summarize_reviews
-from .phrase_seams import close_phrase, continue_phrase, join_phrases, open_phrase, strip_pause_mark
+from .phrase_seams import close_phrase, continue_after_seam, join_phrases, open_phrase, strip_pause_mark
 from .refinement import RefinementFlags, prepare_refinement, refine_transcript
 from .sentence_tail import MAX_OPEN_WORDS, settle
 from .speech_detect import SpeechDetector
@@ -153,6 +153,8 @@ class StreamingCapture:
         # What was said, without the endings Whisper gave phrases only because
         # the audio paused. Saved as the raw transcript and cleaned.
         self.raw = ""
+        # Whether the last phrase's audio was cut at a pause.
+        self.paused = False
         self.refined = ""
         # Settled text is final. The open tail is the raw words since; it is
         # cleaned again as phrases arrive.
@@ -400,7 +402,12 @@ class StreamingCapture:
             if not self.overlap:
                 # The pause, not the speaker, ended the phrase before this one
                 # and capitalized this one.
-                phrase = continue_phrase(text, earlier) if earlier else text
+                phrase = text
+                if earlier:
+                    before = self.tail_raw if self.paused else ""
+                    tail, phrase = continue_after_seam(before, text, earlier)
+                    if tail != before:
+                        self.raw, self.tail_raw = self.raw[: len(tail) - len(before)], tail
                 phrase = strip_pause_mark(phrase) if paused else phrase
                 self.raw = f"{self.raw} {phrase}".strip()
                 self.tail_raw = f"{self.tail_raw} {phrase}".strip()
@@ -408,6 +415,7 @@ class StreamingCapture:
                 self.raw = join_overlap(self.raw, text)
                 self.tail_raw = join_overlap(self.tail_raw, text)
             self.tail_dirty = True
+            self.paused = paused
         await self.emit("transcript", accepted_text=self.raw, provisional_text="", text=self.raw, final=False)
         if not self.settings.auto_refine:
             return

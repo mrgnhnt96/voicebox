@@ -93,3 +93,28 @@ def test_continue_phrase_drops_the_capital_a_pause_added(phrase, earlier, expect
     from backend.services.phrase_seams import continue_phrase
 
     assert continue_phrase(phrase, earlier) == expected
+
+
+@pytest.mark.parametrize(
+    ("before", "phrase", "earlier", "expected"),
+    [
+        # The pause put the question mark inside the question. It goes, and the
+        # capital Whisper gave the next phrase stays as the weaker hint.
+        ("Wait, what if I pause?", "For a second.", "x", ("Wait, what if I pause", "For a second.")),
+        ("does it still add dots?", "Not sure.", "does it still add dots?", ("does it still add dots", "Not sure.")),
+        ("Wow!", "That was fast.", "Wow!", ("Wow", "That was fast.")),
+        # Whisper itself continued the sentence.
+        ("Is it going to show text?", "as it's written?", "x", ("Is it going to show text", "as it's written?")),
+        # "I" and names are always capitalized, so their capital can't be the
+        # hint: the mark stays.
+        ("What's the other one?", "I have a reminder.", "x", ("What's the other one?", "I have a reminder.")),
+        ("Did you ask Sagar?", "Sagar said no.", "I use Sagar daily.", ("Did you ask Sagar?", "Sagar said no.")),
+        # Without a mark at the seam the phrase continues as usual.
+        ("Wait, but if I pause", "For a second.", "Wait, but if I pause-", ("Wait, but if I pause", "for a second.")),
+        ("It works.", "So what's left?", "It works.", ("It works.", "so what's left?")),
+    ],
+)
+def test_continue_after_seam(before, phrase, earlier, expected):
+    from backend.services.phrase_seams import continue_after_seam
+
+    assert continue_after_seam(before, phrase, earlier) == expected

@@ -12,9 +12,9 @@ opener; anything else is assumed to be a name continuing the sentence.
 
 Streaming cleanup now sees a whole open sentence at a time
 (sentence_tail.py), so joins happen only where a long tail is settled
-mid-sentence. Before cleanup, ``strip_pause_mark`` and ``continue_phrase``
-remove the ending and capital Whisper gives a phrase only because the audio
-paused.
+mid-sentence. Before cleanup, ``strip_pause_mark``, ``continue_after_seam``
+and ``continue_phrase`` remove the ending and capital Whisper gives a phrase
+only because the audio paused.
 """
 
 import re
@@ -78,9 +78,9 @@ def strip_pause_mark(text: str) -> str:
 
     Cut off at a pause, Whisper ends the phrase as if it were finished: a
     period, a trailing dash ("if I pause-"), or dots ("How..."). None of that
-    was said. A question or exclamation mark stays: it can be the speaker's
-    own, and cleanup decides with the rest of the sentence in view. So does
-    the period of an abbreviation ("U.S."), which isn't an ending.
+    was said. A question or exclamation mark stays until the next phrase
+    shows whether the sentence went on (``continue_after_seam``). So does the
+    period of an abbreviation ("U.S."), which isn't an ending.
     """
     stripped = text.rstrip()
     last = stripped.split()[-1] if stripped else ""
@@ -115,6 +115,26 @@ def continue_phrase(phrase: str, earlier: str) -> str:
     if word in _mid_sentence_capitals(earlier) | _mid_sentence_capitals(phrase):
         return phrase
     return _lower_first(phrase)
+
+
+def continue_after_seam(before: str, phrase: str, earlier: str) -> tuple[str, str]:
+    """Join ``phrase`` after ``before``, text that ended where the audio paused.
+
+    Returns both, adjusted. Whisper ends a phrase cut at a pause as if it were
+    finished, and a question or exclamation mark there is as often the pause
+    as the speaker (``pause? for a second``). Cleanup takes a mark it is given
+    as a sentence end, so the mark goes. The capital Whisper gave the next
+    phrase stays instead: a weaker hint that a new sentence may start, which
+    cleanup drops when the words run on. A word that is always capitalized
+    ("I", a name) can't be that hint, so there the mark stays. Without such a
+    mark the phrase continues as ``continue_phrase`` decides.
+    """
+    if not re.search(r"[\w)\"'”][?!]$", before):
+        return before, continue_phrase(phrase, earlier)
+    word = _first_word(phrase)
+    if word and word[0].isupper() and continue_phrase(phrase, earlier) == phrase:
+        return before, phrase
+    return before[:-1], phrase
 
 
 def close_phrase(text: str) -> str:

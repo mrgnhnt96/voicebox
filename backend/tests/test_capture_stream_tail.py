@@ -50,12 +50,12 @@ async def test_a_sentence_split_by_pauses_is_cleaned_as_one(tmp_path, monkeypatc
             "Wait, but if I pause for a second does that mean that my pauses cannot be cleaned?": (
                 "Wait, but if I pause for a second, does that mean my pauses can't be cleaned?"
             ),
-            "Wait, but if I pause for a second does that mean that my pauses cannot be cleaned? from in between": (
+            "Wait, but if I pause for a second does that mean that my pauses cannot be cleaned From in between": (
                 "Wait, but if I pause for a second, does that mean my pauses can't be cleaned from in between?"
             ),
             (
-                "Wait, but if I pause for a second does that mean that my pauses cannot be cleaned? "
-                "from in between pauses."
+                "Wait, but if I pause for a second does that mean that my pauses cannot be cleaned "
+                "From in between pauses."
             ): "Wait, but if I pause for a second, does that mean my pauses can't be cleaned from in between pauses?",
         }
     )
@@ -72,9 +72,50 @@ async def test_a_sentence_split_by_pauses_is_cleaned_as_one(tmp_path, monkeypatc
     )
     # Saved without the marks the pauses added; the last phrase keeps its ending.
     assert session.raw == (
-        "Wait, but if I pause for a second does that mean that my pauses cannot be cleaned? from in between pauses."
+        "Wait, but if I pause for a second does that mean that my pauses cannot be cleaned From in between pauses."
     )
     assert len(prompts) == 7
+
+
+@pytest.mark.asyncio
+async def test_a_question_mark_at_a_pause_does_not_split_the_question(tmp_path, monkeypatch):
+    # The user's dictation: Whisper ended the first phrase with "?" only
+    # because the audio paused there, and cleanup then ended the sentence at it.
+    refine, prompts = scripted(
+        {
+            "Wait, what if I pause?": "Wait, what if I pause?",
+            "Wait, what if I pause For a second": "Wait, what if I pause for a second?",
+        }
+    )
+    session, _ = refining_session(tmp_path, monkeypatch, refine)
+    await session.accept("Wait, what if I pause?", paused=True)
+    session.finish()
+    await session.accept("For a second.", paused=True)
+    await session.run()
+    session.close()
+    assert prompts[-1] == "Wait, what if I pause For a second"
+    assert session.raw == "Wait, what if I pause For a second"
+    assert session.refined == "Wait, what if I pause for a second?"
+
+
+@pytest.mark.asyncio
+async def test_a_question_followed_by_i_keeps_its_mark(tmp_path, monkeypatch):
+    refine, prompts = scripted(
+        {
+            "What's the other one?": "What's the other one?",
+            "What's the other one? I have a reminder for tomorrow.": (
+                "What's the other one? I have a reminder for tomorrow."
+            ),
+        }
+    )
+    session, _ = refining_session(tmp_path, monkeypatch, refine)
+    await session.accept("What's the other one?", paused=True)
+    session.finish()
+    await session.accept("I have a reminder for tomorrow.")
+    await session.run()
+    session.close()
+    assert prompts[-1] == "What's the other one? I have a reminder for tomorrow."
+    assert session.refined == "What's the other one? I have a reminder for tomorrow."
 
 
 @pytest.mark.asyncio
