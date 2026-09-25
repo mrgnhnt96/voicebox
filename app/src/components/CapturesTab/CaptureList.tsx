@@ -8,7 +8,6 @@ import type { CaptureResponse } from '@/lib/api/types';
 import { cn } from '@/lib/utils/cn';
 import { AppIcon } from './AppIcon';
 import {
-  type CaptureFilter,
   type CaptureTag,
   captureTag,
   deliveredText,
@@ -16,57 +15,11 @@ import {
   formatRowTime,
 } from './captureFormat';
 
-const FILTERS: CaptureFilter[] = ['all', 'dictation', 'recording', 'file', 'review'];
-
 const TAG_CLASS: Record<CaptureTag, string> = {
   refined: 'border border-accent/30 text-accent',
   review: 'bg-warning/15 text-warning',
   raw: 'border border-input text-muted-foreground',
 };
-
-function FilterChips({
-  value,
-  onChange,
-  total,
-  reviewCount,
-}: {
-  value: CaptureFilter;
-  onChange: (filter: CaptureFilter) => void;
-  total: number;
-  reviewCount: number;
-}) {
-  const { t } = useTranslation();
-  return (
-    <fieldset
-      aria-label={t('captures.filters.label')}
-      className="m-0 min-w-0 border-0 p-0 flex flex-wrap gap-1.5"
-    >
-      {FILTERS.map((filter) => {
-        const active = value === filter;
-        const count = filter === 'all' ? total : filter === 'review' ? reviewCount : null;
-        return (
-          <button
-            key={filter}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(filter)}
-            className={cn(
-              'h-7 px-2.5 rounded-md border text-xs transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              active
-                ? 'border-input bg-secondary text-foreground'
-                : 'border-border text-muted-foreground hover:text-foreground',
-              filter === 'review' && !active && 'border-accent/30 text-accent hover:text-accent',
-            )}
-          >
-            {t(`captures.filters.${filter}`)}
-            {count != null && <span className="ml-1.5 tabular-nums">{count}</span>}
-          </button>
-        );
-      })}
-    </fieldset>
-  );
-}
 
 function CaptureRow({
   capture,
@@ -93,17 +46,11 @@ function CaptureRow({
       )}
     >
       <span className="flex items-center gap-2.5 font-mono text-[11px] text-muted-foreground">
-        <span className="w-16 shrink-0 truncate">
+        <span className="w-[84px] shrink-0 truncate">
           {formatRowTime(capture.created_at, t('captures.list.yesterday'))}
         </span>
-        <span
-          className="w-24 shrink-0 flex items-center gap-1.5 min-w-0"
-          title={capture.app_name ?? undefined}
-        >
+        <span className="w-3.5 shrink-0" title={capture.app_name ?? undefined}>
           <AppIcon bundleId={capture.app_bundle_id} />
-          <span className="uppercase truncate">
-            {capture.app_name ?? t(`captures.source.${capture.source}`)}
-          </span>
         </span>
         <span className={cn('px-1.5 rounded-[3px] leading-4', TAG_CLASS[tag])}>
           {t(`captures.tag.${tag}`)}
@@ -117,7 +64,7 @@ function CaptureRow({
 }
 
 /**
- * The 440px capture list: search (⌘K hint), filter chips, the not-set-up
+ * The 440px capture list: search (⌘K hint), the not-set-up
  * banner, the style calibration prompt, and one row per capture.
  */
 export function CaptureList({
@@ -128,25 +75,20 @@ export function CaptureList({
   onSelect,
   search,
   onSearchChange,
-  filter,
-  onFilterChange,
   allReady,
 }: {
   captures: CaptureResponse[];
-  /** The captures left after search and filter, in display order. */
+  /** The captures left after search, in display order. */
   visible: CaptureResponse[];
   loading: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
   search: string;
   onSearchChange: (value: string) => void;
-  filter: CaptureFilter;
-  onFilterChange: (filter: CaptureFilter) => void;
   allReady: boolean;
 }) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const reviewCount = captures.filter((c) => c.refinement_review).length;
 
   // Keep the selected row in view as the arrow keys move through the list.
   useEffect(() => {
@@ -161,7 +103,7 @@ export function CaptureList({
       aria-label={t('captures.title')}
       className="w-[440px] shrink-0 flex flex-col border-r border-border"
     >
-      <div className="flex flex-col gap-3 p-4 border-b border-border">
+      <div className="p-4 border-b border-border">
         <label className="flex items-center gap-2.5 h-10 px-3 rounded-lg border border-input bg-popover focus-within:border-ring">
           <Search className="h-[15px] w-[15px] shrink-0 text-muted-foreground" />
           <input
@@ -174,12 +116,6 @@ export function CaptureList({
           />
           <Kbd>⌘K</Kbd>
         </label>
-        <FilterChips
-          value={filter}
-          onChange={onFilterChange}
-          total={captures.length}
-          reviewCount={reviewCount}
-        />
       </div>
 
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">

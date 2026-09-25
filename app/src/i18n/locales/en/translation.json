@@ -184,14 +184,6 @@
     "searchPlaceholder": "Search captures",
     "snippetEmpty": "(no transcript)",
     "captureCardLabel": "Capture · {{when}}",
-    "filters": {
-      "label": "Filter captures",
-      "all": "All",
-      "dictation": "Dictation",
-      "recording": "Recording",
-      "file": "File",
-      "review": "Review"
-    },
     "tag": {
       "refined": "Refined",
       "review": "Review",
@@ -224,11 +216,6 @@
       "corrected": "corrected",
       "editedByYou": "edited by you",
       "alter": "Alter"
-    },
-    "source": {
-      "dictation": "Dictation",
-      "recording": "Recording",
-      "file": "File"
     },
     "transcript": {
       "refined": "Refined",

@@ -1,6 +1,4 @@
-import type { CaptureResponse, CaptureSource } from '@/lib/api/types';
-
-export type CaptureFilter = 'all' | CaptureSource | 'review';
+import type { CaptureResponse } from '@/lib/api/types';
 
 /** The row tag: REVIEW wins over REFINED, since it asks the user to look. */
 export type CaptureTag = 'refined' | 'review' | 'raw';
@@ -30,10 +28,15 @@ function sameDay(a: Date, b: Date): boolean {
   );
 }
 
-/** Row time: "14:14" today, "yest 18:21" yesterday, "Sep 21" before that. */
+/** Local 12-hour clock time: "2:14 PM". */
+function formatClock(date: Date): string {
+  return date.toLocaleTimeString('en', { hour: 'numeric', minute: '2-digit' });
+}
+
+/** Row time: "2:14 PM" today, "yest 6:21 PM" yesterday, "Sep 21" before that. */
 export function formatRowTime(createdAt: string, yesterdayLabel: string, now = new Date()): string {
   const date = parseServerDate(createdAt);
-  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const time = formatClock(date);
   if (sameDay(date, now)) return time;
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
@@ -41,21 +44,15 @@ export function formatRowTime(createdAt: string, yesterdayLabel: string, now = n
   return date.toLocaleDateString('en', { month: 'short', day: 'numeric' });
 }
 
-/** Detail header stamp: "2026-09-23 14:14". */
+/** Detail header stamp: "2026-09-23 2:14 PM". */
 export function formatStamp(createdAt: string): string {
   const d = parseServerDate(createdAt);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${formatClock(d)}`;
 }
 
 export function captureTag(capture: CaptureResponse): CaptureTag {
   if (capture.refinement_review) return 'review';
   return capture.transcript_refined ? 'refined' : 'raw';
-}
-
-export function matchesFilter(capture: CaptureResponse, filter: CaptureFilter): boolean {
-  if (filter === 'all') return true;
-  if (filter === 'review') return !!capture.refinement_review;
-  return capture.source === filter;
 }
 
 export function matchesSearch(capture: CaptureResponse, query: string): boolean {

@@ -8,13 +8,7 @@ import { useDictationReadiness } from '@/lib/hooks/useDictationReadiness';
 import { CaptureDetail } from './CaptureDetail';
 import { CaptureDetailHeader } from './CaptureDetailHeader';
 import { CaptureList } from './CaptureList';
-import {
-  type CaptureFilter,
-  isInOverlay,
-  isTypingTarget,
-  matchesFilter,
-  matchesSearch,
-} from './captureFormat';
+import { isInOverlay, isTypingTarget, matchesSearch } from './captureFormat';
 import { EmptyDetail } from './EmptyDetail';
 
 /** The Captures screen: the capture list on the left, the selected capture on the right. */
@@ -26,7 +20,6 @@ export function CapturesTab() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<CaptureFilter>('all');
 
   const { data: capturesData, isLoading: capturesLoading } = useQuery({
     queryKey: ['captures'],
@@ -35,8 +28,8 @@ export function CapturesTab() {
   const captures = capturesData?.items ?? [];
 
   const visible = useMemo(
-    () => captures.filter((c) => matchesFilter(c, filter) && matchesSearch(c, search)),
-    [captures, filter, search],
+    () => captures.filter((c) => matchesSearch(c, search)),
+    [captures, search],
   );
 
   // Keep a selection. If the current selection disappears (e.g. deletion),
@@ -57,7 +50,6 @@ export function CapturesTab() {
   useEffect(() => {
     if (!linkedId || !captures.some((c) => c.id === linkedId)) return;
     setSelectedId(linkedId);
-    setFilter('all');
     setSearch('');
     navigate({ search: {}, replace: true });
   }, [linkedId, captures, navigate]);
@@ -136,8 +128,6 @@ export function CapturesTab() {
         onSelect={setSelectedId}
         search={search}
         onSearchChange={setSearch}
-        filter={filter}
-        onFilterChange={setFilter}
         allReady={readiness.isLoading || readiness.allReady}
       />
       <div className="flex-1 min-w-0 flex flex-col">
