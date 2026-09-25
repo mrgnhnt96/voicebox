@@ -1,5 +1,5 @@
 import { CircleHelp, Copy } from 'lucide-react';
-import { type ReactNode, useId, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -71,6 +71,11 @@ function TranscriptPanel({
   const teachState = useTeachCorrection(capture, teach ?? tone, text);
   const [explained, setExplained] = useState(false);
   const aboutId = useId();
+  // The explanation makes way for the edit, and stays closed after it.
+  const editing = teachState.draft !== null;
+  useEffect(() => {
+    if (editing) setExplained(false);
+  }, [editing]);
   const learned = teach ? teachState.learned : null;
   const textClass =
     tone === 'raw'
@@ -100,7 +105,7 @@ function TranscriptPanel({
                 variant="ghost"
                 size="sm"
                 className="h-6 px-1.5 font-mono text-[11px] text-muted-foreground"
-                disabled={teachState.draft !== null}
+                disabled={editing}
                 onClick={teachState.begin}
               >
                 {t('captures.teach.alter')}
@@ -123,7 +128,7 @@ function TranscriptPanel({
           {action}
         </span>
       </div>
-      {teach && explained && (
+      {teach && explained && !editing && (
         <p id={aboutId} className="m-0 text-xs leading-relaxed text-muted-foreground">
           {t('captures.feedback.description')}
         </p>
