@@ -19,12 +19,22 @@ export interface DiffHunk {
   count?: number;
 }
 
+/** A run of the merged diff: text both sides share, or only one side has. */
+export interface MergedSegment {
+  text: string;
+  kind: 'same' | 'removed' | 'added';
+}
+
 export interface WordDiff {
   /** The first text, with the words missing from the second marked. */
   before: DiffSegment[];
   /** The second text, with the words missing from the first marked. */
   after: DiffSegment[];
+  /** Both texts in one run, each change's removed words before its added ones. */
+  merged: MergedSegment[];
   hunks: DiffHunk[];
+  /** Words both sides keep but write differently, which the segments don't mark. */
+  restyled: { case: number; punctuation: number };
 }
 
 // Past this many LCS cells (about 2,000 × 2,000 words) the diff is skipped and
@@ -129,6 +139,31 @@ function splitTrailingSpace(segments: DiffSegment[]): DiffSegment[] {
   return out;
 }
 
+function pushMerged(segments: MergedSegment[], text: string, kind: MergedSegment['kind']) {
+  const last = segments[segments.length - 1];
+  if (last && last.kind === kind) last.text += text;
+  else segments.push({ text, kind });
+}
+
+/** The merged-run version of `splitTrailingSpace`. */
+function splitMergedTrailingSpace(segments: MergedSegment[]): MergedSegment[] {
+  const out: MergedSegment[] = [];
+  for (const segment of segments) {
+    if (segment.kind === 'same') {
+      pushMerged(out, segment.text, 'same');
+      continue;
+    }
+    const trailing = segment.text.match(/\s*$/)?.[0] ?? '';
+    const body = segment.text.slice(0, segment.text.length - trailing.length);
+    if (body) out.push({ text: body, kind: segment.kind });
+    if (trailing) pushMerged(out, trailing, 'same');
+  }
+  return out;
+}
+
+const NOT_WORD_CHAR = /[^\p{L}\p{N}]/gu;
+const WORD_CHAR = /[\p{L}\p{N}]/gu;
+
 /**
  * "Sagar." → "Saggar." is a change to the word, not to the period: drop
  * punctuation both sides start or end with, unless nothing else is left.
@@ -163,14 +198,21 @@ export function diffWords(before: string, after: string): WordDiff {
     return {
       before: before ? [{ text: before, changed: false }] : [],
       after: after ? [{ text: after, changed: false }] : [],
+      merged: after ? [{ text: after, kind: 'same' }] : [],
       hunks: [],
+      restyled: { case: 0, punctuation: 0 },
     };
   }
   const beforeSegments: DiffSegment[] = [];
   const afterSegments: DiffSegment[] = [];
+  const merged: MergedSegment[] = [];
   const hunks: DiffHunk[] = [];
+  const restyled = { case: 0, punctuation: 0 };
   let removed: string[] = [];
   let added: string[] = [];
+  // A change's tokens, held so its removed words show before its added ones.
+  let removedText = '';
+  let addedText = '';
 
   const closeHunk = () => {
     if (removed.length || added.length) {
@@ -180,8 +222,12 @@ export function diffWords(before: string, after: string): WordDiff {
       if (same) same.count = (same.count ?? 1) + 1;
       else hunks.push(hunk);
     }
+    if (removedText) pushMerged(merged, removedText, 'removed');
+    if (addedText) pushMerged(merged, addedText, 'added');
     removed = [];
     added = [];
+    removedText = '';
+    addedText = '';
   };
 
   for (const op of ops) {
@@ -189,11 +235,20 @@ export function diffWords(before: string, after: string): WordDiff {
       closeHunk();
       pushSegment(beforeSegments, op.a.text, false);
       pushSegment(afterSegments, op.b.text, false);
+      pushMerged(merged, op.b.text, 'same');
+      if (op.a.word !== op.b.word) {
+        if (op.a.word.replace(NOT_WORD_CHAR, '') !== op.b.word.replace(NOT_WORD_CHAR, ''))
+          restyled.case++;
+        if (op.a.word.replace(WORD_CHAR, '') !== op.b.word.replace(WORD_CHAR, ''))
+          restyled.punctuation++;
+      }
     } else if (op.kind === 'removed') {
       removed.push(op.a.word);
+      removedText += op.a.text;
       pushSegment(beforeSegments, op.a.text, true);
     } else {
       added.push(op.b.word);
+      addedText += op.b.text;
       pushSegment(afterSegments, op.b.text, true);
     }
   }
@@ -202,8 +257,33 @@ export function diffWords(before: string, after: string): WordDiff {
   return {
     before: splitTrailingSpace(beforeSegments),
     after: splitTrailingSpace(afterSegments),
+    merged: splitMergedTrailingSpace(merged),
     hunks,
+    restyled,
   };
+}
+
+/** How much a diff changed, by kind, for the change chips. */
+export interface ChangeSummary {
+  /** Words taken out with nothing put in their place. */
+  removed: number;
+  /** Words put in where nothing was taken out. */
+  added: number;
+  /** Places where words were replaced by other words. */
+  reworded: number;
+  case: number;
+  punctuation: number;
+}
+
+export function summarizeChanges(diff: WordDiff): ChangeSummary {
+  const summary = { removed: 0, added: 0, reworded: 0, ...diff.restyled };
+  for (const hunk of diff.hunks) {
+    const times = hunk.count ?? 1;
+    if (hunk.removed && hunk.added) summary.reworded += times;
+    else if (hunk.removed) summary.removed += countWords(hunk.removed) * times;
+    else summary.added += countWords(hunk.added) * times;
+  }
+  return summary;
 }
 
 /** Number of words in a transcript. */

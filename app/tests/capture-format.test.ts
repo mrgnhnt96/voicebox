@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  formatDetailStamp,
   formatRowTime,
-  formatStamp,
+  languageName,
   snippetParts,
+  wordsPerMinute,
 } from '../src/components/CapturesTab/captureFormat';
 
 // Built from local parts and sent as UTC, like the backend's naive timestamps.
@@ -19,8 +21,29 @@ describe('capture times', () => {
     expect(formatRowTime(serverStamp(2026, 9, 20, 9, 0), 'yest', now)).toBe('Sep 20');
   });
 
-  test('the detail header shows the date and 12-hour time', () => {
-    expect(formatStamp(serverStamp(2026, 9, 25, 14, 5))).toBe('2026-09-25 2:05 PM');
+  test('the detail header says today and yesterday, then the date', () => {
+    const labels = { today: 'Today', yesterday: 'Yesterday' };
+    expect(formatDetailStamp(serverStamp(2026, 9, 25, 14, 5), labels, now)).toBe('Today · 2:05 PM');
+    expect(formatDetailStamp(serverStamp(2026, 9, 24, 0, 30), labels, now)).toBe(
+      'Yesterday · 12:30 AM',
+    );
+    expect(formatDetailStamp(serverStamp(2026, 9, 20, 9, 0), labels, now)).toBe('Sep 20 · 9:00 AM');
+    expect(formatDetailStamp(serverStamp(2025, 12, 31, 9, 0), labels, now)).toBe(
+      'Dec 31, 2025 · 9:00 AM',
+    );
+  });
+});
+
+describe('capture details', () => {
+  test('pace is words per minute of recording', () => {
+    expect(wordsPerMinute(19, 6000)).toBe(190);
+    expect(wordsPerMinute(2, 0)).toBeNull();
+    expect(wordsPerMinute(0, 2000)).toBeNull();
+  });
+
+  test('language codes read as names', () => {
+    expect(languageName('en')).toBe('English');
+    expect(languageName('not a code')).toBe('not a code');
   });
 });
 

@@ -114,7 +114,7 @@ export function CorrectionLearning({
           )}
         </div>
       )}
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         <Button
           size="sm"
           variant="outline"

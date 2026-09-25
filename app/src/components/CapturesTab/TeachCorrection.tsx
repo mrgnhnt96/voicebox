@@ -280,7 +280,10 @@ export function TeachActions({ teach }: { teach: TeachState }) {
   );
 }
 
-/** The confirmation after a correction is saved, with the learning status and Undo. */
+/**
+ * The confirmation after a correction is saved, with the learning status.
+ * Its Undo is on the correction in the inspector.
+ */
 export function LearnedNotice({ teach }: { teach: TeachState }) {
   const { t } = useTranslation();
   const { data: style } = useWritingStyle();
@@ -319,16 +322,11 @@ export function LearnedNotice({ teach }: { teach: TeachState }) {
           </div>
         )}
       </div>
-      <div className="flex items-center justify-between">
+      {examples > 0 && (
         <span className="font-mono text-[11px] text-muted-foreground">
-          {examples > 0 && t('captures.teach.examplesLearned', { count: examples })}
+          {t('captures.teach.examplesLearned', { count: examples })}
         </span>
-        {teach.canUndo && (
-          <Button variant="outline" size="sm" disabled={teach.undoing} onClick={teach.undo}>
-            {t('captures.teach.undo')}
-          </Button>
-        )}
-      </div>
+      )}
     </div>
   );
 }

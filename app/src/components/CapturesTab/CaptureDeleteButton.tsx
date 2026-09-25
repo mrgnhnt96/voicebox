@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -20,10 +20,10 @@ import type { CaptureResponse } from '@/lib/api/types';
 import { isInOverlay, isTypingTarget } from './captureFormat';
 
 /**
- * The bar under a capture: Delete ⌫. The key works whenever focus isn't in a
- * text field or an open overlay. Each transcript has its own copy button.
+ * Delete ⌫, pinned under the capture's inspector. The key works whenever
+ * focus isn't in a text field or an open overlay.
  */
-export function CaptureActionBar({ capture }: { capture: CaptureResponse }) {
+export function CaptureDeleteButton({ capture }: { capture: CaptureResponse }) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -60,17 +60,17 @@ export function CaptureActionBar({ capture }: { capture: CaptureResponse }) {
   }, []);
 
   return (
-    <div className="h-14 shrink-0 flex items-center gap-2 px-6 border-t border-border">
-      <span className="flex-1" />
+    <>
       <Button
-        variant="ghost"
-        className="text-destructive hover:text-destructive"
+        variant="outline"
+        size="sm"
+        className="w-full border-destructive/30 bg-transparent text-destructive hover:bg-destructive/10 hover:text-destructive"
         onClick={() => setDeleteOpen(true)}
         disabled={deleteMutation.isPending}
       >
-        {deleteMutation.isPending && <Loader2 className="animate-spin" />}
+        {deleteMutation.isPending ? <Loader2 className="animate-spin" /> : <Trash2 />}
         {t('captures.actions.delete')}
-        <Kbd className="border-0 px-0">⌫</Kbd>
+        <Kbd className="border-0 bg-transparent px-0 text-destructive">⌫</Kbd>
       </Button>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -97,6 +97,6 @@ export function CaptureActionBar({ capture }: { capture: CaptureResponse }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

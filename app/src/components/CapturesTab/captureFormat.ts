@@ -18,8 +18,6 @@ function parseServerDate(date: string): Date {
   return new Date(hasZone ? trimmed : `${trimmed}Z`);
 }
 
-const pad = (n: number) => String(n).padStart(2, '0');
-
 function sameDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -44,10 +42,47 @@ export function formatRowTime(createdAt: string, yesterdayLabel: string, now = n
   return date.toLocaleDateString('en', { month: 'short', day: 'numeric' });
 }
 
-/** Detail header stamp: "2026-09-23 2:14 PM". */
-export function formatStamp(createdAt: string): string {
-  const d = parseServerDate(createdAt);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${formatClock(d)}`;
+/**
+ * Detail header stamp: "Today · 2:14 PM", "Yesterday · 6:21 PM", then
+ * "Sep 21 · 9:00 AM", with the year when it isn't this one.
+ */
+export function formatDetailStamp(
+  createdAt: string,
+  labels: { today: string; yesterday: string },
+  now = new Date(),
+): string {
+  const date = parseServerDate(createdAt);
+  const time = formatClock(date);
+  if (sameDay(date, now)) return `${labels.today} · ${time}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (sameDay(date, yesterday)) return `${labels.yesterday} · ${time}`;
+  const day = date.toLocaleDateString('en', {
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+  });
+  return `${day} · ${time}`;
+}
+
+/** Local 12-hour clock time of a server timestamp: "2:14 PM". */
+export function formatTime(createdAt: string): string {
+  return formatClock(parseServerDate(createdAt));
+}
+
+/** Speaking pace, or null when the recording has no length to measure. */
+export function wordsPerMinute(words: number, durationMs?: number | null): number | null {
+  if (!durationMs || durationMs <= 0 || !words) return null;
+  return Math.round(words / (durationMs / 60_000));
+}
+
+/** "en" → "English"; the code itself when it isn't a language the platform knows. */
+export function languageName(code: string): string {
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code;
+  } catch {
+    return code;
+  }
 }
 
 export function captureTag(capture: CaptureResponse): CaptureTag {

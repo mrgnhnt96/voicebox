@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils/cn';
 import { debug } from '@/lib/utils/debug';
 import { formatDuration } from './captureFormat';
 
+/** The capture's audio as a small pill: play, a scrubbable waveform, and the time. */
 export function CaptureInlinePlayer({
   audioUrl,
   fallbackDurationMs,
@@ -38,13 +39,13 @@ export function CaptureInlinePlayer({
 
     const ws = WaveSurfer.create({
       container,
-      waveColor: cssHsla('--muted-foreground', 0.45),
+      waveColor: cssHsla('--muted-foreground', 0.55),
       progressColor: cssHsla('--accent', 1),
       cursorColor: 'transparent',
-      barWidth: 3,
+      barWidth: 2,
       barRadius: 1,
       barGap: 2,
-      height: 32,
+      height: 18,
       normalize: true,
       interact: true,
       dragToSeek: { debounceTime: 0 },
@@ -133,11 +134,15 @@ export function CaptureInlinePlayer({
       : (fallbackDurationMs ?? 0);
 
   return (
-    <div className={cn('flex items-center gap-3', className)}>
+    <div
+      className={cn(
+        'flex h-9 items-center gap-2.5 rounded-full border border-border bg-card pl-1 pr-3',
+        className,
+      )}
+    >
       <Button
         size="icon"
-        variant="outline"
-        className="h-8 w-8 shrink-0 bg-popover [&_svg]:size-3"
+        className="h-7 w-7 shrink-0 rounded-full bg-accent text-accent-foreground hover:bg-accent/90 [&_svg]:size-3"
         onClick={handlePlayPause}
         disabled={isLoading || !!error}
         aria-label={isPlaying ? 'Pause recording' : 'Play recording'}
@@ -150,12 +155,10 @@ export function CaptureInlinePlayer({
           <Play className="ml-px fill-current" />
         )}
       </Button>
-      <div className="flex-1 min-w-0 h-11 flex items-center gap-3 px-2.5 rounded-md border border-border bg-card">
-        <div ref={waveformRef} className="flex-1 min-w-0 h-8 select-none" />
-        <span className="font-mono text-[11px] tabular-nums text-muted-foreground shrink-0">
-          {error ? '—' : formatDuration(displayMs)}
-        </span>
-      </div>
+      <div ref={waveformRef} className="flex-1 min-w-0 h-[18px] select-none" />
+      <span className="font-mono text-[11px] tabular-nums text-muted-foreground shrink-0">
+        {error ? '—' : formatDuration(displayMs)}
+      </span>
     </div>
   );
 }

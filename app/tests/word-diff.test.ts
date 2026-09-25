@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { countWords, diffWords } from '../src/components/CapturesTab/wordDiff';
+import { countWords, diffWords, summarizeChanges } from '../src/components/CapturesTab/wordDiff';
 
 const marked = (segments: { text: string; changed: boolean }[]) =>
   segments.filter((s) => s.changed).map((s) => s.text);
@@ -63,7 +63,13 @@ test('segments rebuild the original texts exactly', () => {
 test('empty sides', () => {
   expect(diffWords('', 'hello there').hunks).toEqual([{ removed: '', added: 'hello there' }]);
   expect(diffWords('hello', '').hunks).toEqual([{ removed: 'hello', added: '' }]);
-  expect(diffWords('', '')).toEqual({ before: [], after: [], hunks: [] });
+  expect(diffWords('', '')).toEqual({
+    before: [],
+    after: [],
+    merged: [],
+    hunks: [],
+    restyled: { case: 0, punctuation: 0 },
+  });
 });
 
 test('a very long transcript is shown unmarked instead of diffed', () => {
@@ -93,4 +99,41 @@ test('a change shows only the words, not punctuation both sides share', () => {
 test('the same change made twice is listed once, with a count', () => {
   const diff = diffWords('Sagar is open. I love Sagar', 'Saggar is open. I love Saggar');
   expect(diff.hunks).toEqual([{ removed: 'Sagar', added: 'Saggar', count: 2 }]);
+});
+
+test('the merged run puts each change in reading order', () => {
+  const diff = diffWords(
+    'um so push the release to thursday because the the build is flaky',
+    'Push the release to Friday because the build is flaky.',
+  );
+  expect(diff.merged).toEqual([
+    { text: 'um so', kind: 'removed' },
+    { text: ' Push the release to ', kind: 'same' },
+    { text: 'thursday', kind: 'removed' },
+    { text: ' ', kind: 'same' },
+    { text: 'Friday', kind: 'added' },
+    { text: ' because ', kind: 'same' },
+    { text: 'the', kind: 'removed' },
+    { text: ' the build is flaky.', kind: 'same' },
+  ]);
+});
+
+test('recasing and punctuation are counted, not marked', () => {
+  const diff = diffWords('wrong output', 'Wrong output.');
+  expect(diff.hunks).toEqual([]);
+  expect(diff.restyled).toEqual({ case: 1, punctuation: 1 });
+});
+
+test('the summary counts changes by kind', () => {
+  const diff = diffWords(
+    'um so push the release to thursday because the the build is flaky',
+    'Push the release to Friday because the build is still flaky.',
+  );
+  expect(summarizeChanges(diff)).toEqual({
+    removed: 3,
+    added: 1,
+    reworded: 1,
+    case: 1,
+    punctuation: 1,
+  });
 });

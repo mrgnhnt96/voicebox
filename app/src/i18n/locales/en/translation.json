@@ -124,7 +124,6 @@
   "captures": {
     "feedback": {
       "report": "Teach Voicebox",
-      "sectionTitle": "Corrections",
       "description": "Edit this into what you meant: fix wrong words, drop false starts, put things in order, fix grammar. Keep your own words and every idea you said. Voicebox uses it as an example on your next dictations right away, and the personal model trains on it while the app is idle. Everything stays on this device. Deleting a capture removes its corrections from future training.",
       "original": "What Voicebox wrote ({{target}})",
       "expected": "What you meant",
@@ -133,7 +132,6 @@
       "save": "Save",
       "saved": "Saved. Voicebox will use this on your next dictations.",
       "failed": "Could not save correction",
-      "history": "Your corrections ({{count}})",
       "about": "About corrections",
       "exportFailed": "Could not export corrections",
       "loadFailed": "Could not load saved corrections",
@@ -197,9 +195,7 @@
       "action": "Finish setup"
     },
     "panel": {
-      "words_one": "{{count}} word",
-      "words_other": "{{count}} words",
-      "notRefined": "Not refined yet. Press R to refine it.",
+      "copy": "Copy text",
       "copyRaw": "Copy raw transcript"
     },
     "teach": {
@@ -212,13 +208,13 @@
       "examplesLearned_other": "{{count}} examples learned",
       "undo": "Undo",
       "undoFailed": "Could not undo the correction",
-      "corrected": "corrected",
-      "editedByYou": "edited by you",
-      "alter": "Alter"
+      "alter": "Alter",
+      "correctedByYou": "Corrected by you"
     },
     "transcript": {
       "refined": "Refined",
-      "raw": "Raw"
+      "raw": "Raw",
+      "heard": "Heard"
     },
     "actions": {
       "configure": "Dictation settings",
@@ -337,6 +333,43 @@
       "added": "May have added: {{words}}",
       "missing": "May have left out: {{words}}",
       "hint": "If it's wrong, type what you meant under Teach so Voicebox learns it."
+    },
+    "source": {
+      "dictation": "Dictation",
+      "recording": "Recording",
+      "file": "Imported file"
+    },
+    "detail": {
+      "today": "Today",
+      "yesterday": "Yesterday"
+    },
+    "changes": {
+      "title": "What changed",
+      "none": "No changes",
+      "removed_one": "−{{count}} word",
+      "removed_other": "−{{count}} words",
+      "added_one": "+{{count}} word",
+      "added_other": "+{{count}} words",
+      "reworded": "{{count}} reworded",
+      "case": "{{count}} capitalization",
+      "punctuation": "{{count}} punctuation"
+    },
+    "inspector": {
+      "recording": "Recording",
+      "length": "Length",
+      "pace": "Pace",
+      "wpm": "{{count}} wpm",
+      "words": "Words",
+      "language": "Language",
+      "models": "Models",
+      "speech": "Speech",
+      "refinement": "Refinement",
+      "whisper": "Whisper {{model}}",
+      "qwen": "Qwen3 {{model}}",
+      "corrections": "Corrections",
+      "correctionsCount": "Corrections · {{count}}",
+      "noCorrections": "None yet. Alter the text to teach Voicebox.",
+      "showing": "Showing"
     }
   },
   "settings": {
