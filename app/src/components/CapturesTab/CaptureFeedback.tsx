@@ -17,6 +17,9 @@ export function CaptureFeedback({ capture }: { capture: CaptureResponse }) {
     queryFn: () => apiClient.listCaptureFeedback(capture.id),
   });
 
+  // Nothing to show until this capture has a correction.
+  if (!reports.isError && !reports.data?.length) return null;
+
   return (
     <section className="space-y-3">
       <h3 className="font-mono text-[11px] uppercase text-muted-foreground">
