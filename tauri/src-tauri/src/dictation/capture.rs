@@ -18,7 +18,7 @@ use serde::Serialize;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 
-use super::audio::{self, Framer, LevelMeter, TakeMetrics};
+use super::audio::{self, Framer, LevelMeter, LowCut, TakeMetrics};
 use super::stream::AudioMsg;
 use super::take::{Recorded, MIN_RECORDING};
 
@@ -154,6 +154,7 @@ fn run(
     let playing_since = Instant::now();
     let mut framer = Framer::new(sample_rate);
     let mut meter = LevelMeter::new(sample_rate);
+    let mut low_cut = LowCut::new(sample_rate);
     let max_fallback = sample_rate as usize * MAX_FALLBACK_SECONDS;
     let mut recording: Vec<i16> = Vec::with_capacity(sample_rate as usize * 30);
     let mut scratch: Vec<i16> = Vec::with_capacity(sample_rate as usize);
@@ -176,6 +177,9 @@ fn run(
                 *leading_zeros = Some(recording.len() as u64 + index as u64);
             }
         }
+        // Everything downstream (server, fallback upload, HUD level) gets the
+        // audio without hum below the voice.
+        low_cut.process(&mut scratch);
         let room = max_fallback.saturating_sub(recording.len());
         recording.extend_from_slice(&scratch[..scratch.len().min(room)]);
         for frame in framer.push(&scratch) {

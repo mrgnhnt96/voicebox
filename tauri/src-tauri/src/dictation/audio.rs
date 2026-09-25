@@ -191,6 +191,76 @@ impl TakeMetrics {
     }
 }
 
+/// Below this, a microphone picks up hum (fans, air conditioning, mains)
+/// rather than words. A fan on the user's microphone hummed at 120–140 Hz, as
+/// loud as their voice. On 27 of their takes, cutting it left Whisper's
+/// transcripts and the voice detector's results essentially unchanged.
+pub const LOW_CUT_HZ: f64 = 200.0;
+
+/// An 8th-order Butterworth high-pass at [`LOW_CUT_HZ`], as four biquads.
+/// Steep enough to take a hum at 130 Hz down ~30 dB.
+pub struct LowCut {
+    stages: [Biquad; 4],
+}
+
+impl LowCut {
+    pub fn new(sample_rate: u32) -> Self {
+        // The Q of each pole pair of an 8th-order Butterworth.
+        let q = |k: f64| 1.0 / (2.0 * ((2.0 * k - 1.0) * std::f64::consts::PI / 16.0).cos());
+        Self {
+            stages: [1.0, 2.0, 3.0, 4.0].map(|k| Biquad::high_pass(sample_rate, LOW_CUT_HZ, q(k))),
+        }
+    }
+
+    /// Filter samples in place.
+    pub fn process(&mut self, samples: &mut [i16]) {
+        for sample in samples {
+            let mut value = *sample as f64;
+            for stage in &mut self.stages {
+                value = stage.process(value);
+            }
+            *sample = value.round().clamp(i16::MIN as f64, i16::MAX as f64) as i16;
+        }
+    }
+}
+
+/// One second-order section (direct form I).
+struct Biquad {
+    b: [f64; 3],
+    a: [f64; 2],
+    x: [f64; 2],
+    y: [f64; 2],
+}
+
+impl Biquad {
+    /// The Audio EQ Cookbook high-pass.
+    fn high_pass(sample_rate: u32, cutoff: f64, q: f64) -> Self {
+        let w0 = 2.0 * std::f64::consts::PI * cutoff / sample_rate as f64;
+        let alpha = w0.sin() / (2.0 * q);
+        let cos = w0.cos();
+        let a0 = 1.0 + alpha;
+        Self {
+            b: [
+                (1.0 + cos) / 2.0 / a0,
+                -(1.0 + cos) / a0,
+                (1.0 + cos) / 2.0 / a0,
+            ],
+            a: [-2.0 * cos / a0, (1.0 - alpha) / a0],
+            x: [0.0; 2],
+            y: [0.0; 2],
+        }
+    }
+
+    fn process(&mut self, x: f64) -> f64 {
+        let y = self.b[0] * x + self.b[1] * self.x[0] + self.b[2] * self.x[1]
+            - self.a[0] * self.y[0]
+            - self.a[1] * self.y[1];
+        self.x = [x, self.x[0]];
+        self.y = [y, self.y[0]];
+        y
+    }
+}
+
 /// How often the recording HUD gets a new input level.
 pub const LEVEL_INTERVAL: Duration = Duration::from_millis(50);
 /// Reported for digital silence, which would otherwise be -inf dBFS.
@@ -272,6 +342,44 @@ mod tests {
             .map(|i| if i % 2 == 0 { 16384 } else { -16384 })
             .collect();
         assert!((levels(16_000, &half)[0] + 6.02).abs() < 0.05);
+    }
+
+    fn tone_gain_db(sample_rate: u32, hz: f64) -> f64 {
+        let tone: Vec<i16> = (0..sample_rate)
+            .map(|i| {
+                (10_000.0 * (2.0 * std::f64::consts::PI * hz * i as f64 / sample_rate as f64).sin())
+                    as i16
+            })
+            .collect();
+        let mut filtered = tone.clone();
+        LowCut::new(sample_rate).process(&mut filtered);
+        // Skip the first 100 ms while the filter settles.
+        let rms = |s: &[i16]| {
+            let tail = &s[s.len() / 10..];
+            (tail.iter().map(|&v| (v as f64).powi(2)).sum::<f64>() / tail.len() as f64).sqrt()
+        };
+        20.0 * (rms(&filtered) / rms(&tone)).log10()
+    }
+
+    #[test]
+    fn low_cut_removes_hum_and_keeps_the_voice() {
+        for rate in [16_000, 44_100, 48_000] {
+            assert!(tone_gain_db(rate, 130.0) < -25.0, "hum at {rate} Hz");
+            assert!(tone_gain_db(rate, 60.0) < -60.0, "mains at {rate} Hz");
+            assert!(tone_gain_db(rate, 400.0).abs() < 0.5, "voice at {rate} Hz");
+            assert!(
+                tone_gain_db(rate, 2_000.0).abs() < 0.5,
+                "voice at {rate} Hz"
+            );
+        }
+    }
+
+    #[test]
+    fn low_cut_keeps_digital_silence_silent() {
+        // Leading zeros mark how long the device took to start.
+        let mut silence = vec![0i16; 4800];
+        LowCut::new(48_000).process(&mut silence);
+        assert!(silence.iter().all(|&s| s == 0));
     }
 
     #[test]
