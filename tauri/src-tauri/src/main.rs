@@ -48,6 +48,9 @@ fn build_dictate_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewW
     .skip_taskbar(true)
     .resizable(false)
     .shadow(false)
+    // The pill never becomes key (see `pill_panel_can_become_key`), so every
+    // click on it is a first click; without this WebKit would swallow it.
+    .accept_first_mouse(true)
     .visible(false)
     .build()?;
 
@@ -85,20 +88,20 @@ extern "C" {
     ) -> *const objc::runtime::Class;
 }
 
-/// `canBecomeKeyWindow` override for the pill panel. Borderless NSPanels
-/// refuse key status by default, and WebKit rejects `getUserMedia` from a
-/// document whose window can never become key — so recording silently fails.
-/// Returning YES restores capture; the panel stays non-activating, so showing
-/// it never steals focus from the app being dictated into.
+/// `canBecomeKeyWindow` override for the pill panel. The pill must never take
+/// keyboard focus: it floats over the app being dictated into, and while it is
+/// key that app's window looks focused but every keystroke (the Enter after a
+/// paste, say) lands in the pill instead. Audio capture is native, so nothing
+/// in the webview needs key status.
 extern "C" fn pill_panel_can_become_key(
     _this: &objc::runtime::Object,
     _sel: objc::runtime::Sel,
 ) -> objc::runtime::BOOL {
-    objc::runtime::YES
+    objc::runtime::NO
 }
 
-/// Lazily-registered NSPanel subclass for the dictate pill: key-capable (for
-/// WebKit media capture) while remaining a panel (for fullscreen-Space join).
+/// Lazily-registered NSPanel subclass for the dictate pill: never key (so it
+/// never takes keystrokes) while remaining a panel (for fullscreen-Space join).
 fn pill_panel_class() -> &'static objc::runtime::Class {
     use objc::declare::ClassDecl;
     use objc::runtime::{Class, Object, Sel, BOOL};
@@ -119,7 +122,7 @@ fn pill_panel_class() -> &'static objc::runtime::Class {
     Class::get("VoiceboxPillPanel").expect("VoiceboxPillPanel registered")
 }
 
-/// Convert the dictate pill's NSWindow into a key-capable NSPanel and set the
+/// Convert the dictate pill's NSWindow into a never-key NSPanel and set the
 /// collection behavior + window level required to appear over another app's
 /// native macOS fullscreen Space.
 ///
@@ -181,9 +184,10 @@ pub fn apply_fullscreen_overlay_behavior(window: &tauri::WebviewWindow) {
     }
 }
 
-/// Order the pill front over whatever Space is active. `orderFrontRegardless`
-/// works even though the app is inactive (it always is mid-dictation — the
-/// user is typing in some other app). Called right after `window.show()`.
+/// Show the pill over whatever Space is active without taking keyboard focus.
+/// This replaces `window.show()`, which calls `makeKeyAndOrderFront:`.
+/// `orderFrontRegardless` works even though the app is inactive (it always is
+/// mid-dictation — the user is typing in some other app).
 pub fn force_order_front(window: &tauri::WebviewWindow) {
     let w = window.clone();
     let _ = window.run_on_main_thread(move || {
@@ -917,17 +921,15 @@ fn open_input_monitoring_settings(app: tauri::AppHandle) -> Result<(), String> {
 /// Returns `true` when the paste sequence completed end-to-end.
 #[command]
 async fn paste_final_text(
-    app: tauri::AppHandle,
     text: String,
     focus: focus_capture::FocusSnapshot,
 ) -> Result<bool, String> {
-    paste_final_text_with(app, text, focus, None).await
+    paste_final_text_with(text, focus, None).await
 }
 
 /// [`paste_final_text`] with a clipboard snapshot taken earlier, at dictation
 /// key-down, reused when nothing was copied since.
 pub(crate) async fn paste_final_text_with(
-    app: tauri::AppHandle,
     text: String,
     focus: focus_capture::FocusSnapshot,
     prepared: Option<clipboard::ClipboardSnapshot>,
@@ -950,7 +952,7 @@ pub(crate) async fn paste_final_text_with(
     let already_front = focus_capture::frontmost_pid() == Some(focus.pid);
 
     // Direct insertion into the target's focused field via Accessibility: no
-    // clipboard, no keystroke, no pill hide and no settle sleeps. Falls
+    // clipboard, no keystroke and no settle sleeps. Falls
     // through to ⌘V only when nothing was inserted (see text_insert.rs).
     match text_insert::try_insert(focus.pid, focus.bundle_id.clone(), text.clone()).await {
         text_insert::Outcome::Inserted { .. } => {
@@ -978,27 +980,6 @@ pub(crate) async fn paste_final_text_with(
     let saved_ms = started.elapsed().as_millis();
     let after_write = clipboard::write_text(&text)?;
 
-    // Order the pill out for the synthetic ⌘V. The pill is a key-capable
-    // panel (WebKit needs that for getUserMedia), and over a fullscreen Space
-    // it holds key focus Spotlight-style — the keystroke would land in the
-    // pill instead of the target app. Hidden it can't swallow keys; restored
-    // immediately after so the webview never suspends between dictations.
-    let pill = app.get_webview_window(DICTATE_WINDOW_LABEL);
-    if let Some(ref w) = pill {
-        if let Err(e) = w.hide() {
-            // Never emit Cmd+V while the key-capable pill may still own focus.
-            // Undo our clipboard write when it is still safe, then abort.
-            if matches!(
-                clipboard::current_change_count(),
-                Ok(current) if current == after_write
-            ) {
-                clipboard::restore_clipboard(&snapshot)?;
-            }
-            return Err(format!("Failed to hide dictate window before paste: {e}"));
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-    }
-
     let paste_result = synthetic_keys::send_paste();
     eprintln!(
         "[voicebox] clipboard paste: snapshot {} in {saved_ms} ms, ⌘V sent {} ms after start",
@@ -1010,11 +991,6 @@ pub(crate) async fn paste_final_text_with(
         started.elapsed().as_millis()
     );
     tokio::time::sleep(std::time::Duration::from_millis(PASTE_CONSUME_MS)).await;
-
-    if let Some(ref w) = pill {
-        let _ = w.show();
-        force_order_front(w);
-    }
 
     let safe_to_restore = matches!(
         clipboard::current_change_count(),

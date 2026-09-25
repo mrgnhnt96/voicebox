@@ -433,7 +433,6 @@ impl TakeEnv for AppEnv {
     }
 
     fn paste(&self, text: String) -> impl Future<Output = Result<bool, String>> + Send {
-        let app = self.app.clone();
         let focus = self.focus.lock().ok().and_then(|f| f.clone());
         let prepared = self.clipboard.lock().ok().and_then(|mut c| c.take());
         let pastes = self.pastes;
@@ -448,7 +447,7 @@ impl TakeEnv for AppEnv {
                 return result;
             }
             match focus {
-                Some(focus) => crate::paste_final_text_with(app, text, focus, prepared).await,
+                Some(focus) => crate::paste_final_text_with(text, focus, prepared).await,
                 None => Err(delivery::NO_FOCUS_MESSAGE.to_string()),
             }
         }
@@ -577,11 +576,9 @@ pub fn show_hud(app: &AppHandle) {
         eprintln!("dictate:start: failed to position pill: {e}");
     }
     let _ = window.set_ignore_cursor_events(false);
-    // Deliberately no set_focus(): taking key focus would yank it out of
-    // whatever app the user was typing in.
-    let _ = window.show();
-    // Order the pill into the currently-active Space (incl. a foreign app's
-    // fullscreen Space); see main.rs.
+    // Not `window.show()`: that makes the pill key, and the app the user is
+    // dictating into stops receiving keystrokes. This orders it into the
+    // active Space (incl. a foreign app's fullscreen Space) without focus.
     crate::force_order_front(&window);
 }
 

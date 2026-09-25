@@ -1,8 +1,7 @@
 //! Direct text insertion through the Accessibility API.
 //!
-//! The clipboard path in `paste_final_text` costs a clipboard save/write, an
-//! 80 ms pill-hide settle, a synthetic ⌘V and a 400 ms wait before the
-//! clipboard is restored. When the focused element of the target app lets us
+//! The clipboard path in `paste_final_text` costs a clipboard save/write, a
+//! synthetic ⌘V and a 400 ms wait before the clipboard is restored. When the focused element of the target app lets us
 //! set `AXSelectedText`, we can instead write the text straight into it: it
 //! replaces the selection (or inserts at the caret), with no keystroke, no
 //! clipboard and no sleep, so the text is on screen as soon as the call

@@ -197,13 +197,13 @@ pub fn capture_focus() -> Result<FocusSnapshot, String> {
             return Err(format!("AXUIElementGetPid failed (AXError {})", err));
         }
 
-        // If the focused element belongs to our OWN process, the dictate pill
-        // has transiently taken key focus for its WebKit mic capture — the
-        // system-wide AXFocusedUIElement then resolves to the pill instead of
-        // the user's real target, which would make us paste into ourselves (a
-        // no-op) or drop the text entirely. The pill is a non-activating panel
-        // so it never becomes the frontmost application; remap to the
-        // frontmost app, which is always the real dictation target.
+        // If the focused element belongs to our OWN process while another app
+        // is frontmost, the system-wide AXFocusedUIElement has resolved to the
+        // dictate pill instead of the user's real target, which would make us
+        // paste into ourselves (a no-op) or drop the text entirely. The pill
+        // is a non-activating, never-key panel so it never becomes the
+        // frontmost application; remap to the frontmost app, which is always
+        // the real dictation target.
         let our_pid = std::process::id() as Pid;
         if pid == our_pid {
             if let Some(fp) = frontmost_pid() {
