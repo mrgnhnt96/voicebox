@@ -80,3 +80,17 @@ test('countWords', () => {
   expect(countWords('')).toBe(0);
   expect(countWords(null)).toBe(0);
 });
+
+test('a change shows only the words, not punctuation both sides share', () => {
+  const diff = diffWords('I use Sagar.', 'I use Saggar.');
+  expect(diff.hunks).toEqual([{ removed: 'Sagar', added: 'Saggar' }]);
+  // Punctuation that did change stays in.
+  expect(diffWords('call Sagar', 'call Saggar?').hunks).toEqual([
+    { removed: 'Sagar', added: 'Saggar?' },
+  ]);
+});
+
+test('the same change made twice is listed once, with a count', () => {
+  const diff = diffWords('Sagar is open. I love Sagar', 'Saggar is open. I love Saggar');
+  expect(diff.hunks).toEqual([{ removed: 'Sagar', added: 'Saggar', count: 2 }]);
+});

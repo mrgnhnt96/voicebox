@@ -15,6 +15,8 @@ export interface DiffSegment {
 export interface DiffHunk {
   removed: string;
   added: string;
+  /** How many times the same change was made, when more than once. */
+  count?: number;
 }
 
 export interface WordDiff {
@@ -127,6 +129,34 @@ function splitTrailingSpace(segments: DiffSegment[]): DiffSegment[] {
   return out;
 }
 
+/**
+ * "Sagar." → "Saggar." is a change to the word, not to the period: drop
+ * punctuation both sides start or end with, unless nothing else is left.
+ */
+function trimSharedPunctuation(removed: string, added: string): DiffHunk {
+  let start = 0;
+  while (
+    start < removed.length &&
+    start < added.length &&
+    removed[start] === added[start] &&
+    /[^\p{L}\p{N}\s]/u.test(removed[start])
+  )
+    start++;
+  let end = 0;
+  while (
+    end < removed.length - start &&
+    end < added.length - start &&
+    removed[removed.length - 1 - end] === added[added.length - 1 - end] &&
+    /[^\p{L}\p{N}\s]/u.test(removed[removed.length - 1 - end])
+  )
+    end++;
+  const trimmed = {
+    removed: removed.slice(start, removed.length - end),
+    added: added.slice(start, added.length - end),
+  };
+  return trimmed.removed || trimmed.added ? trimmed : { removed, added };
+}
+
 export function diffWords(before: string, after: string): WordDiff {
   const ops = diffTokens(tokenize(before), tokenize(after));
   if (!ops) {
@@ -143,8 +173,13 @@ export function diffWords(before: string, after: string): WordDiff {
   let added: string[] = [];
 
   const closeHunk = () => {
-    if (removed.length || added.length)
-      hunks.push({ removed: removed.join(' '), added: added.join(' ') });
+    if (removed.length || added.length) {
+      const hunk = trimSharedPunctuation(removed.join(' '), added.join(' '));
+      // The same change made again is counted, not listed again.
+      const same = hunks.find((h) => h.removed === hunk.removed && h.added === hunk.added);
+      if (same) same.count = (same.count ?? 1) + 1;
+      else hunks.push(hunk);
+    }
     removed = [];
     added = [];
   };

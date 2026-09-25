@@ -121,6 +121,7 @@ export function HunkList({ hunks, className }: { hunks: DiffHunk[]; className?: 
           {hunk.removed && <span className="text-destructive line-through">{hunk.removed}</span>}
           {hunk.removed && hunk.added && <span className="text-muted-foreground"> → </span>}
           {hunk.added && <span className="text-success">{hunk.added}</span>}
+          {hunk.count && <span className="text-muted-foreground"> ×{hunk.count}</span>}
         </li>
       ))}
       {hunks.length > shown.length && (
