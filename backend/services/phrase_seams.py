@@ -67,6 +67,50 @@ def open_phrase(text: str, raw: str) -> str:
     return re.sub(r"(?<=[\w)\"'\u201d])\.$", "", text)
 
 
+def strip_pause_mark(text: str) -> str:
+    """Drop the ending Whisper gives a phrase only because the audio paused.
+
+    Cut off at a pause, Whisper ends the phrase as if it were finished: a
+    period, a trailing dash ("if I pause-"), or dots ("How..."). None of that
+    was said. A question or exclamation mark stays: it can be the speaker's
+    own, and cleanup decides with the rest of the sentence in view. So does
+    the period of an abbreviation ("U.S."), which isn't an ending.
+    """
+    stripped = text.rstrip()
+    last = stripped.split()[-1] if stripped else ""
+    if re.search(r"[\w)\"'\u201d](?:\.{2,}|\u2026|[-\u2013\u2014]+)$", stripped):
+        return re.sub(r"(?:\.{2,}|\u2026|[-\u2013\u2014]+)$", "", stripped)
+    if re.search(r"[\w)\"'\u201d]\.$", stripped) and "." not in last[:-1]:
+        return stripped[:-1]
+    return stripped
+
+
+def _mid_sentence_capitals(text: str) -> set[str]:
+    """Words ``text`` capitalizes where no sentence starts: names and the like."""
+    words = text.split()
+    kept = set()
+    for before, word in zip(words, words[1:], strict=False):
+        first = _first_word(word)
+        if first and first[0].isupper() and not re.search(r"[.?!:\u2026-]$", before):
+            kept.add(first)
+    return kept
+
+
+def continue_phrase(phrase: str, earlier: str) -> str:
+    """Lowercase the capital Whisper gives a phrase only because it began after a pause.
+
+    ``I``, acronyms and words capitalized mid-sentence in ``earlier`` (the
+    dictation before this phrase) or later in the phrase itself keep their
+    capitals: those are names, not sentence starts.
+    """
+    word = _first_word(phrase)
+    if not word or not word[0].isupper():
+        return phrase
+    if word in _mid_sentence_capitals(earlier) | _mid_sentence_capitals(phrase):
+        return phrase
+    return _lower_first(phrase)
+
+
 def close_phrase(text: str) -> str:
     """End a finished dictation that was left open at its last pause."""
     stripped = text.rstrip()

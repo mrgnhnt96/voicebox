@@ -47,3 +47,49 @@ def test_close_phrase_ends_an_open_dictation():
     assert close_phrase("It might") == "It might."
     assert close_phrase("Is it?") == "Is it?"
     assert close_phrase("") == ""
+
+
+@pytest.mark.parametrize(
+    ("heard", "expected"),
+    [
+        # Whisper's endings for a phrase cut off at a pause.
+        ("Wait, but if I pause-", "Wait, but if I pause"),
+        ("for a-", "for a"),
+        ("second.", "second"),
+        ("How...", "How"),
+        ("How\u2026", "How"),
+        ("so the \u2014", "so the \u2014"),
+        # Marks the speaker may have meant stay for cleanup to judge.
+        ("that my pauses cannot be cleaned?", "that my pauses cannot be cleaned?"),
+        ("wow!", "wow!"),
+        # An abbreviation's period isn't an ending.
+        ("we moved to the U.S.", "we moved to the U.S."),
+        ("it costs $5 (maybe).", "it costs $5 (maybe)"),
+        ("", ""),
+    ],
+)
+def test_strip_pause_mark(heard, expected):
+    from backend.services.phrase_seams import strip_pause_mark
+
+    assert strip_pause_mark(heard) == expected
+
+
+@pytest.mark.parametrize(
+    ("phrase", "earlier", "expected"),
+    [
+        ("Does that mean-", "Wait, but if I pause for a second.", "does that mean-"),
+        ("Pauses.", "that my pauses cannot be cleaned from in between.", "pauses."),
+        # "I" and acronyms keep their capitals.
+        ("I think so", "It works.", "I think so"),
+        ("VS Code is open", "I was using it.", "VS Code is open"),
+        # A word capitalized mid-sentence anywhere in the dictation is a name.
+        ("Sagar is not focused", "I have to hit enter twice in Sagar.", "Sagar is not focused"),
+        ("Sagar said so, ask Sagar", "Hello.", "Sagar said so, ask Sagar"),
+        ("already lowercase", "fine.", "already lowercase"),
+        ("", "", ""),
+    ],
+)
+def test_continue_phrase_drops_the_capital_a_pause_added(phrase, earlier, expected):
+    from backend.services.phrase_seams import continue_phrase
+
+    assert continue_phrase(phrase, earlier) == expected
