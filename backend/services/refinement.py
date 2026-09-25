@@ -441,6 +441,12 @@ async def refine_transcript(
         model_size=resolved_size,
         examples=refinement_examples(flags, personal),
     )
+    from ..backends.qwen_llm_backend import generation_hint
+
+    # A cleanup copies most of its transcript, so generation checks copied
+    # words several per model call. The output is the same, in about a third
+    # of the time. A caller may already have set a better hint.
+    hint = generation_hint.set("") if generation_hint.get() is None else None
     try:
         text = await backend.generate(**arguments, **options)
     except Exception:
@@ -450,6 +456,9 @@ async def refine_transcript(
 
         quarantine_adapter("The personal adapter failed to load or generate; reverted to the base model.")
         text = await backend.generate(**arguments)
+    finally:
+        if hint is not None:
+            generation_hint.reset(hint)
     text = text.strip()
     if flags.punctuation_style == "learned":
         from .writing_style import apply_learned

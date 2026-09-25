@@ -54,3 +54,30 @@ def test_whisper_final_period_is_not_shown_to_the_cleanup(monkeypatch):
     asyncio.run(refinement.refine_transcript("Go home. Do chores.", RefinementFlags(), backend_override=Backend()))
     assert seen["prompt"] == "Go home. Do chores"
     assert ("Yes", "Yes") in seen["examples"]
+
+
+def test_every_cleanup_checks_copied_words_in_large_steps(monkeypatch):
+    import asyncio
+
+    from backend.backends import qwen_llm_backend
+    from backend.services import personal_examples, refinement
+
+    hints = []
+
+    class Backend:
+        model_size = "4B"
+
+        async def generate(self, **arguments):
+            hints.append(qwen_llm_backend.generation_hint.get())
+            return "Done"
+
+    monkeypatch.setattr(personal_examples, "for_prompt", lambda *_, **__: [])
+    asyncio.run(refinement.refine_transcript("go home", RefinementFlags(), backend_override=Backend()))
+    token = qwen_llm_backend.generation_hint.set("Go home.")
+    try:
+        asyncio.run(refinement.refine_transcript("go home", RefinementFlags(), backend_override=Backend()))
+    finally:
+        qwen_llm_backend.generation_hint.reset(token)
+    # A cleanup copies most of its transcript; a caller's own hint wins.
+    assert hints == ["", "Go home."]
+    assert qwen_llm_backend.generation_hint.get() is None
