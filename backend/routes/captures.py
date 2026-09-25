@@ -71,6 +71,8 @@ async def create_capture_endpoint(
     source: str = Form("file"),
     language: str | None = Form(None),
     stt_model: str | None = Form(None),
+    app_bundle_id: str | None = Form(None),
+    app_name: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """Upload audio, run STT, persist the capture."""
@@ -89,6 +91,7 @@ async def create_capture_endpoint(
     else:
         resolved_language = None if language == "auto" else language
 
+    bundle_id, name = captures_service.target_app(app_bundle_id, app_name)
     try:
         capture = await captures_service.create_capture(
             audio_bytes=audio_bytes,
@@ -97,6 +100,8 @@ async def create_capture_endpoint(
             language=resolved_language,
             stt_model=resolved_stt,
             db=db,
+            app_bundle_id=bundle_id,
+            app_name=name,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -95,8 +95,11 @@ function CaptureRow({
         <span className="w-16 shrink-0 truncate">
           {formatRowTime(capture.created_at, t('captures.list.yesterday'))}
         </span>
-        <span className="w-[70px] shrink-0 uppercase">
-          {t(`captures.source.${capture.source}`)}
+        <span
+          className="w-[70px] shrink-0 uppercase truncate"
+          title={capture.app_name ?? undefined}
+        >
+          {capture.app_name ?? t(`captures.source.${capture.source}`)}
         </span>
         <span className={cn('px-1.5 rounded-[3px] leading-4', TAG_CLASS[tag])}>
           {t(`captures.tag.${tag}`)}

@@ -18,12 +18,17 @@
 //!
 //! PID + bundle id + role are all captured for diagnostics — the bundle
 //! id lets step 6 (internal direct injection) detect "focus was inside
-//! Voicebox itself" and short-circuit the synthetic-paste path.
+//! Voicebox itself" and short-circuit the synthetic-paste path. The bundle
+//! id and app name are also saved with the capture, so Captures can show
+//! which app each dictation went to.
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FocusSnapshot {
     pub pid: i32,
     pub bundle_id: Option<String>,
+    /// The app's display name, e.g. "Slack".
+    #[serde(default)]
+    pub app_name: Option<String>,
     pub role: Option<String>,
 }
 
@@ -135,17 +140,30 @@ pub(crate) unsafe fn cfstring_to_rust(s: CFStringRef) -> Option<String> {
     cstr.to_str().ok().map(|x| x.to_owned())
 }
 
-unsafe fn bundle_id_for_pid(pid: i32) -> Option<String> {
+/// Bundle id and display name of the app running as `pid`.
+unsafe fn app_for_pid(pid: i32) -> (Option<String>, Option<String>) {
     let _pool = AutoreleasePool::new();
     let app: Id = msg_send![
         class!(NSRunningApplication),
         runningApplicationWithProcessIdentifier: pid
     ];
     if app.is_null() {
-        return None;
+        return (None, None);
     }
     let bundle: Id = msg_send![app, bundleIdentifier];
-    ns_string_to_rust(bundle)
+    let name: Id = msg_send![app, localizedName];
+    (ns_string_to_rust(bundle), ns_string_to_rust(name))
+}
+
+/// A snapshot of `pid` with no focused element to describe.
+unsafe fn app_snapshot(pid: i32) -> FocusSnapshot {
+    let (bundle_id, app_name) = app_for_pid(pid);
+    FocusSnapshot {
+        pid,
+        bundle_id,
+        app_name,
+        role: None,
+    }
 }
 
 /// Read the system-wide focused UI element's PID, bundle id, and AX role.
@@ -176,11 +194,7 @@ pub fn capture_focus() -> Result<FocusSnapshot, String> {
             // fall back to the frontmost app so the transcript still injects
             // there via activate + ⌘V.
             if let Some(fp) = frontmost_pid() {
-                return Ok(FocusSnapshot {
-                    pid: fp,
-                    bundle_id: bundle_id_for_pid(fp),
-                    role: None,
-                });
+                return Ok(app_snapshot(fp));
             }
             return Err(format!(
                 "No focused element (AXError {}). Verify Accessibility permission is granted and a focused text field exists.",
@@ -208,11 +222,7 @@ pub fn capture_focus() -> Result<FocusSnapshot, String> {
         if pid == our_pid {
             if let Some(fp) = frontmost_pid() {
                 if fp != our_pid {
-                    return Ok(FocusSnapshot {
-                        pid: fp,
-                        bundle_id: bundle_id_for_pid(fp),
-                        role: None,
-                    });
+                    return Ok(app_snapshot(fp));
                 }
             }
         }
@@ -240,11 +250,12 @@ pub fn capture_focus() -> Result<FocusSnapshot, String> {
             }
         };
 
-        let bundle_id = bundle_id_for_pid(pid);
+        let (bundle_id, app_name) = app_for_pid(pid);
 
         Ok(FocusSnapshot {
             pid,
             bundle_id,
+            app_name,
             role,
         })
     }

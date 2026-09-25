@@ -77,6 +77,10 @@ class Capture(Base):
     refinement_flags = Column(Text, nullable=True)  # JSON blob
     # JSON: what the content check found when cleanup may have added or lost content.
     refinement_review = Column(Text, nullable=True)
+    # The app that had focus when dictation started (None for uploads and
+    # for dictation inside Voicebox itself).
+    app_bundle_id = Column(String, nullable=True)
+    app_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

@@ -41,8 +41,20 @@ pub fn start_message(sample_rate: u32, provisional: bool) -> String {
     start.to_string()
 }
 
-pub fn finish_message() -> String {
-    r#"{"type":"finish"}"#.to_string()
+/// The app a dictation went to, saved with its capture.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TargetApp {
+    pub bundle_id: Option<String>,
+    pub name: Option<String>,
+}
+
+/// `app` is the dictation's target app, when known; older servers ignore it.
+pub fn finish_message(app: Option<&TargetApp>) -> String {
+    let mut finish = serde_json::json!({ "type": "finish" });
+    if let Some(app) = app {
+        finish["app"] = serde_json::json!({ "bundle_id": app.bundle_id, "name": app.name });
+    }
+    finish.to_string()
 }
 
 pub fn cancel_message() -> String {
@@ -159,6 +171,24 @@ mod tests {
         let value: Value = serde_json::from_str(&start_message(16_000, true)).unwrap();
         assert_eq!(value["provisional"], Value::Bool(true));
         assert_eq!(value["protocol_version"], 1);
+    }
+
+    #[test]
+    fn finish_message_carries_the_target_app() {
+        let plain: Value = serde_json::from_str(&finish_message(None)).unwrap();
+        assert_eq!(plain, serde_json::json!({ "type": "finish" }));
+        let app = TargetApp {
+            bundle_id: Some("com.apple.mail".into()),
+            name: Some("Mail".into()),
+        };
+        let value: Value = serde_json::from_str(&finish_message(Some(&app))).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "type": "finish",
+                "app": { "bundle_id": "com.apple.mail", "name": "Mail" },
+            })
+        );
     }
 
     #[test]

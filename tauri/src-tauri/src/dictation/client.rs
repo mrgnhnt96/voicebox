@@ -7,7 +7,7 @@
 
 use serde_json::Value;
 
-use super::protocol::{self, ServerEvent};
+use super::protocol::{self, ServerEvent, TargetApp};
 
 /// Something the transport must send.
 #[derive(Debug, Clone, PartialEq)]
@@ -50,6 +50,7 @@ pub struct StreamClient {
     finish_sent: bool,
     outcome: Option<Outcome>,
     on_provisional: Option<Box<dyn Fn(String) + Send>>,
+    target_app: Option<Box<dyn Fn() -> Option<TargetApp> + Send>>,
 }
 
 impl StreamClient {
@@ -70,6 +71,7 @@ impl StreamClient {
             finish_sent: false,
             outcome: None,
             on_provisional: None,
+            target_app: None,
         }
     }
 
@@ -77,6 +79,21 @@ impl StreamClient {
     pub fn with_provisional(mut self, on_provisional: impl Fn(String) + Send + 'static) -> Self {
         self.on_provisional = Some(Box::new(on_provisional));
         self
+    }
+
+    /// Name the take's target app in `finish`. Asked only then, since the
+    /// app is found after the take starts.
+    pub fn with_target_app(
+        mut self,
+        target_app: impl Fn() -> Option<TargetApp> + Send + 'static,
+    ) -> Self {
+        self.target_app = Some(Box::new(target_app));
+        self
+    }
+
+    fn finish_message(&self) -> String {
+        let app = self.target_app.as_ref().and_then(|app| app());
+        protocol::finish_message(app.as_ref())
     }
 
     pub fn is_ready(&self) -> bool {
@@ -155,7 +172,7 @@ impl StreamClient {
         self.finish_requested = true;
         if self.ready {
             self.finish_sent = true;
-            vec![Action::Text(protocol::finish_message())]
+            vec![Action::Text(self.finish_message())]
         } else {
             Vec::new()
         }
@@ -174,7 +191,7 @@ impl StreamClient {
                 let mut actions: Vec<Action> = self.pending.drain(..).map(Action::Binary).collect();
                 if self.finish_requested {
                     self.finish_sent = true;
-                    actions.push(Action::Text(protocol::finish_message()));
+                    actions.push(Action::Text(self.finish_message()));
                 }
                 actions
             }
@@ -349,6 +366,26 @@ mod tests {
         assert!(matches!(sent[0], Action::Binary(_)));
         assert_eq!(texts(&sent), vec![serde_json::json!({"type": "finish"})]);
         assert!(client.finish_sent());
+    }
+
+    #[test]
+    fn finish_names_the_target_app_known_by_then() {
+        let mut client = StreamClient::new(1 << 20).with_target_app(|| {
+            Some(TargetApp {
+                bundle_id: Some("com.apple.Notes".into()),
+                name: Some("Notes".into()),
+            })
+        });
+        client.set_format(48_000);
+        client.on_open();
+        ready(&mut client);
+        assert_eq!(
+            texts(&client.request_finish()),
+            vec![serde_json::json!({
+                "type": "finish",
+                "app": { "bundle_id": "com.apple.Notes", "name": "Notes" },
+            })]
+        );
     }
 
     #[test]

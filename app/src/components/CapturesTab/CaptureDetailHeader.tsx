@@ -15,6 +15,7 @@ export function CaptureDetailHeader({ capture }: { capture: CaptureResponse | nu
     ? [
         formatStamp(capture.created_at),
         capture.source,
+        capture.app_name,
         capture.language?.toLowerCase(),
         formatDuration(capture.duration_ms),
       ].filter(Boolean)

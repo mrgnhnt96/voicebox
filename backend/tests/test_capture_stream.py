@@ -363,6 +363,34 @@ def test_websocket_finish_and_recovery_do_not_duplicate_capture(tmp_path, monkey
         assert db.query(Capture).count() == 1
 
 
+def test_finish_records_the_app_dictated_into(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    app, engine = socket_app(tmp_path, monkeypatch)
+    with TestClient(app) as client:
+        with client.websocket_connect("/captures/stream") as socket:
+            socket.send_json(
+                dict(type="start", protocol_version=1, sample_rate=16000, channels=1, encoding="pcm_s16le")
+            )
+            socket.receive_json()
+            socket.send_bytes(struct.pack("<II", 0, 0) + np.ones(1600, dtype="<i2").tobytes())
+            socket.send_json(dict(type="finish", app=dict(bundle_id="com.tinyspeck.slackmacapp", name=" Slack ")))
+            while (event := socket.receive_json())["type"] != "final":
+                pass
+    assert event["capture"]["app_bundle_id"] == "com.tinyspeck.slackmacapp"
+    assert event["capture"]["app_name"] == "Slack"
+    with Session(engine) as db:
+        assert db.query(Capture).one().app_name == "Slack"
+
+
+def test_target_app_drops_blank_and_non_string_parts():
+    from backend.services.captures import target_app
+
+    assert target_app("com.apple.mail", "Mail") == ("com.apple.mail", "Mail")
+    assert target_app("  ", 7) == (None, None)
+    assert len(target_app("x" * 1000, None)[0]) == 255
+
+
 def test_cancel_discards_audio_without_capture(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 

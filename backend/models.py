@@ -58,6 +58,8 @@ class CaptureResponse(BaseModel):
     llm_model: Optional[str] = None
     refinement_flags: Optional[RefinementFlagsModel] = None
     refinement_review: Optional[RefinementReviewModel] = None
+    app_bundle_id: Optional[str] = None
+    app_name: Optional[str] = None
     created_at: datetime
 
     class Config:

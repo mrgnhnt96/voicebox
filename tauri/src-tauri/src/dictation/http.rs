@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use super::protocol::TargetApp;
 use super::stream::{classify_recovery, Recovery};
 
 pub fn client() -> reqwest::Client {
@@ -57,6 +58,7 @@ pub async fn upload(
     http: &reqwest::Client,
     server_url: &str,
     wav: Vec<u8>,
+    app: Option<TargetApp>,
 ) -> Result<Value, String> {
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -66,9 +68,17 @@ pub async fn upload(
         .file_name(format!("dictation-{millis}.wav"))
         .mime_str("audio/wav")
         .map_err(|e| e.to_string())?;
-    let form = reqwest::multipart::Form::new()
+    let mut form = reqwest::multipart::Form::new()
         .part("file", file)
         .text("source", "dictation");
+    if let Some(app) = app {
+        if let Some(bundle_id) = app.bundle_id {
+            form = form.text("app_bundle_id", bundle_id);
+        }
+        if let Some(name) = app.name {
+            form = form.text("app_name", name);
+        }
+    }
     let response = http
         .post(format!("{}/captures", base(server_url)))
         .multipart(form)
@@ -115,7 +125,7 @@ mod tests {
         let wav = std::fs::read(std::env::var("VOICEBOX_SMOKE_WAV").expect("VOICEBOX_SMOKE_WAV"))
             .unwrap();
         let http = client();
-        let capture = upload(&http, &server, wav).await.unwrap();
+        let capture = upload(&http, &server, wav, None).await.unwrap();
         eprintln!(
             "[smoke] batch raw: {} auto_refine {} allow_auto_paste {}",
             capture["transcript_raw"], capture["auto_refine"], capture["allow_auto_paste"]
@@ -126,7 +136,7 @@ mod tests {
         assert_eq!(refined["id"], capture["id"]);
         let missing = fetch_result(&http, &server, "no-such-session").await;
         assert_eq!(missing, Recovery::Pending);
-        let rejected = upload(&http, &server, b"not audio".to_vec())
+        let rejected = upload(&http, &server, b"not audio".to_vec(), None)
             .await
             .unwrap_err();
         eprintln!("[smoke] bad upload: {rejected}");

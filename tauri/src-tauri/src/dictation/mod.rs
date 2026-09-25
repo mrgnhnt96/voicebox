@@ -32,6 +32,7 @@ use crate::DICTATE_WINDOW_LABEL;
 use capture::{CaptureHooks, NativeInputDevice};
 use client::StreamClient;
 use live::{Finish, Live, LiveTarget};
+use protocol::TargetApp;
 use stream::{AudioMsg, Recovery, Timeouts};
 use take::{PillEvent, TakeEnv};
 
@@ -186,7 +187,9 @@ pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin) -> Option<u6
     });
 
     tauri::async_runtime::spawn(async move {
-        let client = StreamClient::new(MAX_PENDING_BYTES);
+        let app_focus = env.focus.clone();
+        let client =
+            StreamClient::new(MAX_PENDING_BYTES).with_target_app(move || target_app(&app_focus));
         let client = if live_text {
             let offer = live.clone();
             client.with_provisional(move |text| offer.offer(text))
@@ -225,6 +228,19 @@ pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin) -> Option<u6
         released,
     });
     Some(take_id)
+}
+
+/// The app a take went to, for its capture. None before focus is known and
+/// for dictation inside Voicebox itself.
+fn target_app(focus: &Mutex<Option<FocusSnapshot>>) -> Option<TargetApp> {
+    let focus = focus.lock().ok()?.clone()?;
+    if focus.bundle_id.as_deref() == Some(crate::VOICEBOX_BUNDLE_ID) {
+        return None;
+    }
+    Some(TargetApp {
+        bundle_id: focus.bundle_id,
+        name: focus.app_name,
+    })
 }
 
 /// Record the paste target for a take (captured right after [`start`], so
@@ -462,7 +478,8 @@ impl TakeEnv for AppEnv {
     fn upload(&self, wav: Vec<u8>) -> impl Future<Output = Result<Value, String>> + Send {
         let http = self.http.clone();
         let server_url = self.server_url.clone();
-        async move { http::upload(&http, &server_url, wav).await }
+        let app = target_app(&self.focus);
+        async move { http::upload(&http, &server_url, wav, app).await }
     }
 
     fn refine(&self, capture_id: String) -> impl Future<Output = Result<Value, String>> + Send {

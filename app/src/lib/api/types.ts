@@ -14,6 +14,7 @@ export type CaptureSource = 'dictation' | 'recording' | 'file';
 export interface FocusSnapshot {
   pid: number;
   bundle_id: string | null;
+  app_name: string | null;
   role: string | null;
 }
 
@@ -106,6 +107,9 @@ export interface CaptureResponse {
   llm_model?: string | null;
   refinement_flags?: RefinementFlags | null;
   refinement_review?: RefinementReview | null;
+  /** The app dictated into, when the capture came from the global shortcut. */
+  app_bundle_id?: string | null;
+  app_name?: string | null;
   created_at: string;
 }
 

@@ -269,7 +269,7 @@ mod tests {
                     binary += 1;
                 }
                 Action::Text(t) => {
-                    assert_eq!(t, protocol::finish_message());
+                    assert_eq!(t, protocol::finish_message(None));
                     break;
                 }
             }

@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from ..database import session as database_session
 from ..services.capture_stream import StreamingCapture
+from ..services.captures import target_app
 from ..services.settings import get_capture_settings
 from ..utils.origins import is_allowed_websocket_origin
 
@@ -100,6 +101,9 @@ async def stream_capture(websocket: WebSocket):
                 raise ValueError("Expected finish or cancel")
             if not session.samples:
                 raise ValueError("Cannot finish empty audio")
+            app = command.get("app")
+            if isinstance(app, dict):
+                session.app_bundle_id, session.app_name = target_app(app.get("bundle_id"), app.get("name"))
 
             async def send_finalizing(event):
                 # Finish is a commit request. Complete and retain the result if

@@ -64,6 +64,10 @@ def _migrate_captures(engine, inspector, tables: set[str]) -> None:
         return
     if "refinement_review" not in _get_columns(inspector, "captures"):
         _add_column(engine, "captures", "refinement_review TEXT", "refinement_review")
+    columns = _get_columns(inspector, "captures")
+    for column in ("app_bundle_id", "app_name"):
+        if column not in columns:
+            _add_column(engine, "captures", f"{column} VARCHAR", column)
 
 
 def _migrate_capture_settings(engine, inspector, tables: set[str]) -> None:

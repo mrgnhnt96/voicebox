@@ -189,7 +189,7 @@ mod tests {
                         samples += (frame.len() - protocol::HEADER_BYTES) / 2;
                     }
                     Message::Text(text) => {
-                        assert_eq!(text.as_str(), protocol::finish_message());
+                        assert_eq!(text.as_str(), protocol::finish_message(None));
                         break;
                     }
                     other => panic!("unexpected {other:?}"),

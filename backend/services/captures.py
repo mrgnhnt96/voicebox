@@ -36,6 +36,20 @@ VALID_SOURCES = {"dictation", "recording", "file"}
 WHISPER_NATIVE_FORMATS = (".wav", ".mp3", ".flac", ".ogg")
 
 
+MAX_APP_FIELD_CHARS = 255
+
+
+def target_app(bundle_id: object, name: object) -> tuple[Optional[str], Optional[str]]:
+    """The dictation's target app as stored: blank or non-string parts become None."""
+
+    def clean(value: object) -> Optional[str]:
+        if not isinstance(value, str):
+            return None
+        return value.strip()[:MAX_APP_FIELD_CHARS] or None
+
+    return clean(bundle_id), clean(name)
+
+
 def _to_response(row: DBCapture) -> CaptureResponse:
     flags_model: Optional[RefinementFlagsModel] = None
     if row.refinement_flags:
@@ -63,6 +77,8 @@ def _to_response(row: DBCapture) -> CaptureResponse:
         llm_model=row.llm_model,
         refinement_flags=flags_model,
         refinement_review=review,
+        app_bundle_id=row.app_bundle_id,
+        app_name=row.app_name,
         created_at=row.created_at,
     )
 
@@ -75,6 +91,8 @@ async def create_capture(
     language: Optional[str],
     stt_model: Optional[str],
     db: Session,
+    app_bundle_id: Optional[str] = None,
+    app_name: Optional[str] = None,
 ) -> CaptureResponse:
     """Persist raw audio, run STT, store the row."""
     if source not in VALID_SOURCES:
@@ -152,6 +170,8 @@ async def create_capture(
             duration_ms=duration_ms,
             transcript_raw=transcript,
             stt_model=resolved_stt,
+            app_bundle_id=app_bundle_id,
+            app_name=app_name,
         )
         db.add(row)
         db.commit()

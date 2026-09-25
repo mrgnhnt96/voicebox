@@ -113,6 +113,9 @@ class StreamingCapture:
         # Protocol addition: the client can show provisional cleaned text.
         self.provisional = start.get("provisional") is True
         self.shown = ""
+        # Set from the finish command, once the client knows the focused app.
+        self.app_bundle_id = None
+        self.app_name = None
         self.source = start.get("source", "dictation")
         if not isinstance(self.source, str) or self.source not in {"dictation", "recording"}:
             raise ValueError("Invalid streaming capture source")
@@ -659,6 +662,8 @@ class StreamingCapture:
             llm_model=self.llm_model,
             refinement_flags=json.dumps(self.flags.to_dict()) if self.settings.auto_refine else None,
             refinement_review=json.dumps(review) if self.settings.auto_refine and (review := summarize_reviews(self.reviews)) else None,
+            app_bundle_id=self.app_bundle_id,
+            app_name=self.app_name,
         )
         db.add(row)
         db.commit()

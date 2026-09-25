@@ -63,7 +63,8 @@ export function matchesSearch(capture: CaptureResponse, query: string): boolean 
   if (!q) return true;
   return (
     (capture.transcript_raw || '').toLowerCase().includes(q) ||
-    (capture.transcript_refined || '').toLowerCase().includes(q)
+    (capture.transcript_refined || '').toLowerCase().includes(q) ||
+    (capture.app_name || '').toLowerCase().includes(q)
   );
 }
 
@@ -77,6 +78,7 @@ export function buildCaptureMarkdown(capture: CaptureResponse): string {
   const lines: string[] = [];
   lines.push(`# Capture ${capture.id}`, '');
   lines.push(`- **Source:** ${capture.source}`);
+  if (capture.app_name) lines.push(`- **App:** ${capture.app_name}`);
   lines.push(`- **Created:** ${capture.created_at}`);
   if (capture.duration_ms != null)
     lines.push(`- **Duration:** ${formatDuration(capture.duration_ms)}`);
