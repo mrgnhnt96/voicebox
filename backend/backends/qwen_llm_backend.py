@@ -32,6 +32,45 @@ generation_listener: ContextVar[Optional[Callable[[str], None]]] = ContextVar(
 # the final cleanup doesn't wait for work it would throw away.
 generation_stop: ContextVar[Optional[threading.Event]] = ContextVar("generation_stop", default=None)
 
+# Set around a generate call whose output mostly copies text the caller has:
+# a cleanup copies the transcript, and a cleanup of a transcript that grew
+# repeats most of the previous cleanup. The value is that previous output, or
+# "" for none. Generation then checks proposed continuations taken from it and
+# from the prompt several tokens per model call (prompt lookup decoding).
+# Proposals only decide how many tokens are checked at once; every token is
+# still sampled from the model's own distribution, so the output is unchanged.
+generation_hint: ContextVar[Optional[str]] = ContextVar("generation_hint", default=None)
+
+# Off only to compare against plain decoding.
+LOOKUP_DECODING = True
+# Longest proposal checked in one model call. A call over a few dozen tokens
+# costs about what one generated token does, so a good proposal saves most of
+# the work and a wrong one wastes little.
+LOOKUP_DRAFT_TOKENS = 24
+
+
+def propose_draft(generated: list[int], sources: list[list[int]], limit: int, cursor: dict) -> list[int]:
+    """Tokens likely to follow ``generated``: what followed its last few tokens in a source.
+
+    The first source (the previous output) is proposed from its start before
+    anything is generated. ``cursor`` remembers where each source last
+    matched, so repeated words don't jump the proposal backwards.
+    """
+    if not generated:
+        return list(sources[0][:limit]) if sources and sources[0] else []
+    for size in (4, 3, 2, 1):
+        if len(generated) < size:
+            continue
+        tail = generated[-size:]
+        for index, source in enumerate(sources):
+            last = len(source) - size
+            start = cursor.get(index, 0)
+            for position in [*range(start, last + 1), *range(0, min(start, last + 1))]:
+                if source[position : position + size] == tail and position + size < len(source):
+                    cursor[index] = position + size
+                    return list(source[position + size : position + size + limit])
+    return []
+
 
 MLX_HF_REPOS = {
     "0.6B": "mlx-community/Qwen3-0.6B-4bit",
@@ -94,6 +133,7 @@ class MLXQwenLLMBackend:
         self._cached_tokens: list[int] = []
         self._listener: Optional[Callable[[str], None]] = None
         self._stop: Optional[threading.Event] = None
+        self._hint: Optional[str] = None
 
     def is_loaded(self) -> bool:
         return self.model is not None
@@ -187,6 +227,7 @@ class MLXQwenLLMBackend:
     ) -> str:
         listener = generation_listener.get()
         stop = generation_stop.get()
+        hint = generation_hint.get()
 
         # Load-if-needed and inference run as one job on the MLX worker so a
         # concurrent unload or different-size load can't land between them.
@@ -197,11 +238,13 @@ class MLXQwenLLMBackend:
             self._ensure_loaded_sync(model_size)
             self._listener = listener
             self._stop = stop
+            self._hint = hint
             try:
                 return self._generate_sync(prompt, system, max_tokens, temperature, examples)
             finally:
                 self._listener = None
                 self._stop = None
+                self._hint = None
 
         return await run_on_mlx_thread(_load_and_generate)
 
@@ -232,6 +275,8 @@ class MLXQwenLLMBackend:
         # Only the cache's own tokens are trustworthy; forget them until this
         # generation finishes in case it fails partway through.
         self._cached_tokens = []
+        if self._hint is not None and LOOKUP_DECODING:
+            return self._generate_lookup(tokens, reused, cache, sampler, max_tokens, self._hint, prompt, started)
         generated: list[int] = []
         text = ""
         for response in stream_generate(
@@ -261,6 +306,90 @@ class MLXQwenLLMBackend:
             len(tokens),
             len(generated),
             time.monotonic() - started,
+        )
+        return text.strip()
+
+    def _generate_lookup(self, tokens, reused, cache, sampler, max_tokens, hint, prompt, started) -> str:
+        """Generate with proposals from ``hint`` and ``prompt``, checked several tokens per model call.
+
+        Each call feeds the last token plus a proposal. The model's own sample
+        at every position is compared with the proposal; the matching run and
+        the first differing sample are kept, the rest of the call is trimmed
+        from the cache. Sampling each position from the model's distribution
+        and keeping it only while it equals the proposal gives the same output
+        distribution as generating one token at a time.
+        """
+        import mlx.core as mx
+        from mlx_lm.generate import generation_stream, wired_limit
+        from mlx_lm.models.cache import trim_prompt_cache
+
+        sampler = sampler or (lambda logprobs: mx.argmax(logprobs, axis=-1))
+        sources = [
+            self.tokenizer.encode(hint, add_special_tokens=False) if hint else [],
+            self.tokenizer.encode(prompt, add_special_tokens=False),
+        ]
+        eos = set(self.tokenizer.eos_token_ids)
+        detokenizer = self.tokenizer.detokenizer
+        detokenizer.reset()
+        pending = tokens[reused:]
+        # What the cache holds, token for token.
+        fed = list(tokens[:reused])
+        generated: list[int] = []
+        cursor: dict = {}
+        calls = accepted = 0
+        text = ""
+        stopped = False
+        with wired_limit(self.model, [generation_stream]):
+            with mx.stream(generation_stream):
+                while len(pending) > 1:
+                    step = pending[: min(512, len(pending) - 1)]
+                    self.model(mx.array(step)[None], cache=cache)
+                    mx.eval([c.state for c in cache])
+                    fed += step
+                    pending = pending[len(step) :]
+            while not stopped and len(generated) < max_tokens:
+                draft = propose_draft(generated, sources, min(LOOKUP_DRAFT_TOKENS, max_tokens - len(generated) - 1), cursor)
+                with mx.stream(generation_stream):
+                    logits = self.model(mx.array(pending + draft)[None], cache=cache)[0, -(len(draft) + 1) :, :]
+                    logprobs = logits - mx.logsumexp(logits, axis=-1, keepdims=True)
+                    samples = sampler(logprobs)
+                samples = samples.tolist()
+                calls += 1
+                kept = 0
+                while kept < len(draft) and samples[kept] == draft[kept]:
+                    kept += 1
+                trim_prompt_cache(cache, len(draft) - kept)
+                fed += pending + draft[:kept]
+                accepted += kept
+                for token in [*draft[:kept], samples[kept]]:
+                    if token in eos or len(generated) >= max_tokens:
+                        stopped = True
+                        break
+                    generated.append(token)
+                    detokenizer.add_token(token)
+                if stopped:
+                    break
+                pending = [samples[kept]]
+                text = detokenizer.text
+                if self._listener is not None:
+                    try:
+                        self._listener(text)
+                    except Exception:
+                        logger.debug("Generation listener failed", exc_info=True)
+                if self._stop is not None and self._stop.is_set():
+                    logger.info("Qwen3 generate: stopped after %d tokens", len(generated))
+                    break
+        detokenizer.finalize()
+        text = detokenizer.text
+        self._cached_tokens = fed
+        logger.info(
+            "Qwen3 generate: reused %d/%d prompt tokens, %d generated in %.3fs (%d model calls, %d proposed tokens kept)",
+            reused,
+            len(tokens),
+            len(generated),
+            time.monotonic() - started,
+            calls,
+            accepted,
         )
         return text.strip()
 
