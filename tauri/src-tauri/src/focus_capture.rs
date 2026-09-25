@@ -101,7 +101,8 @@ unsafe fn ns_string_to_rust(s: Id) -> Option<String> {
 /// linker symbols — Apple ships them as `CFSTR(...)` macros.
 pub(crate) unsafe fn cf_string_const(s: &str) -> Option<CFStringRef> {
     let cstr = std::ffi::CString::new(s).ok()?;
-    let result = CFStringCreateWithCString(kCFAllocatorDefault, cstr.as_ptr(), kCFStringEncodingUTF8);
+    let result =
+        CFStringCreateWithCString(kCFAllocatorDefault, cstr.as_ptr(), kCFStringEncodingUTF8);
     if result.is_null() {
         None
     } else {
@@ -159,9 +160,8 @@ pub fn capture_focus() -> Result<FocusSnapshot, String> {
         if system_wide.is_null() {
             return Err("AXUIElementCreateSystemWide returned null".into());
         }
-        let _sys_guard = scopeguard::guard(system_wide, |e| {
-            CFRelease(e as *const std::ffi::c_void)
-        });
+        let _sys_guard =
+            scopeguard::guard(system_wide, |e| CFRelease(e as *const std::ffi::c_void));
 
         let focused_attr = cf_string_const("AXFocusedUIElement")
             .ok_or("Failed to build AXFocusedUIElement CFString")?;
@@ -169,11 +169,7 @@ pub fn capture_focus() -> Result<FocusSnapshot, String> {
             scopeguard::guard(focused_attr, |s| CFRelease(s as *const std::ffi::c_void));
 
         let mut focused: *const std::ffi::c_void = std::ptr::null();
-        let err = AXUIElementCopyAttributeValue(
-            system_wide,
-            focused_attr,
-            &mut focused as *mut _,
-        );
+        let err = AXUIElementCopyAttributeValue(system_wide, focused_attr, &mut focused as *mut _);
         if err != AX_ERROR_SUCCESS || focused.is_null() {
             // Some apps (terminals, some Electron windows) expose no
             // system-wide focused element. Rather than drop the dictation,
@@ -225,9 +221,8 @@ pub fn capture_focus() -> Result<FocusSnapshot, String> {
             let role_attr = cf_string_const("AXRole");
             match role_attr {
                 Some(role_attr) => {
-                    let _role_attr_guard = scopeguard::guard(role_attr, |s| {
-                        CFRelease(s as *const std::ffi::c_void)
-                    });
+                    let _role_attr_guard =
+                        scopeguard::guard(role_attr, |s| CFRelease(s as *const std::ffi::c_void));
                     let mut role_value: *const std::ffi::c_void = std::ptr::null();
                     let err = AXUIElementCopyAttributeValue(
                         focused_elem,
@@ -287,8 +282,7 @@ pub fn activate_pid(pid: i32) -> Result<(), String> {
         }
 
         let activated: bool = if can_yield_activation() {
-            let current: Id =
-                msg_send![class!(NSRunningApplication), currentApplication];
+            let current: Id = msg_send![class!(NSRunningApplication), currentApplication];
             if !current.is_null() {
                 let _: () = msg_send![current, yieldActivationToApplication: target];
             }

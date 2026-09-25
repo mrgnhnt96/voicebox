@@ -9,7 +9,10 @@ pub fn bundled_executable(resource_dir: &Path) -> Result<PathBuf, String> {
     if executable.is_file() {
         Ok(executable)
     } else {
-        Err(format!("Bundled server not found at {}", executable.display()))
+        Err(format!(
+            "Bundled server not found at {}",
+            executable.display()
+        ))
     }
 }
 

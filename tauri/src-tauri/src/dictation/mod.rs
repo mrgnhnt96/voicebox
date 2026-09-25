@@ -193,14 +193,7 @@ pub fn start(app: &AppHandle, keydown: Instant, origin: TakeOrigin) -> Option<u6
         } else {
             client
         };
-        let outcome = stream::drive(
-            client,
-            out_tx,
-            in_rx,
-            audio_rx,
-            Timeouts::default(),
-        )
-        .await;
+        let outcome = stream::drive(client, out_tx, in_rx, audio_rx, Timeouts::default()).await;
         let since_release = |at: &OnceLock<Instant>| {
             at.get()
                 .map(|t| format!("{:.0}ms", t.elapsed().as_secs_f64() * 1000.0))
@@ -517,7 +510,9 @@ pub fn dictation_configure(
 /// the setting once the server is up (~30 s after launch); without this the
 /// first take after launch used the macOS default input instead.
 pub fn restore(app: &AppHandle) {
-    let Ok(dir) = app.path().app_config_dir() else { return };
+    let Ok(dir) = app.path().app_config_dir() else {
+        return;
+    };
     let path = dir.join("dictation-device.txt");
     let state = app.state::<DictationState>();
     if let Ok(mut config) = state.config.lock() {
@@ -607,7 +602,10 @@ mod saved_device_tests {
         let dir = tempfile_dir();
         let path = dir.join("dictation-device.txt");
         save_device(&path, Some("native:MacBook Pro Microphone"));
-        assert_eq!(load_device(&path), Some("native:MacBook Pro Microphone".to_string()));
+        assert_eq!(
+            load_device(&path),
+            Some("native:MacBook Pro Microphone".to_string())
+        );
     }
 
     #[test]

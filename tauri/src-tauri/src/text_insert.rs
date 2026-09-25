@@ -185,8 +185,8 @@ pub fn judge(
     }
 
     // At least one readable attribute differs from before.
-    let moved = (after.selection.is_some() && !sel_same)
-        || (after.char_count.is_some() && !count_same);
+    let moved =
+        (after.selection.is_some() && !sel_same) || (after.char_count.is_some() && !count_same);
     if !moved {
         return Verdict::Unknown;
     }
@@ -581,8 +581,7 @@ mod macos {
     use super::{AxTextTarget, Observation, TextRange};
     use crate::focus_capture::{cf_string_const, cfstring_to_rust};
     use core_foundation_sys::base::{
-        kCFAllocatorDefault, Boolean, CFGetTypeID, CFIndex, CFRange, CFRelease, CFTypeID,
-        CFTypeRef,
+        kCFAllocatorDefault, Boolean, CFGetTypeID, CFIndex, CFRange, CFRelease, CFTypeID, CFTypeRef,
     };
     use core_foundation_sys::number::{
         kCFNumberSInt64Type, CFNumberGetTypeID, CFNumberGetValue, CFNumberRef,
@@ -652,8 +651,7 @@ mod macos {
     fn copy_attr(element: AXUIElementRef, name: &str) -> Option<Cf> {
         let key = key(name)?;
         let mut out: CFTypeRef = ptr::null();
-        let err =
-            unsafe { AXUIElementCopyAttributeValue(element, key.0 as CFStringRef, &mut out) };
+        let err = unsafe { AXUIElementCopyAttributeValue(element, key.0 as CFStringRef, &mut out) };
         if err != AX_SUCCESS || out.is_null() {
             return None;
         }
@@ -771,11 +769,7 @@ mod macos {
             };
             let mut settable: Boolean = 0;
             let err = unsafe {
-                AXUIElementIsAttributeSettable(
-                    self.element.0,
-                    key.0 as CFStringRef,
-                    &mut settable,
-                )
+                AXUIElementIsAttributeSettable(self.element.0, key.0 as CFStringRef, &mut settable)
             };
             err == AX_SUCCESS && settable != 0
         }
@@ -915,7 +909,11 @@ mod tests {
         for role in ["AXTextField", "AXComboBox"] {
             let mut caps = text_area(obs(Some((0, 0)), Some(0)));
             caps.role = Some(role.into());
-            assert_eq!(choose_strategy(None, "hi", &caps), Strategy::Accessibility, "{role}");
+            assert_eq!(
+                choose_strategy(None, "hi", &caps),
+                Strategy::Accessibility,
+                "{role}"
+            );
         }
     }
 
@@ -957,7 +955,11 @@ mod tests {
     #[test]
     fn terminals_use_clipboard() {
         let caps = text_area(obs(Some((0, 0)), Some(0)));
-        for id in ["com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty"] {
+        for id in [
+            "com.apple.Terminal",
+            "com.googlecode.iterm2",
+            "com.mitchellh.ghostty",
+        ] {
             assert_eq!(
                 choose_strategy(Some(id), "ls", &caps),
                 Strategy::Clipboard(FallbackReason::ClipboardOnlyApp),
@@ -1062,14 +1064,20 @@ mod tests {
     fn truncated_by_length_limit_is_changed_unexpectedly() {
         let before = obs(Some((0, 0)), Some(0));
         let after = obs(Some((3, 0)), Some(3));
-        assert_eq!(judge(&before, &after, 10, None), Verdict::ChangedUnexpectedly);
+        assert_eq!(
+            judge(&before, &after, 10, None),
+            Verdict::ChangedUnexpectedly
+        );
     }
 
     #[test]
     fn caret_left_in_place_but_count_grew_is_changed_unexpectedly() {
         let before = obs(Some((0, 0)), Some(0));
         let after = obs(Some((0, 0)), Some(5));
-        assert_eq!(judge(&before, &after, 5, None), Verdict::ChangedUnexpectedly);
+        assert_eq!(
+            judge(&before, &after, 5, None),
+            Verdict::ChangedUnexpectedly
+        );
     }
 
     #[test]
@@ -1082,7 +1090,10 @@ mod tests {
     fn partially_readable_after_that_looks_unchanged_is_unknown() {
         // Count unchanged but selection unreadable: cannot prove nothing landed.
         let before = obs(Some((0, 0)), Some(0));
-        assert_eq!(judge(&before, &obs(None, Some(0)), 5, None), Verdict::Unknown);
+        assert_eq!(
+            judge(&before, &obs(None, Some(0)), 5, None),
+            Verdict::Unknown
+        );
     }
 
     #[test]
@@ -1192,7 +1203,9 @@ mod tests {
             let new: Vec<u16> = text.encode_utf16().collect();
             let start = sel.location as usize;
             let end = start + sel.length as usize;
-            self.text.borrow_mut().splice(start..end, new.iter().copied());
+            self.text
+                .borrow_mut()
+                .splice(start..end, new.iter().copied());
             self.sel.set(range(sel.location + new.len() as i64, 0));
         }
     }

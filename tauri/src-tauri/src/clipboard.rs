@@ -114,7 +114,10 @@ unsafe fn general_pasteboard() -> Result<Id, String> {
 /// clipboard. Reading the clipboard makes the app that copied it render every
 /// format, which can take seconds; taking it while the user speaks keeps that
 /// off the wait after release. Anything copied since makes it stale.
-pub fn reusable(prepared: Option<ClipboardSnapshot>, current: Option<i64>) -> Option<ClipboardSnapshot> {
+pub fn reusable(
+    prepared: Option<ClipboardSnapshot>,
+    current: Option<i64>,
+) -> Option<ClipboardSnapshot> {
     prepared.filter(|snapshot| Some(snapshot.change_count) == current)
 }
 
@@ -258,7 +261,10 @@ mod reuse_tests {
 
     fn snapshot(change_count: i64) -> ClipboardSnapshot {
         ClipboardSnapshot {
-            items: vec![vec![("public.utf8-plain-text".to_string(), b"copied".to_vec())]],
+            items: vec![vec![(
+                "public.utf8-plain-text".to_string(),
+                b"copied".to_vec(),
+            )]],
             change_count,
         }
     }

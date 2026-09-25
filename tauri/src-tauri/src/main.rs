@@ -14,7 +14,10 @@ mod synthetic_keys;
 mod text_insert;
 
 use std::sync::Mutex;
-use tauri::{command, State, Manager, WindowEvent, Emitter, Listener, RunEvent, WebviewUrl, WebviewWindowBuilder, PhysicalPosition};
+use tauri::{
+    command, Emitter, Listener, Manager, PhysicalPosition, RunEvent, State, WebviewUrl,
+    WebviewWindowBuilder, WindowEvent,
+};
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::mpsc;
 
@@ -60,9 +63,7 @@ fn build_dictate_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewW
 #[cfg(desktop)]
 pub(crate) fn position_dictate_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     // Hidden pills are parked off-screen, so their current monitor can be absent.
-    let monitor = window
-        .current_monitor()?
-        .or(window.primary_monitor()?);
+    let monitor = window.current_monitor()?.or(window.primary_monitor()?);
     if let Some(monitor) = monitor {
         let area = monitor.work_area();
         let size = window.outer_size()?;
@@ -139,7 +140,7 @@ pub fn apply_fullscreen_overlay_behavior(window: &tauri::WebviewWindow) {
         const STATIONARY: u64 = 1 << 4;
         const FULL_SCREEN_AUXILIARY: u64 = 1 << 8; // the flag stock Tauri never sets
         const NONACTIVATING_PANEL: u64 = 1 << 7; // NSWindowStyleMaskNonactivatingPanel
-        // NSScreenSaverWindowLevel — floats above fullscreen app content.
+                                                 // NSScreenSaverWindowLevel — floats above fullscreen app content.
         const OVERLAY_WINDOW_LEVEL: i64 = 1000;
 
         let ns_window = match w.ns_window() {
@@ -230,9 +231,7 @@ fn check_health(port: u16) -> bool {
                 }
                 // Parse as JSON and validate Voicebox-specific fields
                 match resp.json::<serde_json::Value>() {
-                    Ok(body) => {
-                        body.get("status").and_then(|v| v.as_str()) == Some("healthy")
-                    }
+                    Ok(body) => body.get("status").and_then(|v| v.as_str()) == Some("healthy"),
                     Err(_) => false,
                 }
             }
@@ -283,7 +282,10 @@ async fn start_server(
                     let pid_str = parts[1];
                     if command.contains("voicebox") {
                         if let Ok(pid) = pid_str.parse::<u32>() {
-                            println!("Found existing voicebox-server on port {} (PID: {}), reusing it", SERVER_PORT, pid);
+                            println!(
+                                "Found existing voicebox-server on port {} (PID: {}), reusing it",
+                                SERVER_PORT, pid
+                            );
                             // Store the PID so we can kill it on exit if needed
                             *state.server_pid.lock().unwrap() = Some(pid);
                             return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
@@ -293,10 +295,15 @@ async fn start_server(
                         // Python/uvicorn/Docker server. Verify via HTTP health check.
                         println!("Port {} in use by '{}' (PID: {}), checking if it's a Voicebox server...", SERVER_PORT, command, pid_str);
                         if check_health(SERVER_PORT) {
-                            println!("Health check passed — reusing external server on port {}", SERVER_PORT);
+                            println!(
+                                "Health check passed — reusing external server on port {}",
+                                SERVER_PORT
+                            );
                             return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
                         }
-                        println!("Health check failed — port is occupied by a non-Voicebox process");
+                        println!(
+                            "Health check failed — port is occupied by a non-Voicebox process"
+                        );
                         return Err(format!(
                             "Port {} is already in use by another application ({}). \
                              Close it or change the Voicebox server port.",
@@ -315,8 +322,7 @@ async fn start_server(
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
 
     // Ensure data directory exists
-    std::fs::create_dir_all(&data_dir)
-        .map_err(|e| format!("Failed to create data dir: {}", e))?;
+    std::fs::create_dir_all(&data_dir).map_err(|e| format!("Failed to create data dir: {}", e))?;
 
     println!("=================================================================");
     println!("Starting voicebox-server sidecar");
@@ -336,14 +342,19 @@ async fn start_server(
             // In dev mode, check if the server is already running (started manually)
             #[cfg(debug_assertions)]
             {
-                eprintln!("Dev mode: Checking if server is already running on port {}...", SERVER_PORT);
+                eprintln!(
+                    "Dev mode: Checking if server is already running on port {}...",
+                    SERVER_PORT
+                );
 
                 // Try to connect to the server port
                 use std::net::TcpStream;
                 if TcpStream::connect_timeout(
                     &format!("127.0.0.1:{}", SERVER_PORT).parse().unwrap(),
                     std::time::Duration::from_secs(1),
-                ).is_ok() {
+                )
+                .is_ok()
+                {
                     println!("Found server already running on port {}", SERVER_PORT);
                     return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
                 }
@@ -378,7 +389,14 @@ async fn start_server(
         println!("Custom models directory: {}", dir);
     }
 
-    sidecar = sidecar.args(["--data-dir", &data_dir_str, "--port", &port_str, "--parent-pid", &parent_pid_str]);
+    sidecar = sidecar.args([
+        "--data-dir",
+        &data_dir_str,
+        "--port",
+        &port_str,
+        "--parent-pid",
+        &parent_pid_str,
+    ]);
     if let Some(ref dir) = effective_models_dir {
         sidecar = sidecar.env("VOICEBOX_MODELS_DIR", dir);
     }
@@ -397,7 +415,9 @@ async fn start_server(
                 if TcpStream::connect_timeout(
                     &format!("127.0.0.1:{}", SERVER_PORT).parse().unwrap(),
                     std::time::Duration::from_secs(1),
-                ).is_ok() {
+                )
+                .is_ok()
+                {
                     println!("Found manually-started server on port {}", SERVER_PORT);
                     return Ok(format!("http://127.0.0.1:{}", SERVER_PORT));
                 }
@@ -457,7 +477,9 @@ async fn start_server(
                 if TcpStream::connect_timeout(
                     &format!("127.0.0.1:{}", SERVER_PORT).parse().unwrap(),
                     std::time::Duration::from_secs(1),
-                ).is_ok() {
+                )
+                .is_ok()
+                {
                     // Kill the placeholder process
                     let _ = state.child.lock().unwrap().take();
                     println!("Found manually-started server on port {}", SERVER_PORT);
@@ -474,12 +496,17 @@ async fn start_server(
                     tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
                         let line_str = String::from_utf8_lossy(&line);
                         println!("Server output: {}", line_str);
-                        let _ = app.emit("server-log", serde_json::json!({
-                            "stream": "stdout",
-                            "line": line_str.trim_end(),
-                        }));
+                        let _ = app.emit(
+                            "server-log",
+                            serde_json::json!({
+                                "stream": "stdout",
+                                "line": line_str.trim_end(),
+                            }),
+                        );
 
-                        if line_str.contains("Uvicorn running") || line_str.contains("Application startup complete") {
+                        if line_str.contains("Uvicorn running")
+                            || line_str.contains("Application startup complete")
+                        {
                             println!("Server is ready!");
                             break;
                         }
@@ -487,18 +514,26 @@ async fn start_server(
                     tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
                         let line_str = String::from_utf8_lossy(&line).to_string();
                         eprintln!("Server: {}", line_str);
-                        let _ = app.emit("server-log", serde_json::json!({
-                            "stream": "stderr",
-                            "line": line_str.trim_end(),
-                        }));
+                        let _ = app.emit(
+                            "server-log",
+                            serde_json::json!({
+                                "stream": "stderr",
+                                "line": line_str.trim_end(),
+                            }),
+                        );
 
                         // Collect error lines for debugging
-                        if line_str.contains("ERROR") || line_str.contains("Error") || line_str.contains("Failed") {
+                        if line_str.contains("ERROR")
+                            || line_str.contains("Error")
+                            || line_str.contains("Failed")
+                        {
                             error_output.push(line_str.clone());
                         }
 
                         // Uvicorn logs to stderr, so check there too
-                        if line_str.contains("Uvicorn running") || line_str.contains("Application startup complete") {
+                        if line_str.contains("Uvicorn running")
+                            || line_str.contains("Application startup complete")
+                        {
                             println!("Server is ready!");
                             break;
                         }
@@ -517,7 +552,9 @@ async fn start_server(
                     if TcpStream::connect_timeout(
                         &format!("127.0.0.1:{}", SERVER_PORT).parse().unwrap(),
                         std::time::Duration::from_secs(1),
-                    ).is_ok() {
+                    )
+                    .is_ok()
+                    {
                         // Clean up state
                         let _ = state.child.lock().unwrap().take();
                         let _ = state.server_pid.lock().unwrap().take();
@@ -533,7 +570,9 @@ async fn start_server(
                     eprintln!("  bun run dev:server");
                     eprintln!("=================================================================");
                     eprintln!("");
-                    return Err("Dev mode: Start server manually with 'bun run dev:server'".to_string());
+                    return Err(
+                        "Dev mode: Start server manually with 'bun run dev:server'".to_string()
+                    );
                 }
 
                 #[cfg(not(debug_assertions))]
@@ -559,18 +598,24 @@ async fn start_server(
                 tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
                     let line_str = String::from_utf8_lossy(&line);
                     println!("Server: {}", line_str);
-                    let _ = app_handle.emit("server-log", serde_json::json!({
-                        "stream": "stdout",
-                        "line": line_str.trim_end(),
-                    }));
+                    let _ = app_handle.emit(
+                        "server-log",
+                        serde_json::json!({
+                            "stream": "stdout",
+                            "line": line_str.trim_end(),
+                        }),
+                    );
                 }
                 tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
                     let line_str = String::from_utf8_lossy(&line);
                     eprintln!("Server error: {}", line_str);
-                    let _ = app_handle.emit("server-log", serde_json::json!({
-                        "stream": "stderr",
-                        "line": line_str.trim_end(),
-                    }));
+                    let _ = app_handle.emit(
+                        "server-log",
+                        serde_json::json!({
+                            "stream": "stderr",
+                            "line": line_str.trim_end(),
+                        }),
+                    );
                 }
                 _ => {}
             }
@@ -597,12 +642,18 @@ fn stop_managed_server(state: &ServerState) -> Result<(), String> {
 
 async fn wait_for_server_exit() -> Result<(), String> {
     for _ in 0..50 {
-        if tokio::net::TcpStream::connect(("127.0.0.1", SERVER_PORT)).await.is_err() {
+        if tokio::net::TcpStream::connect(("127.0.0.1", SERVER_PORT))
+            .await
+            .is_err()
+        {
             return Ok(());
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    Err("The local server is still running. Restart was cancelled; no second server was launched.".into())
+    Err(
+        "The local server is still running. Restart was cancelled; no second server was launched."
+            .into(),
+    )
 }
 
 #[command]
@@ -951,7 +1002,11 @@ pub(crate) async fn paste_final_text_with(
     let paste_result = synthetic_keys::send_paste();
     eprintln!(
         "[voicebox] clipboard paste: snapshot {} in {saved_ms} ms, ⌘V sent {} ms after start",
-        if was_reused { "reused from key-down" } else { "taken at paste" },
+        if was_reused {
+            "reused from key-down"
+        } else {
+            "taken at paste"
+        },
         started.elapsed().as_millis()
     );
     tokio::time::sleep(std::time::Duration::from_millis(PASTE_CONSUME_MS)).await;
@@ -1181,49 +1236,50 @@ pub fn run() {
         .on_window_event({
             let closing = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             move |window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                // If we're already in the close flow, let it proceed
-                if closing.load(std::sync::atomic::Ordering::SeqCst) {
-                    return;
-                }
-                closing.store(true, std::sync::atomic::Ordering::SeqCst);
-
-                // Prevent automatic close so frontend can clean up
-                api.prevent_close();
-
-                // Emit event to frontend to check setting and stop server if needed
-                let app_handle = window.app_handle();
-
-                if let Err(e) = app_handle.emit("window-close-requested", ()) {
-                    eprintln!("Failed to emit window-close-requested event: {}", e);
-                    window.close().ok();
-                    return;
-                }
-
-                // Set up listener for frontend response
-                let window_for_close = window.clone();
-                let closing_for_timeout = closing.clone();
-                let (tx, mut rx) = mpsc::unbounded_channel::<()>();
-
-                let listener_id = window.listen("window-close-allowed", move |_| {
-                    let _ = tx.send(());
-                });
-
-                tauri::async_runtime::spawn(async move {
-                    tokio::select! {
-                        _ = rx.recv() => {
-                            window_for_close.close().ok();
-                        }
-                        _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
-                            eprintln!("Window close timeout, closing anyway");
-                            window_for_close.close().ok();
-                        }
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    // If we're already in the close flow, let it proceed
+                    if closing.load(std::sync::atomic::Ordering::SeqCst) {
+                        return;
                     }
-                    window_for_close.unlisten(listener_id);
-                    closing_for_timeout.store(false, std::sync::atomic::Ordering::SeqCst);
-                });
+                    closing.store(true, std::sync::atomic::Ordering::SeqCst);
+
+                    // Prevent automatic close so frontend can clean up
+                    api.prevent_close();
+
+                    // Emit event to frontend to check setting and stop server if needed
+                    let app_handle = window.app_handle();
+
+                    if let Err(e) = app_handle.emit("window-close-requested", ()) {
+                        eprintln!("Failed to emit window-close-requested event: {}", e);
+                        window.close().ok();
+                        return;
+                    }
+
+                    // Set up listener for frontend response
+                    let window_for_close = window.clone();
+                    let closing_for_timeout = closing.clone();
+                    let (tx, mut rx) = mpsc::unbounded_channel::<()>();
+
+                    let listener_id = window.listen("window-close-allowed", move |_| {
+                        let _ = tx.send(());
+                    });
+
+                    tauri::async_runtime::spawn(async move {
+                        tokio::select! {
+                            _ = rx.recv() => {
+                                window_for_close.close().ok();
+                            }
+                            _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
+                                eprintln!("Window close timeout, closing anyway");
+                                window_for_close.close().ok();
+                            }
+                        }
+                        window_for_close.unlisten(listener_id);
+                        closing_for_timeout.store(false, std::sync::atomic::Ordering::SeqCst);
+                    });
+                }
             }
-        }})
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
