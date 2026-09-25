@@ -37,3 +37,22 @@ def clear_mlx_cache() -> None:
     clear = getattr(mx, "clear_cache", None) or getattr(getattr(mx, "metal", None), "clear_cache", None)
     if clear is not None:
         clear()
+
+
+def keep_weights_resident() -> None:
+    """Keep every MLX allocation resident for the life of the process.
+
+    MLX wires allocations only while its wired limit leaves room for them.
+    ``mlx_lm``'s ``wired_limit`` raises the limit for one generate and puts
+    the old one back afterwards, which at the default ``0`` drops every model
+    from the residency set between dictations. After hours of idle macOS then
+    pages the Whisper and Qwen weights out, and the next dictation spends
+    seconds faulting them back in. Raising the limit once, the way
+    ``mlx_lm.server`` does, keeps them in; later loads join as they allocate,
+    and each generate's ``wired_limit`` now restores this value, not ``0``.
+    """
+    import mlx.core as mx
+
+    if not mx.metal.is_available():
+        return
+    mx.set_wired_limit(mx.device_info()["max_recommended_working_set_size"])

@@ -9,6 +9,7 @@ import numpy as np
 from .. import config
 from ..database import session
 from . import llm, refinement, settings, speech_detect, transcribe
+from .mlx_thread import keep_weights_resident, run_on_mlx_thread
 
 logger = logging.getLogger(__name__)
 WARM_RATE = 48000
@@ -28,6 +29,11 @@ async def load_startup_models() -> None:
         flags = refinement.RefinementFlags(
             saved.smart_cleanup, saved.self_correction, saved.preserve_technical, saved.punctuation_style
         )
+
+    try:
+        await run_on_mlx_thread(keep_weights_resident)
+    except Exception:
+        logger.exception("Could not keep model weights resident")
 
     selected = [("Whisper", transcribe.get_whisper_model, stt_size)]
     if auto_refine:

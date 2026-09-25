@@ -36,7 +36,27 @@ def startup(monkeypatch):
     monkeypatch.setattr(model_startup.refinement, "refine_transcript", AsyncMock(return_value=("Okay.", "1.7B")))
     monkeypatch.setattr(model_startup.transcribe, "get_whisper_model", lambda: stt)
     monkeypatch.setattr(model_startup.llm, "get_llm_model", lambda: llm)
+    monkeypatch.setattr(model_startup, "keep_weights_resident", MagicMock())
     return saved, stt, llm
+
+
+@pytest.mark.asyncio
+async def test_keeps_weights_resident_before_loading(startup):
+    # Wired before the loads so the weights never sit pageable; macOS pages
+    # idle weights out and the next dictation waits seconds to fault them in.
+    _, stt, _ = startup
+    stt.load_model.side_effect = lambda size: model_startup.keep_weights_resident.assert_called_once()
+    await model_startup.load_startup_models()
+    stt.load_model.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_wiring_failure_does_not_block_startup(startup, caplog):
+    _, stt, _ = startup
+    model_startup.keep_weights_resident.side_effect = RuntimeError("wired limit too large")
+    await model_startup.load_startup_models()
+    assert "Could not keep model weights resident" in caplog.text
+    stt.load_model.assert_awaited_once_with("small")
 
 
 @pytest.mark.asyncio
