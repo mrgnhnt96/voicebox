@@ -58,6 +58,7 @@ class STTBackend(Protocol):
         language: Optional[str] = None,
         model_size: Optional[str] = None,
         previous_text: Optional[str] = None,
+        check_speech: bool = True,
     ) -> str:
         """
         Transcribe audio to text.
@@ -65,6 +66,10 @@ class STTBackend(Protocol):
         ``previous_text`` marks the audio as one phrase of a longer dictation:
         it conditions recognition on the text heard so far and keeps Whisper
         from marking the pause that ended the phrase with an ellipsis.
+
+        Audio without a voice gives "" instead of whatever Whisper would
+        invent; ``check_speech=False`` skips that check when the caller
+        already made it.
 
         Returns:
             Transcribed text
@@ -78,6 +83,7 @@ class STTBackend(Protocol):
         language: Optional[str] = None,
         model_size: Optional[str] = None,
         previous_text: Optional[str] = None,
+        check_speech: bool = True,
     ) -> str:
         """
         Transcribe in-memory audio, as ``transcribe`` does for a file.

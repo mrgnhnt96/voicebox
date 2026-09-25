@@ -10,10 +10,12 @@ import pytest
 from backend import config
 from backend.models import CaptureSettingsResponse
 from backend.services import capture_stream
+from backend.tests.test_capture_stream import HeardWhenLoud
 
 
 def make_session(tmp_path, monkeypatch, provisional=True, **settings):
     monkeypatch.setattr(config, "_data_dir", tmp_path)
+    monkeypatch.setattr(capture_stream, "SpeechDetector", HeardWhenLoud)
     events = []
 
     async def send(event):

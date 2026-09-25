@@ -20,6 +20,7 @@ from .base import (
     ellipsis_token_ids,
     model_load_progress,
 )
+from ..services import speech_detect
 from ..services.mlx_thread import run_on_mlx_thread, clear_mlx_cache
 from . import mlx_whisper_loader, whisper_audio
 
@@ -111,6 +112,7 @@ class MLXSTTBackend:
         language: Optional[str] = None,
         model_size: Optional[str] = None,
         previous_text: Optional[str] = None,
+        check_speech: bool = True,
     ) -> str:
         """
         Transcribe an audio file to text.
@@ -120,6 +122,8 @@ class MLXSTTBackend:
             language: Optional language hint
             model_size: Optional model size override
             previous_text: Earlier dictation text when transcribing one phrase
+            check_speech: Return "" without running Whisper when no voice is
+                detected; False when the caller already checked
 
         Returns:
             Transcribed text
@@ -127,7 +131,7 @@ class MLXSTTBackend:
         # Decoded here rather than by mlx-audio, whose resampler would import
         # scipy.signal on the first file that is not 16 kHz.
         return await self._transcribe(
-            lambda: whisper_audio.read_audio_file(audio_path), language, model_size, previous_text
+            lambda: whisper_audio.read_audio_file(audio_path), language, model_size, previous_text, check_speech
         )
 
     async def transcribe_array(
@@ -137,6 +141,7 @@ class MLXSTTBackend:
         language: Optional[str] = None,
         model_size: Optional[str] = None,
         previous_text: Optional[str] = None,
+        check_speech: bool = True,
     ) -> str:
         """
         Transcribe in-memory audio to text, without a temporary file.
@@ -148,6 +153,8 @@ class MLXSTTBackend:
             language: Optional language hint
             model_size: Optional model size override
             previous_text: Earlier dictation text when transcribing one phrase
+            check_speech: Return "" without running Whisper when no voice is
+                detected; False when the caller already checked
 
         Returns:
             Transcribed text, identical to ``transcribe`` of the same audio
@@ -157,11 +164,20 @@ class MLXSTTBackend:
         if samples.size == 0:
             raise ValueError("No audio samples to transcribe")
         return await self._transcribe(
-            lambda: whisper_audio.prepare_samples(samples, sample_rate), language, model_size, previous_text
+            lambda: whisper_audio.prepare_samples(samples, sample_rate),
+            language,
+            model_size,
+            previous_text,
+            check_speech,
         )
 
-    async def _transcribe(self, prepare_audio, language, model_size, previous_text) -> str:
+    async def _transcribe(self, prepare_audio, language, model_size, previous_text, check_speech=True) -> str:
         def _transcribe_sync():
+            audio = prepare_audio()
+            # Whisper invents text ("Thank you.") for audio without a voice.
+            if check_speech and not speech_detect.has_speech(np.asarray(audio), whisper_audio.SAMPLE_RATE):
+                return ""
+
             decode_options = {}
             if language:
                 decode_options["language"] = language
@@ -177,7 +193,7 @@ class MLXSTTBackend:
             # Inference runs with the process's default HF_HUB_OFFLINE
             # state — see the comment in MLXTTSBackend.generate for the
             # regression this revert fixes (issue #462).
-            result = self.model.generate(prepare_audio(), **decode_options)
+            result = self.model.generate(audio, **decode_options)
 
             # Extract text from result
             if isinstance(result, str):

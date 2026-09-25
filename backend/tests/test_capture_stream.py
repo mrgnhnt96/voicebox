@@ -15,8 +15,29 @@ from backend.models import CaptureSettingsResponse
 from backend.services import capture_stream
 
 
+class HeardWhenLoud:
+    """Stands in for the voice detector: any non-silent audio is a voice.
+
+    The frames these tests send are flat tones, which the real detector
+    rightly ignores (it has its own tests).
+    """
+
+    def __init__(self, rate):
+        self.loud = []
+        self.samples = 0
+
+    def feed(self, pcm):
+        if len(pcm) and abs(int(pcm.astype("int32").max())) >= 250:
+            self.loud.append((self.samples, self.samples + len(pcm)))
+        self.samples += len(pcm)
+
+    def heard(self, start, end):
+        return any(low < end and start < high for low, high in self.loud)
+
+
 def make_session(tmp_path, monkeypatch, **settings):
     monkeypatch.setattr(config, "_data_dir", tmp_path)
+    monkeypatch.setattr(capture_stream, "SpeechDetector", HeardWhenLoud)
     events = []
 
     async def send(event):
@@ -227,6 +248,26 @@ async def test_silence_does_not_invoke_whisper(tmp_path, monkeypatch):
     stt = type("STT", (), {"transcribe_array": AsyncMock()})()
     monkeypatch.setattr(capture_stream, "get_whisper_model", lambda: stt)
     append(session, 2, amplitude=0)
+    session.finish()
+    await session.run()
+    assert session.raw == ""
+    stt.transcribe_array.assert_not_awaited()
+    session.close()
+
+
+@pytest.mark.asyncio
+async def test_a_take_with_noise_but_no_voice_never_reaches_whisper(tmp_path, monkeypatch):
+    # Whisper answers room noise with "Thank you."; the real detector hears no voice.
+    from backend.services import speech_detect
+
+    session, _ = make_session(tmp_path, monkeypatch)
+    monkeypatch.setattr(capture_stream, "SpeechDetector", speech_detect.SpeechDetector)
+    session.speech = speech_detect.SpeechDetector(session.rate)
+    stt = type("STT", (), {"transcribe_array": AsyncMock(return_value="Thank you.")})()
+    monkeypatch.setattr(capture_stream, "get_whisper_model", lambda: stt)
+    noise = np.random.default_rng(0).normal(0, 1200, session.rate * 2).astype("<i2").tobytes()
+    session.append(struct.pack("<II", session.sequence, session.samples) + noise[:32000])
+    session.append(struct.pack("<II", session.sequence, session.samples) + noise[32000:])
     session.finish()
     await session.run()
     assert session.raw == ""

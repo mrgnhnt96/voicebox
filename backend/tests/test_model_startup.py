@@ -113,7 +113,13 @@ async def test_runs_whisper_once_so_the_first_dictation_is_warm(startup, tmp_pat
     assert rate == 48000 and len(samples) == 48000
     # Warmed as the first phrase of a dictation (no earlier text), the call
     # streaming makes, so its one-time setup is paid here and not after release.
-    assert stt.transcribe_array.await_args.kwargs == {"language": "en", "model_size": "small", "previous_text": ""}
+    # Whisper runs even if the newest recording is silent: warming it is the point.
+    assert stt.transcribe_array.await_args.kwargs == {
+        "language": "en",
+        "model_size": "small",
+        "previous_text": "",
+        "check_speech": False,
+    }
 
 
 @pytest.mark.asyncio

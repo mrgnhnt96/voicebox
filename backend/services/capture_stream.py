@@ -35,6 +35,7 @@ from .captures import _to_response
 from .content_check import Verdict, check_refinement, summarize_reviews
 from .phrase_seams import close_phrase, join_phrases, open_phrase
 from .refinement import RefinementFlags, prepare_refinement, refine_transcript
+from .speech_detect import SpeechDetector
 from .transcribe import get_whisper_model
 from .writing_style import apply_learned, apply_style, habits, is_ready
 
@@ -128,6 +129,9 @@ class StreamingCapture:
         self.archive.setsampwidth(2)
         self.archive.setframerate(self.rate)
         self.pending = bytearray()
+        # Checked as audio arrives, so a phrase without a voice skips Whisper,
+        # which would otherwise invent one ("Thank you.").
+        self.speech = SpeechDetector(self.rate)
         self.cuts = []
         self.offset = 0
         self.samples = 0
@@ -187,6 +191,7 @@ class StreamingCapture:
         if self.samples + count > self.rate * MAX_SECONDS:
             raise ValueError("Streaming session exceeds one hour")
         self.archive.writeframesraw(pcm)
+        self.speech.feed(np.frombuffer(pcm, dtype="<i2"))
         self.samples += count
         self.sequence += 1
         if self.backlogged:
@@ -220,19 +225,25 @@ class StreamingCapture:
         if self.finished_at is not None:
             self.after_release[stage] += time.monotonic() - started
 
-    async def recognize(self, pcm):
+    async def recognize(self, pcm, start=None):
         # Earlier phrases give Whisper the sentence it is continuing, so a
         # phrase cut at a pause neither trails off with "..." nor restarts
         # with a capital letter.
         previous_text = self.raw[-PHRASE_CONTEXT_CHARS:]
         samples = np.frombuffer(pcm, dtype="<i2")
-        if not len(samples) or np.max(np.abs(samples.astype(np.int32))) < 250:
+        start = self.offset if start is None else start
+        if not len(samples) or not self.speech.heard(start, start + len(samples)):
             return ""
         started = time.monotonic()
         try:
             return (
                 await get_whisper_model().transcribe_array(
-                    samples, self.rate, self.language, self.stt_model, previous_text=previous_text
+                    samples,
+                    self.rate,
+                    self.language,
+                    self.stt_model,
+                    previous_text=previous_text,
+                    check_speech=False,
                 )
             ).strip()
         finally:
@@ -474,7 +485,12 @@ class StreamingCapture:
     async def reconcile_full_audio(self):
         """Use the established batch path when a forced seam cannot be proven."""
         self.archive.close()
-        self.raw = (await get_whisper_model().transcribe(str(self.path), self.language, self.stt_model)).strip()
+        if self.speech.heard(0, self.samples):
+            self.raw = (
+                await get_whisper_model().transcribe(str(self.path), self.language, self.stt_model, check_speech=False)
+            ).strip()
+        else:
+            self.raw = ""
         if self.abort:
             return
         self.covered = self.samples

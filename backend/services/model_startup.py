@@ -1,5 +1,6 @@
 """Load the configured dictation models before accepting requests."""
 
+import asyncio
 import logging
 import time
 
@@ -7,7 +8,7 @@ import numpy as np
 
 from .. import config
 from ..database import session
-from . import llm, refinement, settings, transcribe
+from . import llm, refinement, settings, speech_detect, transcribe
 
 logger = logging.getLogger(__name__)
 WARM_RATE = 48000
@@ -46,6 +47,8 @@ async def load_startup_models() -> None:
             # Keep setup and diagnostics available if an installed model fails.
             logger.exception("Could not load startup %s model %s", name, size)
 
+    # The voice detector every dictation checks its audio with.
+    await asyncio.to_thread(speech_detect.load)
     await warm_whisper(stt_size, language)
     if auto_refine:
         await warm_refinement(flags, llm_size)
@@ -70,7 +73,10 @@ async def warm_whisper(stt_size: str, language: str | None) -> None:
         # Called the way streaming recognizes a dictation's first phrase
         # (previous_text=""), which builds the phrase options, such as the
         # suppressed ellipsis tokens, once per process.
-        await backend.transcribe_array(samples, rate, language=language, model_size=stt_size, previous_text="")
+        # Whisper runs even if that recording is silent: warming it is the point.
+        await backend.transcribe_array(
+            samples, rate, language=language, model_size=stt_size, previous_text="", check_speech=False
+        )
         logger.info("Whisper warmed in %.3fs", time.monotonic() - started)
     except Exception:
         logger.exception("Could not warm Whisper")

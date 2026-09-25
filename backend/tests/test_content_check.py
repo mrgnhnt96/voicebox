@@ -40,6 +40,16 @@ def test_a_cleanup_mostly_of_new_words_is_rejected():
     assert (verdict.outcome, verdict.reason) == ("reject", "answered")
 
 
+def test_replying_to_a_short_dictation_is_rejected():
+    # Keeping none of the speaker's words is a reply, however short.
+    verdict = check("Thank you.", "You're welcome.")
+    assert (verdict.outcome, verdict.reason) == ("reject", "answered")
+
+
+def test_a_short_dictation_cleaned_up_keeps_its_word():
+    assert check("thanks", "Thanks!").outcome == "ok"
+
+
 def test_self_correction_may_drop_the_retracted_words():
     flags = RefinementFlags()
     text, verdict = check_refinement(

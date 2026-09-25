@@ -8,9 +8,9 @@ out. Three rules, by comparing words (no second model):
    technical term and name, and whether they said "not". Losing one rejects.
 2. Anything the cleanup added is listed for review, never rejected on its own,
    except a "not" nobody said. Formatting such as list numbers lands here.
-3. Many added words, or a cleanup that is mostly words nobody said, means the
-   model answered or obeyed the dictation instead of cleaning it up; that
-   rejects.
+3. Many added words, or a cleanup that is mostly (or only) words nobody said,
+   means the model answered or obeyed the dictation instead of cleaning it
+   up; that rejects.
 
 Verdicts: ``ok`` (only structure changed), ``review`` (the cleanup is kept and
 the capture flagged for the user to check) and ``reject`` (the transcript is
@@ -179,10 +179,11 @@ def check(said: str, cleaned: str, allow_retractions: bool = False) -> Verdict:
     missing = sorted(set(content_before) - set(content_after) - {p for t in content_after for p in _parts(t)})
 
     # Rule 3: many new words, or new words outnumbering the ones kept, means
-    # the model answered or obeyed the dictation.
+    # the model answered or obeyed the dictation. So does keeping none of the
+    # speaker's words at all ("Thank you." -> "You're welcome.").
     kept_content = set(content_after) - set(added)
     if len(added) >= max(ANSWERED_WORDS, ANSWERED_SHARE * len(set(content_before))) or (
-        len(added) >= 2 and len(added) > len(kept_content)
+        len(added) > len(kept_content) and (len(added) >= 2 or not kept_content)
     ):
         return Verdict("reject", reason="answered", added=added, missing=missing)
     added = sorted(set(added) | set(added_numbers))

@@ -113,6 +113,13 @@ def build_server():
             "librosa",
             "--hidden-import",
             "soundfile",
+            # The voice detector that keeps Whisper off silent audio.
+            "--hidden-import",
+            "onnxruntime",
+            "--collect-binaries",
+            "onnxruntime",
+            "--add-data",
+            "assets/silero_vad.onnx:backend/assets",
             "--copy-metadata",
             "requests",
             "--copy-metadata",

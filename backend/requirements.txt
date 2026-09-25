@@ -35,6 +35,8 @@ numpy>=1.24.0,<2.0
 numba>=0.60.0,<0.61.0
 # mlx-audio's STT path (mlx_audio.stt) decodes audio with miniaudio (issue #505).
 miniaudio>=1.59
+# Runs the Silero voice detector (backend/assets/silero_vad.onnx) ahead of Whisper.
+onnxruntime>=1.17
 
 # HTTP client (used by FastAPI's TestClient in the test suite)
 httpx>=0.27.0

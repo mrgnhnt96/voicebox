@@ -38,6 +38,8 @@ def stt(monkeypatch):
     from backend.backends import mlx_backend
 
     monkeypatch.setattr(mlx_backend, "ellipsis_token_ids", lambda size, decode, eot, decode_batch=None: [1131])
+    # A test tone isn't a voice; the detector has its own tests.
+    monkeypatch.setattr(mlx_backend.speech_detect, "has_speech", lambda samples, rate: True)
     backend = mlx_backend.MLXSTTBackend("turbo")
     backend.model = FakeWhisper()
     return backend
@@ -104,6 +106,29 @@ async def test_transcribe_file_is_decoded_in_process(stt, tmp_path):
     expected = await run_on_mlx_thread(lambda: np.array(whisper_audio.read_audio_file(path)))
     np.testing.assert_array_equal(audio, expected)
     assert options == {}
+
+
+@pytest.mark.asyncio
+async def test_audio_without_a_voice_never_reaches_whisper(stt, monkeypatch, tmp_path):
+    from backend.backends import mlx_backend
+
+    heard = []
+
+    def has_speech(samples, rate):
+        heard.append(rate)
+        return False
+
+    monkeypatch.setattr(mlx_backend.speech_detect, "has_speech", has_speech)
+    write_wav(tmp_path / "w.wav", pcm(48000, 0.5), 48000)
+
+    assert await stt.transcribe_array(pcm(48000, 0.5), 48000, "en", "turbo") == ""
+    assert await stt.transcribe(str(tmp_path / "w.wav"), "en", "turbo") == ""
+    # Checked on Whisper's own 16 kHz input.
+    assert heard == [16000, 16000]
+    assert stt.model.calls == []
+    # A caller that already checked, such as a streaming dictation, skips it.
+    assert await stt.transcribe_array(pcm(48000, 0.5), 48000, "en", "turbo", check_speech=False) == "hello there"
+    assert len(heard) == 2
 
 
 @pytest.mark.asyncio
