@@ -21,6 +21,7 @@ from .base import (
     model_load_progress,
 )
 from ..services import speech_detect
+from ..services.refinement import strip_stt_artifacts
 from ..services.mlx_thread import run_on_mlx_thread, clear_mlx_cache
 from . import mlx_whisper_loader, whisper_audio
 
@@ -195,15 +196,15 @@ class MLXSTTBackend:
             # regression this revert fixes (issue #462).
             result = self.model.generate(audio, **decode_options)
 
-            # Extract text from result
             if isinstance(result, str):
-                return result.strip()
+                text = result
             elif isinstance(result, dict):
-                return result.get("text", "").strip()
+                text = result.get("text", "")
             elif hasattr(result, "text"):
-                return result.text.strip()
+                text = result.text
             else:
-                return str(result).strip()
+                text = str(result)
+            return strip_stt_artifacts(text.strip())
 
         # Load-if-needed and transcription run as one job on the MLX worker so
         # a concurrent unload or load can't land between them.

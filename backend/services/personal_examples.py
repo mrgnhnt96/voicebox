@@ -15,6 +15,7 @@ import logging
 import threading
 
 from . import writing_style
+from .refinement import strip_stt_artifacts
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,8 @@ def _from_corrections() -> list[dict]:
             continue
         seen.add(row.capture_id)
         try:
-            said = json.loads(row.snapshot).get("transcript_raw") or ""
+            # Captures saved before Whisper's loops were stripped at the source.
+            said = strip_stt_artifacts(json.loads(row.snapshot).get("transcript_raw") or "")
         except (ValueError, TypeError):
             continue
         if said and row.expected_text:

@@ -98,13 +98,13 @@ export function PersonalExamples() {
                     <p className="font-mono text-[11px] text-muted-foreground">
                       {t('writingStyle.settings.examples.said')}
                     </p>
-                    <p className="whitespace-pre-wrap text-muted-foreground">{example.said}</p>
+                    <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-muted-foreground">{example.said}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="font-mono text-[11px] text-accent">
                       {t('writingStyle.settings.examples.meant')}
                     </p>
-                    <p className="whitespace-pre-wrap">{example.meant}</p>
+                    <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{example.meant}</p>
                   </div>
                 </div>
               </li>

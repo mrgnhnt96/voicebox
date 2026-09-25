@@ -143,3 +143,13 @@ def test_leading_and_trailing_whitespace_stripped_after_collapse():
     loop = "loop-phrase " * 7
     raw = loop
     assert collapse_repetitive_artifacts(raw) == ""
+
+
+def test_stt_artifacts_are_stripped_from_what_whisper_wrote():
+    from backend.services.refinement import strip_stt_artifacts
+
+    looped = "my teach voice box the�, the,R," + "A," * 110 + " or will it just perpetually get bigger?"
+    assert strip_stt_artifacts(looped) == "my teach voice box the, the,R, or will it just perpetually get bigger?"
+    # Rhetorical repetition and ordinary text are left alone.
+    assert strip_stt_artifacts("no, no, no, no, no") == "no, no, no, no, no"
+    assert strip_stt_artifacts("Send  it") == "Send  it"

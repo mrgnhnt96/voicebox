@@ -65,6 +65,18 @@ def collapse_repetitive_artifacts(text: str, min_run: int = _REPETITION_RUN_THRE
     return collapsed
 
 
+def strip_stt_artifacts(text: str) -> str:
+    """Remove what Whisper writes that nobody said.
+
+    Loops (see ``collapse_repetitive_artifacts``), and U+FFFD, which Whisper
+    emits when it stops partway through a multi-byte character, typically
+    at the start of a loop ("box the\ufffd, the,R,A,A,A,..."). Applied to every
+    transcript, so saved captures and the examples made from them are clean.
+    """
+    cleaned = collapse_repetitive_artifacts(text.replace("\ufffd", ""))
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip() if cleaned != text else text
+
+
 def _collapse_word_runs(text: str, min_run: int) -> str:
     words = text.split()
     if len(words) < min_run:
