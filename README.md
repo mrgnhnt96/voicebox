@@ -116,17 +116,27 @@ just dev     # starts the backend and the desktop app
 
 To install [just](https://github.com/casey/just), run `brew install just`. Run `just --list` to see every command.
 
-**Prerequisites:** an Apple Silicon Mac, [Bun](https://bun.sh), [Rust](https://rustup.rs), [Python 3.11+](https://python.org), [Xcode](https://developer.apple.com/xcode/), and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+**Prerequisites:** an Apple Silicon Mac, [Bun](https://bun.sh), [Rust](https://rustup.rs), [Python 3.12](https://python.org), [Xcode](https://developer.apple.com/xcode/), and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
-### Building Locally
+### Installing and Updating
 
 Voicebox is built and installed from this checkout. There are no hosted releases.
 
 ```bash
-just build   # builds the server sidecar binary and the Tauri app
+./scripts/install.sh
 ```
 
-The app bundle is written to `tauri/src-tauri/target/release/bundle/`.
+On a Mac without a checkout yet, this clones one into `~/voicebox` first:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/mrgnhnt96/voicebox/main/scripts/install.sh)
+```
+
+The script checks for everything the build needs and prints the command to install anything missing. It then pulls the latest code, builds the server (only when the backend changed) and the app, and replaces `/Applications/Voicebox.app`. Run it again to update.
+
+Every build is signed with the same identity, so updates keep Voicebox's Microphone, Accessibility and Input Monitoring permissions. That identity is your Apple Development certificate if you have one. Otherwise the first install creates a self-signed "Voicebox Local Signing" certificate, and macOS asks for your password once to trust it for code signing. If a Mac's current install was signed another way, macOS asks for the permissions once more after the switch.
+
+`just build` builds the same signed app without installing it. The bundle is written to `tauri/src-tauri/target/release/bundle/`.
 
 ### Project Structure
 

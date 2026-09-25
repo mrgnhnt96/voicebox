@@ -3,14 +3,9 @@
 # Backend binaries must already exist (run build-server.sh when backend code changes).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-identity="${VOICEBOX_SIGNING_IDENTITY:-}"
-if [ -z "$identity" ]; then
-  identity=$(security find-identity -v -p codesigning | sed -n 's/.*"\(Apple Development:.*\)"/\1/p' | head -n 1)
-fi
-if [ -z "$identity" ]; then
-  echo 'No Apple Development signing identity found. Set VOICEBOX_SIGNING_IDENTITY to your signing certificate.' >&2
-  exit 1
-fi
+export PATH="$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
+# The same identity every build, so macOS keeps the app's privacy grants.
+identity=$(./scripts/signing-identity.sh)
 
 # The server folder is copied into the app as-is, so sign its code first:
 # every library, then the executable with the app's hardened-runtime
@@ -32,5 +27,10 @@ import json, sys
 with open(sys.argv[1], 'w') as config:
     json.dump({'bundle': {'createUpdaterArtifacts': False, 'macOS': {'signingIdentity': sys.argv[2]}}}, config)
 PY
-npx --yes bun@1.3.8 run --cwd tauri tauri build --bundles app --config "$config"
+if command -v bun >/dev/null 2>&1; then
+  bun=(bun)
+else
+  bun=(npx --yes bun@1.3.8)
+fi
+"${bun[@]}" run --cwd tauri tauri build --bundles app --config "$config"
 codesign --verify --deep --strict tauri/src-tauri/target/release/bundle/macos/Voicebox.app

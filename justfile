@@ -10,10 +10,6 @@ venv := backend_dir / "venv"
 
 venv_bin := venv / "bin"
 python := venv_bin / "python"
-pip := venv_bin / "pip"
-
-# Detect best python for venv creation
-system_python := `command -v python3.12 2>/dev/null || command -v python3.13 2>/dev/null || echo python3`
 
 # ─── Setup ────────────────────────────────────────────────────────────
 
@@ -22,32 +18,9 @@ setup: setup-python setup-js
     @echo ""
     @echo "Setup complete! Run: just dev"
 
-# Create venv and install Python dependencies
+# Create venv (Python 3.12) and install Python dependencies
 setup-python:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ "$(uname)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
-        echo "Voicebox requires an Apple Silicon Mac (arm64 macOS)." >&2
-        exit 1
-    fi
-    if [ ! -d "{{ venv }}" ]; then
-        echo "Creating Python virtual environment..."
-        PY_MINOR=$({{ system_python }} -c "import sys; print(sys.version_info[1])")
-        if [ "$PY_MINOR" -gt 13 ]; then
-            echo "Warning: Python 3.$PY_MINOR detected. ML packages may not be compatible."
-            echo "Recommended: brew install python@3.12"
-        fi
-        {{ system_python }} -m venv {{ venv }}
-    fi
-    echo "Installing Python dependencies..."
-    {{ pip }} install --upgrade pip -q
-    {{ pip }} install -r {{ backend_dir }}/requirements.txt
-    # mlx-lm and mlx-audio declare transformers>=5.x, which conflicts with our
-    # transformers<=4.57.x cap, so install them --no-deps (their runtime deps
-    # are covered by requirements.txt — see the note there)
-    {{ pip }} install --no-deps mlx-lm==0.31.1 mlx-audio==0.4.1
-    {{ pip }} install pyinstaller ruff pytest pytest-asyncio -q
-    echo "Python environment ready."
+    ./scripts/setup-python.sh
 
 # Install JavaScript dependencies
 setup-js:
@@ -98,9 +71,14 @@ build: build-server build-tauri
 build-server: _ensure-venv
     PATH="{{ venv_bin }}:$PATH" ./scripts/build-server.sh
 
-# Build Tauri desktop app
+# Build the desktop app, signed the same way every time so updates keep
+# the app's privacy permissions
 build-tauri:
-    cd {{ tauri_dir }} && bun run tauri build
+    ./scripts/build-local-app.sh
+
+# Check requirements, build, and install or update /Applications/Voicebox.app
+install:
+    ./scripts/install.sh
 
 # ─── Code Quality ────────────────────────────────────────────────────
 
