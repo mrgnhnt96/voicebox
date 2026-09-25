@@ -11,8 +11,8 @@ The user's example (7 phrases). Raw: `Wait, but if I pause- for a- second. Does 
 
 ## What changed
 
-1. **Seam marks** (`phrase_seams.strip_pause_mark`, `continue_phrase`). A phrase cut at a pause loses a trailing period, dash or dots. An abbreviation's period stays (a final token with another `.` in it, like `U.S.`). The next phrase's first word is lowercased unless it is `I`, an acronym, or a word capitalized mid-sentence anywhere else in the dictation. That last test is a general rule for names; there is no word list. Question and exclamation marks stay.
-   - *Why `?` stays:* across the 52 takes there were 8 seams with a `?` followed by a lowercased continuation. Cleanup dropped the 2 that were pause artifacts (`clean? while I am talking`, `text? as it's written`) and kept the 6 real ones (`app? what are the designs`, `account? also`...). The whole-dictation cleanup (D) made exactly the same calls. Stripping `?` would throw away intonation that cleanup uses correctly.
+1. **Seam marks** (`phrase_seams.strip_pause_mark`, `continue_phrase`). A phrase cut at a pause loses a trailing period, dash or dots. An abbreviation's period stays (a final token with another `.` in it, like `U.S.`). The next phrase's first word is lowercased unless it is `I`, an acronym, or a word capitalized mid-sentence anywhere else in the dictation. That last test is a general rule for names; there is no word list. A question or exclamation mark is decided when the next phrase arrives (`continue_after_seam`).
+   - *A `?` or `!` at a seam* is dropped, and the next phrase keeps the capital Whisper gave it, as the weaker hint that a sentence may start. Cleanup takes a mark as a sentence end, and it kept pause-made ones: `Wait, what if I pause? for a second` came out `Wait, what if I pause? For a second.` A capital that cleanup sees mid-sentence it lowercases when the words run on, and keeps as a sentence start when they don't. When the next word is always capitalized (`I`, a name), the capital can't be that hint, so the mark stays (`What's the other one? I have a reminder`). See *Question marks at pauses* below.
    - *Raw transcript saved:* the de-marked text. That is what cleanup actually receives, so personal examples and adapters trained from `transcript_raw` match production input, and the Captures view no longer shows `pause- for a-`. Whisper still gets its own text (`self.heard`) as `previous_text`, so recognition is unchanged.
 2. **Sentence-aware cleanup** (`sentence_tail.settle`, `StreamingCapture.clean_tail`). Each accepted phrase is added to the *open tail*, the raw words since the last settled sentence, and the whole tail is cleaned again. Every sentence of the result except the last is *settled*: final, never cleaned again.
    - *Mapping back to raw:* `settle` aligns cleaned and raw words with difflib on normalized tokens. It settles only when both the last settled word and the first open word match raw words. Otherwise a boundary on the wrong raw word would repeat or lose words, so it waits for the next cleanup. Raw words that cleanup dropped at the boundary stay open.
@@ -92,7 +92,7 @@ Counts are summed over all takes.
 | 3 phrases | Whenever I... Don't have any voice in the audio, the output is always "You're welcome." | Whenever I don't have any voice in the audio, the output is always "You're welcome." | same as B+ |
 | 2 phrases | ...more depth to the debt. Because right now you just see a number... | ...more depth to the debt because right now you just see a number... | same as B+ |
 
-The user's example still isn't the ideal "...can't be cleaned from in between pauses?". The speaker's own `?` after "cleaned" is kept, and the whole-dictation cleanup keeps it too, so this is the model's reading, not a streaming limit.
+With the seam `?` rule (below) the user's example now comes out as the ideal "...cannot be cleaned from in between pauses?".
 
 ## Decisions
 
@@ -108,3 +108,31 @@ The user's example still isn't the ideal "...can't be cleaned from in between pa
 - **Casual style and forced settles:** with casual punctuation, or when the 30-word bound settles a tail mid-sentence, the old seam join applies at that one point. None of the 52 takes hit the bound.
 - **Provisional text:** it is off by default and now only offers settled sentences.
 - **The lookup decoding loop** replaces `mlx_lm.stream_generate` for cleanups. Its unit tests use a fake model; the real model was checked for identical greedy output on 30 dictations. Watch the log line `(N model calls, M proposed tokens kept)`.
+
+## Question marks at pauses
+
+Whisper ends a phrase cut at a pause with `?` as readily as with `.`. Keeping the `?` let cleanup end the sentence there (`Wait, what if I pause? For a second.`).
+
+**Rule.** When the next phrase arrives, a seam `?`/`!` goes, and the next phrase keeps Whisper's capital instead of being lowercased. If its first word is `I` or a name (a capital `continue_phrase` keeps anyway), the mark stays. No word lists.
+
+**Alternatives tried** (whole-dictation cleanup of the same text; 3 to 5 samples per case at the production temperature, which nearly always agreed):
+
+| Seam text given to cleanup | 10 real seams in 61 takes: pause-made `?` fixed (of 4) | real `?` kept (of 6) | Synthetic, from the user's questions: split question rejoined (of 42) | real `?` kept (of 16) |
+| --- | ---: | ---: | ---: | ---: |
+| keep `?`, lowercase next (before) | 2 | 6 | 33 | 13 |
+| drop `?`, lowercase next | 4 | 4 | 42 | 8 |
+| `?` becomes `,`, `...` or `—` | 4 | 1 to 3 | not run | not run |
+| **drop `?`, keep capital (except `I`, names)** | **4** | **6** | **41** (+1 fine but unaligned) | **12** |
+
+The synthetic set splits each of the user's saved questions of 7+ words at 60% (`Can you figure out why? It took so long?`) and joins each saved question to the sentence after it. The one real `?` the rule loses there: `then what's the point of this It doesn't do anything` became `...of this. It doesn't...`.
+
+**Streaming replay** (61 multi-phrase takes, one interleaved run, no model training running):
+
+| | Release to final p50 | p90 | Seam `?` left mid-sentence | Real `?` lost | Identical to whole-dictation cleanup |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Before | 0.62 s | 0.82 s | 2 | 0 | 53/61 |
+| **Seam rule** | **0.63 s** | **0.81 s** | **0** | **0** | 51/61 |
+
+Paired per take: +0.005 s median. The two fewer identical takes are sampling differences (`an`/`the`, a dropped `that`, a comma) in takes whose raw text the rule didn't change; the takes it did change all match their whole-dictation cleanup except where both runs already differed.
+
+**Raw transcript:** a seam the rule changed keeps a capital mid-sentence (`cannot be cleaned From in between pauses.`). That is what cleanup received.
