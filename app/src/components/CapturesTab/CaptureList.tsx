@@ -8,18 +8,12 @@ import type { CaptureResponse } from '@/lib/api/types';
 import { cn } from '@/lib/utils/cn';
 import { AppIcon } from './AppIcon';
 import {
-  type CaptureTag,
   captureTag,
   deliveredText,
   formatDuration,
   formatRowTime,
+  snippetParts,
 } from './captureFormat';
-
-const TAG_CLASS: Record<CaptureTag, string> = {
-  refined: 'border border-accent/30 text-accent',
-  review: 'bg-warning/15 text-warning',
-  raw: 'border border-input text-muted-foreground',
-};
 
 function CaptureRow({
   capture,
@@ -32,7 +26,8 @@ function CaptureRow({
 }) {
   const { t } = useTranslation();
   const tag = captureTag(capture);
-  const snippet = deliveredText(capture).trim() || t('captures.snippetEmpty');
+  const text = deliveredText(capture).trim();
+  const parts = text ? snippetParts(text, capture.refinement_review?.added ?? []) : [];
   return (
     <button
       type="button"
@@ -40,25 +35,55 @@ function CaptureRow({
       aria-current={active ? 'true' : undefined}
       onClick={onSelect}
       className={cn(
-        'w-full flex flex-col gap-1.5 px-4 py-3 text-left border-b border-border/70 transition-colors',
+        'w-full flex flex-col gap-2 p-3 rounded-lg text-left transition-colors',
         'focus-visible:outline-none focus-visible:bg-muted',
-        active ? 'bg-muted shadow-[inset_2px_0_0_hsl(var(--accent))]' : 'hover:bg-muted/50',
+        active ? 'bg-muted' : 'hover:bg-muted/50',
       )}
     >
-      <span className="flex items-center gap-2.5 font-mono text-[11px] text-muted-foreground">
-        <span className="w-[84px] shrink-0 truncate">
+      <span className="text-[14px] leading-normal text-foreground line-clamp-2 [overflow-wrap:anywhere]">
+        {text
+          ? parts.map((part, i) =>
+              part.changed ? (
+                <mark
+                  // biome-ignore lint/suspicious/noArrayIndexKey: parts never reorder
+                  key={i}
+                  className="rounded-[2px] px-0.5 bg-warning/10 text-warning border-b-[1.5px] border-dashed border-warning/70"
+                >
+                  {part.text}
+                </mark>
+              ) : (
+                part.text
+              ),
+            )
+          : t('captures.snippetEmpty')}
+      </span>
+      <span className="flex items-center gap-[7px] min-w-0 text-[11.5px] text-muted-foreground">
+        <AppIcon bundleId={capture.app_bundle_id} />
+        {capture.app_name && (
+          <>
+            <span className="min-w-0 truncate">{capture.app_name}</span>
+            <span className="shrink-0 text-muted-foreground/50">·</span>
+          </>
+        )}
+        <span className="shrink-0 whitespace-nowrap">
           {formatRowTime(capture.created_at, t('captures.list.yesterday'))}
         </span>
-        <span className="w-3.5 shrink-0" title={capture.app_name ?? undefined}>
-          <AppIcon bundleId={capture.app_bundle_id} />
-        </span>
-        <span className={cn('px-1.5 rounded-[3px] leading-4', TAG_CLASS[tag])}>
-          {t(`captures.tag.${tag}`)}
-        </span>
+        <span className="shrink-0 text-muted-foreground/50">·</span>
+        <span className="shrink-0 tabular-nums">{formatDuration(capture.duration_ms)}</span>
         <span className="flex-1" />
-        <span className="tabular-nums">{formatDuration(capture.duration_ms)}</span>
+        {tag === 'review' && (
+          <span className="shrink-0 flex items-center gap-1.5 font-semibold text-warning">
+            <span className="size-1.5 rounded-full bg-warning" />
+            {t('captures.tag.review')}
+          </span>
+        )}
+        {tag === 'raw' && (
+          <span className="shrink-0 flex items-center gap-1.5">
+            <span className="size-1.5 rounded-full border-[1.5px] border-muted-foreground/70" />
+            {t('captures.tag.raw')}
+          </span>
+        )}
       </span>
-      <span className="text-[13.5px] leading-[1.45] text-foreground/85 truncate">{snippet}</span>
     </button>
   );
 }
@@ -147,14 +172,16 @@ export function CaptureList({
                 : t('captures.empty.none')}
           </p>
         ) : (
-          visible.map((capture) => (
-            <CaptureRow
-              key={capture.id}
-              capture={capture}
-              active={capture.id === selectedId}
-              onSelect={() => onSelect(capture.id)}
-            />
-          ))
+          <div className="flex flex-col gap-0.5 p-2">
+            {visible.map((capture) => (
+              <CaptureRow
+                key={capture.id}
+                capture={capture}
+                active={capture.id === selectedId}
+                onSelect={() => onSelect(capture.id)}
+              />
+            ))}
+          </div>
         )}
       </div>
     </section>

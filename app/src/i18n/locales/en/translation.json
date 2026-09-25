@@ -185,8 +185,7 @@
     "snippetEmpty": "(no transcript)",
     "captureCardLabel": "Capture · {{when}}",
     "tag": {
-      "refined": "Refined",
-      "review": "Review",
+      "review": "Reworded",
       "raw": "Raw"
     },
     "list": {

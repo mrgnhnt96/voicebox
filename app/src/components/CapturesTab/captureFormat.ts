@@ -70,6 +70,61 @@ export function deliveredText(capture: CaptureResponse): string {
   return capture.transcript_refined || capture.transcript_raw || '';
 }
 
+/** A run of a row's snippet; `changed` marks a word the cleanup added. */
+export interface SnippetPart {
+  text: string;
+  changed: boolean;
+}
+
+// Words as the content check counts them (backend/services/content_check.py).
+const SNIPPET_WORD = /[+-]?\d+(?:[.,]\d+)*%?|[\p{L}\p{N}_'’./-]*[\p{L}\p{N}_]/gu;
+
+function checkToken(word: string): string {
+  return word
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/’/g, "'")
+    .replace(/^[./'-]+|[./'-]+$/g, '');
+}
+
+/** A change past this many characters would fall below a two-line row. */
+const VISIBLE_CHARS = 70;
+/** Words kept before a change that is pulled into view. */
+const LEAD_WORDS = 6;
+
+/**
+ * A row's snippet with the words the cleanup added marked. When the first
+ * one would sit past the row's two lines, the snippet starts a few words
+ * before it, after an ellipsis, so the change is always in view.
+ */
+export function snippetParts(text: string, added: string[]): SnippetPart[] {
+  const wanted = new Set(added.map(checkToken));
+  const words = [...text.matchAll(SNIPPET_WORD)];
+  const firstChanged = words.findIndex((m) => wanted.has(checkToken(m[0])));
+  if (firstChanged < 0) return [{ text, changed: false }];
+
+  let start = 0;
+  let prefix = '';
+  const firstStart = words[firstChanged].index ?? 0;
+  if (firstStart > VISIBLE_CHARS && firstChanged > LEAD_WORDS) {
+    start = words[firstChanged - LEAD_WORDS].index ?? 0;
+    prefix = '…';
+  }
+
+  const parts: SnippetPart[] = [];
+  let cursor = start;
+  for (const match of words.slice(firstChanged)) {
+    if (!wanted.has(checkToken(match[0]))) continue;
+    const at = match.index ?? 0;
+    if (at > cursor) parts.push({ text: text.slice(cursor, at), changed: false });
+    parts.push({ text: match[0], changed: true });
+    cursor = at + match[0].length;
+  }
+  if (cursor < text.length) parts.push({ text: text.slice(cursor), changed: false });
+  if (prefix) parts[0] = { ...parts[0], text: prefix + parts[0].text };
+  return parts;
+}
+
 /** Markdown export of a capture: its metadata, then both transcripts. */
 export function buildCaptureMarkdown(capture: CaptureResponse): string {
   const lines: string[] = [];
