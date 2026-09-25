@@ -68,6 +68,10 @@ export function CapturesTab() {
   // seed, the selection-guard effect would snap back to ``captures[0]`` in
   // the race window between ``setSelectedId(new)`` and the refetched list
   // actually containing the new row.
+  //
+  // While the user is typing in a field on this screen, the new capture is
+  // almost certainly one they dictated into that field (e.g. a correction on
+  // the selected capture), so the selection stays put.
   useEffect(() => {
     const unlistens: Promise<UnlistenFn>[] = [];
     unlistens.push(
@@ -79,7 +83,9 @@ export function CapturesTab() {
             if (prev.items.some((c) => c.id === capture.id)) return prev;
             return { ...prev, items: [capture, ...prev.items], total: prev.total + 1 };
           });
-          setSelectedId(capture.id);
+          if (!(document.hasFocus() && isTypingTarget(document.activeElement))) {
+            setSelectedId(capture.id);
+          }
         }
         queryClient.invalidateQueries({ queryKey: ['captures'] });
       }),
