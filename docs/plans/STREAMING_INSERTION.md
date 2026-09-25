@@ -6,10 +6,12 @@ Builds on [TEXT_INSERTION.md](TEXT_INSERTION.md) (direct AX insertion) and
 
 ## Verdict
 
-It is implemented, tested, and **off by default**. To try it, turn on
-Settings → Dictation → "Show text as it's written" (the `live_text` capture
-setting). While it is off, the client doesn't ask for provisional text, so the
-server sends none and nothing changes.
+It is implemented, tested, and **off**. The `live_text` capture setting turns
+it on; its Settings toggle is hidden, since text only starts appearing after
+release and ~0.15 s sooner wasn't worth it to the user (2026-09-24). To try
+it, set it through the API (`PUT /settings/captures {"live_text": true}`).
+While it is off, the client doesn't ask for provisional text, so the server
+sends none and nothing changes.
 
 - **Correct in every replayed take.** Across 87 takes that had provisional
   text, none needed a revision: every provisional text was a prefix of the
@@ -260,7 +262,7 @@ directory and uses `config.set_data_dir`, like
 - **User typing during the ~0.5 s window.** Detected; the rest is not
   inserted, and the pill tells the user the text is in Captures.
 
-## Manual checklist (with "Show text as it's written" on)
+## Manual checklist (with `live_text` on)
 
 For each target, dictate two takes:
 

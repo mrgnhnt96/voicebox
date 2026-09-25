@@ -4,7 +4,6 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiClient } from '@/lib/api/client';
 import type { CaptureListResponse, CaptureResponse } from '@/lib/api/types';
-import { useCaptureRecordingSession } from '@/lib/hooks/useCaptureRecordingSession';
 import { useDictationReadiness } from '@/lib/hooks/useDictationReadiness';
 import { CaptureDetail } from './CaptureDetail';
 import { CaptureDetailHeader } from './CaptureDetailHeader';
@@ -28,12 +27,6 @@ export function CapturesTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<CaptureFilter>('all');
-
-  // In-app recording and import. Every Dictate/Stop/Import goes through this
-  // session; the header renders its controls and the live HUD pill.
-  const session = useCaptureRecordingSession({
-    onCaptureCreated: (capture) => setSelectedId(capture.id),
-  });
 
   const { data: capturesData, isLoading: capturesLoading } = useQuery({
     queryKey: ['captures'],
@@ -142,7 +135,7 @@ export function CapturesTab() {
         allReady={readiness.isLoading || readiness.allReady}
       />
       <div className="flex-1 min-w-0 flex flex-col">
-        <CaptureDetailHeader capture={selected} session={session} canRecord={readiness.canRecord} />
+        <CaptureDetailHeader capture={selected} />
         {selected ? (
           <CaptureDetail key={selected.id} capture={selected} />
         ) : (
