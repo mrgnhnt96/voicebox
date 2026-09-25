@@ -182,6 +182,12 @@ export interface HealthResponse {
   gpu_available: boolean;
   gpu_type?: string;
   backend_type?: string;
+  version?: string;
+  /** Server process start, Unix seconds. */
+  started_at?: number;
+  pid?: number;
+  /** Peak resident memory of the server process. */
+  peak_memory_mb?: number;
 }
 
 export interface ModelProgress {

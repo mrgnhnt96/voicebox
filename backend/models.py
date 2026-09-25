@@ -207,6 +207,10 @@ class HealthResponse(BaseModel):
     gpu_available: bool
     gpu_type: Optional[str] = None  # "Metal (Apple Silicon via MLX)", "MPS (Apple Silicon)", or None
     backend_type: Optional[str] = None  # Always "mlx"
+    version: Optional[str] = None
+    started_at: Optional[float] = None  # Server process start, Unix seconds
+    pid: Optional[int] = None
+    peak_memory_mb: Optional[int] = None  # Peak resident memory of the server process
 
 
 class DirectoryCheck(BaseModel):

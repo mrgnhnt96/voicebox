@@ -2,7 +2,9 @@
 
 import asyncio
 import os
+import resource
 import signal
+import time
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -13,6 +15,9 @@ from ..database import get_db
 from ..utils.platform_detect import BACKEND_TYPE, GPU_TYPE
 
 router = APIRouter()
+
+# When this server process started, for the uptime the status bar shows.
+STARTED_AT = time.time()
 
 @router.get("/")
 async def root():
@@ -42,6 +47,8 @@ async def health(db: Session = Depends(get_db)):
     ``model_downloaded`` says whether the Whisper model chosen in the capture
     settings is cached locally.
     """
+    from .. import __version__
+
     whisper_model = transcribe.get_whisper_model()
     model_loaded = False
     model_size = None
@@ -76,6 +83,11 @@ async def health(db: Session = Depends(get_db)):
         gpu_available=True,
         gpu_type=GPU_TYPE,
         backend_type=BACKEND_TYPE,
+        version=__version__,
+        started_at=STARTED_AT,
+        pid=os.getpid(),
+        # macOS reports the peak resident size in bytes.
+        peak_memory_mb=round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024**2),
     )
 
 
