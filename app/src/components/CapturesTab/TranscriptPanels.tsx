@@ -1,5 +1,5 @@
-import { Copy } from 'lucide-react';
-import { type ReactNode, useMemo } from 'react';
+import { CircleHelp, Copy } from 'lucide-react';
+import { type ReactNode, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -43,8 +43,9 @@ function Marked({ segments, mark }: { segments: DiffSegment[]; mark: Mark }) {
 
 /**
  * One transcript panel. With `teach`, its text is editable in place: the
- * user fixes it where it is, and after saving it shows the corrected text
- * with the learned confirmation.
+ * user fixes it where it is (or presses Alter), and after saving it shows
+ * the corrected text with the learned confirmation. The ? beside Alter
+ * explains what a correction does.
  */
 function TranscriptPanel({
   tone,
@@ -68,6 +69,8 @@ function TranscriptPanel({
 }) {
   const { t } = useTranslation();
   const teachState = useTeachCorrection(capture, teach ?? tone, text);
+  const [explained, setExplained] = useState(false);
+  const aboutId = useId();
   const learned = teach ? teachState.learned : null;
   const textClass =
     tone === 'raw'
@@ -91,10 +94,40 @@ function TranscriptPanel({
           {learned ? `${label} · ${t('captures.teach.corrected')}` : label}
         </span>
         <span className="flex items-center gap-1 shrink-0 normal-case">
+          {teach && !learned && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-1.5 font-mono text-[11px] text-muted-foreground"
+                disabled={teachState.draft !== null}
+                onClick={teachState.begin}
+              >
+                {t('captures.teach.alter')}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn('h-6 w-6 text-muted-foreground', explained && 'text-foreground')}
+                aria-label={t('captures.feedback.about')}
+                title={t('captures.feedback.about')}
+                aria-expanded={explained}
+                aria-controls={aboutId}
+                onClick={() => setExplained((open) => !open)}
+              >
+                <CircleHelp className="size-3.5!" />
+              </Button>
+            </>
+          )}
           {learned ? t('captures.teach.editedByYou') : meta}
           {action}
         </span>
       </div>
+      {teach && explained && (
+        <p id={aboutId} className="m-0 text-xs leading-relaxed text-muted-foreground">
+          {t('captures.feedback.description')}
+        </p>
+      )}
       {teach && !learned ? (
         <EditableTranscript teach={teachState} className={textClass}>
           {body}

@@ -222,7 +222,8 @@
       "undo": "Undo",
       "undoFailed": "Could not undo the correction",
       "corrected": "corrected",
-      "editedByYou": "edited by you"
+      "editedByYou": "edited by you",
+      "alter": "Alter"
     },
     "source": {
       "dictation": "Dictation",

@@ -1,23 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
-import { Info } from 'lucide-react';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api/client';
 import type { CaptureResponse } from '@/lib/api/types';
-import { cn } from '@/lib/utils/cn';
 import { CorrectionLearning } from './CorrectionLearning';
 
 /**
  * Below the transcripts: this capture's saved corrections and the learning
- * job's status. What teaching does is one click away on the info button, not
- * repeated on every capture; exporting every correction is in Settings,
- * Writing style. Corrections themselves are made inline in the transcript
- * panels.
+ * job's status. Corrections are made in the transcript panels, where the ?
+ * beside Alter explains them; exporting every correction is in Settings,
+ * Writing style.
  */
 export function CaptureFeedback({ capture }: { capture: CaptureResponse }) {
   const { t } = useTranslation();
-  const [explained, setExplained] = useState(false);
   const reports = useQuery({
     queryKey: ['capture-feedback', capture.id],
     queryFn: () => apiClient.listCaptureFeedback(capture.id),
@@ -25,27 +19,9 @@ export function CaptureFeedback({ capture }: { capture: CaptureResponse }) {
 
   return (
     <section className="space-y-3">
-      <div className="flex items-center gap-1">
-        <h3 className="font-mono text-[11px] uppercase text-muted-foreground">
-          {t('captures.feedback.sectionTitle')}
-        </h3>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn('h-6 w-6 text-muted-foreground', explained && 'text-foreground')}
-          aria-label={t('captures.feedback.about')}
-          aria-expanded={explained}
-          aria-controls="corrections-about"
-          onClick={() => setExplained((open) => !open)}
-        >
-          <Info className="size-3.5!" />
-        </Button>
-      </div>
-      {explained && (
-        <p id="corrections-about" className="text-xs leading-relaxed text-muted-foreground">
-          {t('captures.feedback.description')}
-        </p>
-      )}
+      <h3 className="font-mono text-[11px] uppercase text-muted-foreground">
+        {t('captures.feedback.sectionTitle')}
+      </h3>
       {reports.isError && (
         <p role="alert" className="text-sm text-destructive">
           {t('captures.feedback.loadFailed')}
