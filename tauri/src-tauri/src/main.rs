@@ -62,22 +62,66 @@ fn build_dictate_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewW
     Ok(window)
 }
 
-/// Center the pill above the usable screen edge, leaving room for the Dock/taskbar.
+/// Center the pill above the usable screen edge of the display the user is
+/// working on, leaving room for the Dock.
 #[cfg(desktop)]
 pub(crate) fn position_dictate_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
-    // Hidden pills are parked off-screen, so their current monitor can be absent.
-    let monitor = window.current_monitor()?.or(window.primary_monitor()?);
-    if let Some(monitor) = monitor {
-        let area = monitor.work_area();
-        let size = window.outer_size()?;
-        let padding = (DICTATE_BOTTOM_PADDING * monitor.scale_factor()).round() as i32;
-        let available_width = (area.size.width as i32 - size.width as i32).max(0);
-        let available_height = (area.size.height as i32 - size.height as i32).max(0);
-        let x = area.position.x + available_width / 2;
-        let y = area.position.y + (available_height - padding).max(0);
-        window.set_position(PhysicalPosition::new(x, y))?;
+    let Some(monitor) = dictate_monitor(window)? else {
+        return Ok(());
+    };
+    // Work in points: tao reports each display in its own scale, so mixed-DPI
+    // setups have no single physical space to place the pill in.
+    let scale = monitor.scale_factor();
+    let area = monitor.work_area();
+    let size = window
+        .outer_size()?
+        .to_logical::<f64>(window.scale_factor()?);
+    let x = area.position.x as f64 / scale
+        + ((area.size.width as f64 / scale - size.width).max(0.0) / 2.0);
+    let y = area.position.y as f64 / scale
+        + (area.size.height as f64 / scale - size.height - DICTATE_BOTTOM_PADDING).max(0.0);
+    window.set_position(tauri::LogicalPosition::new(x, y))
+}
+
+/// The display with the focused window, else the one under the cursor, else
+/// the main display. Not `current_monitor()`: the hide path parks the pill
+/// off-screen, where it has no monitor.
+#[cfg(desktop)]
+fn dictate_monitor(window: &tauri::WebviewWindow) -> tauri::Result<Option<tauri::Monitor>> {
+    let monitors = window.available_monitors()?;
+    let bounds: Vec<_> = monitors
+        .iter()
+        .map(|m| {
+            let scale = m.scale_factor();
+            let position = m.position();
+            let size = m.size();
+            (
+                position.x as f64 / scale,
+                position.y as f64 / scale,
+                size.width as f64 / scale,
+                size.height as f64 / scale,
+            )
+        })
+        .collect();
+    let target = [
+        focus_capture::focused_window_center,
+        focus_capture::cursor_location,
+    ]
+    .iter()
+    .filter_map(|locate| locate())
+    .find_map(|point| display_containing(&bounds, point));
+    match target {
+        Some(index) => Ok(monitors.into_iter().nth(index)),
+        None => window.primary_monitor(),
     }
-    Ok(())
+}
+
+/// Index of the display whose `(x, y, width, height)` bounds hold `point`.
+fn display_containing(bounds: &[(f64, f64, f64, f64)], point: (f64, f64)) -> Option<usize> {
+    let (px, py) = point;
+    bounds
+        .iter()
+        .position(|&(x, y, w, h)| px >= x && px < x + w && py >= y && py < y + h)
 }
 
 // `object_setClass` — reclass a live object. Not re-exported by `objc`.
@@ -1281,4 +1325,20 @@ pub fn run() {
 
 fn main() {
     run();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::display_containing;
+
+    #[test]
+    fn picks_the_display_holding_the_point() {
+        // Main 1512x982 display, with a 2560x1440 display to its left and
+        // raised above it, the way macOS lays out an external monitor.
+        let bounds = [(0.0, 0.0, 1512.0, 982.0), (-2560.0, -300.0, 2560.0, 1440.0)];
+        assert_eq!(display_containing(&bounds, (700.0, 500.0)), Some(0));
+        assert_eq!(display_containing(&bounds, (-1280.0, 0.0)), Some(1));
+        assert_eq!(display_containing(&bounds, (-1.0, -299.0)), Some(1));
+        assert_eq!(display_containing(&bounds, (1512.0, 10.0)), None);
+    }
 }

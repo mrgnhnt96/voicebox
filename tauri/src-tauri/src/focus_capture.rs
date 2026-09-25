@@ -60,6 +60,39 @@ mod ffi {
             value: *mut CFTypeRef,
         ) -> AXError;
         pub fn AXUIElementGetPid(element: AXUIElementRef, pid: *mut Pid) -> AXError;
+        pub fn AXUIElementCreateApplication(pid: Pid) -> AXUIElementRef;
+        pub fn AXUIElementSetMessagingTimeout(
+            element: AXUIElementRef,
+            timeout_in_seconds: f32,
+        ) -> AXError;
+        pub fn AXValueGetValue(
+            value: CFTypeRef,
+            the_type: u32,
+            value_ptr: *mut std::ffi::c_void,
+        ) -> core_foundation_sys::base::Boolean;
+    }
+
+    pub const AX_VALUE_CG_POINT: u32 = 1;
+    pub const AX_VALUE_CG_SIZE: u32 = 2;
+
+    #[repr(C)]
+    #[derive(Default)]
+    pub struct CGPoint {
+        pub x: f64,
+        pub y: f64,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    pub struct CGSize {
+        pub width: f64,
+        pub height: f64,
+    }
+
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        pub fn CGEventCreate(source: *const std::ffi::c_void) -> CFTypeRef;
+        pub fn CGEventGetLocation(event: CFTypeRef) -> CGPoint;
     }
     // AX attribute keys are exposed as C macros that expand to CFSTR(...)
     // literals, not as linkable symbols — build the CFStrings at runtime
@@ -353,4 +386,77 @@ fn can_yield_activation() -> bool {
         ];
         responds
     })
+}
+
+/// Center of the frontmost app's focused window, in global display points
+/// (origin at the top-left of the main display, y growing down). `None`
+/// when the app exposes no focused window or Accessibility isn't granted.
+pub fn focused_window_center() -> Option<(f64, f64)> {
+    use ffi::*;
+    let pid = frontmost_pid()?;
+    unsafe {
+        let app = AXUIElementCreateApplication(pid);
+        if app.is_null() {
+            return None;
+        }
+        let _app_guard = scopeguard::guard(app, |e| CFRelease(e));
+        // This runs on the hotkey press. A hung app would otherwise block
+        // for the 6s AX default before the pill appears.
+        AXUIElementSetMessagingTimeout(app, 0.05);
+
+        let window = copy_attribute(app, "AXFocusedWindow")?;
+        let _window_guard = scopeguard::guard(window, |e| CFRelease(e));
+
+        let position = copy_attribute(window as AXUIElementRef, "AXPosition")?;
+        let _position_guard = scopeguard::guard(position, |e| CFRelease(e));
+        let size = copy_attribute(window as AXUIElementRef, "AXSize")?;
+        let _size_guard = scopeguard::guard(size, |e| CFRelease(e));
+
+        let mut origin = CGPoint::default();
+        let mut extent = CGSize::default();
+        let read = 0
+            != AXValueGetValue(
+                position,
+                AX_VALUE_CG_POINT,
+                &mut origin as *mut CGPoint as *mut std::ffi::c_void,
+            )
+            && 0 != AXValueGetValue(
+                size,
+                AX_VALUE_CG_SIZE,
+                &mut extent as *mut CGSize as *mut std::ffi::c_void,
+            );
+        read.then(|| {
+            (
+                origin.x + extent.width / 2.0,
+                origin.y + extent.height / 2.0,
+            )
+        })
+    }
+}
+
+/// The mouse cursor, in the same global display points as
+/// [`focused_window_center`].
+pub fn cursor_location() -> Option<(f64, f64)> {
+    use ffi::*;
+    unsafe {
+        let event = CGEventCreate(std::ptr::null());
+        if event.is_null() {
+            return None;
+        }
+        let point = CGEventGetLocation(event);
+        CFRelease(event);
+        Some((point.x, point.y))
+    }
+}
+
+/// `+1` retained value of `attribute` on `element`, or `None`.
+unsafe fn copy_attribute(
+    element: ffi::AXUIElementRef,
+    attribute: &str,
+) -> Option<core_foundation_sys::base::CFTypeRef> {
+    let attr = cf_string_const(attribute)?;
+    let _attr_guard = scopeguard::guard(attr, |s| CFRelease(s as *const std::ffi::c_void));
+    let mut value: core_foundation_sys::base::CFTypeRef = std::ptr::null();
+    let err = ffi::AXUIElementCopyAttributeValue(element, attr, &mut value as *mut _);
+    (err == ffi::AX_ERROR_SUCCESS && !value.is_null()).then_some(value)
 }

@@ -42,7 +42,6 @@ pub const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:17493";
 const MAX_PENDING_BYTES: usize = 48_000 * 2 * 60;
 const LEARNING_PAUSE_INTERVAL: Duration = Duration::from_secs(30);
 
-
 /// Where and how to capture. Pushed by the dictate webview, which owns the
 /// server URL and capture settings.
 #[derive(Debug, Clone)]
