@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils/cn';
-import { barHeights, isClipping, LEVEL_FALL_MS, LEVEL_RISE_MS, levelFromDb } from './level';
+import { barHeights, isClipping, LEVEL_STEP_MS, levelFromDb, pushLevel, silentWave } from './level';
 
 /**
  * Pill state machine shared between the settings preview and the live
@@ -22,13 +22,14 @@ const PILL_LABEL_KEYS: Record<Exclude<PillState, 'error'>, string> = {
 const REST_FADE_S = 0.9;
 
 const CAPSULE =
-  'inline-flex h-6 min-w-16 items-center justify-center gap-[3px] rounded-full px-2.5 ' +
+  'inline-flex h-7 min-w-16 items-center justify-center gap-[3px] rounded-full px-2.5 ' +
   'bg-black/90 ring-1 ring-white/10 shadow-lg shadow-black/40';
 
 /**
- * The dictation HUD: a 64 × 24 capsule with no words. Shape and motion show
- * the stage; only an error shows text. While recording, the bars follow the
- * microphone's input level (`inputDb`) and lie flat when nothing is heard.
+ * The dictation HUD: a 64 × 28 capsule with no words. Shape and motion show
+ * the stage; only an error shows text. While recording, the bars are a wave of
+ * the microphone's recent input level (`inputDb`) moving left to right, and
+ * lie flat when nothing is heard.
  */
 export function CapturePill({
   state,
@@ -117,26 +118,30 @@ function PillMarks({ state, inputDb }: { state: PillState; inputDb: number | nul
   }
 }
 
-/** Five bars whose height is the input level, shaped around the center. */
+/**
+ * A scrolling waveform of the input level: every step the latest reading
+ * enters on the left and the older ones move one bar right. Stepping on a
+ * timer rather than per event keeps the wave moving through repeated readings.
+ */
 function LevelBars({ db }: { db: number | null }) {
-  const level = levelFromDb(db);
-  const previous = useRef(level);
-  const rising = level >= previous.current;
+  const [wave, setWave] = useState(silentWave);
+  const latest = useRef(db);
+  latest.current = db;
   useEffect(() => {
-    previous.current = level;
-  });
+    const iv = window.setInterval(() => {
+      setWave((w) => pushLevel(w, levelFromDb(latest.current)));
+    }, LEVEL_STEP_MS);
+    return () => window.clearInterval(iv);
+  }, []);
   const clipping = isClipping(db);
   return (
     <>
-      {barHeights(level).map((height, i) => (
+      {barHeights(wave).map((height, i) => (
         <span
-          // biome-ignore lint/suspicious/noArrayIndexKey: fixed set of five bars
+          // biome-ignore lint/suspicious/noArrayIndexKey: fixed set of bars
           key={i}
           className={cn('w-[3px] rounded-full', clipping ? 'bg-orange-400' : 'bg-accent')}
-          style={{
-            height,
-            transition: `height ${rising ? LEVEL_RISE_MS : LEVEL_FALL_MS}ms linear`,
-          }}
+          style={{ height, transition: `height ${LEVEL_STEP_MS}ms linear` }}
         />
       ))}
     </>
@@ -184,7 +189,7 @@ function ErrorPill({
       onClick={handleClick}
       title={t('captures.pill.errorCopyTooltip')}
       className={cn(
-        'inline-flex h-6 max-w-[380px] items-center gap-2 rounded-full px-2.5',
+        'inline-flex h-7 max-w-[380px] items-center gap-2 rounded-full px-2.5',
         'bg-black/90 ring-1 ring-red-400/40 shadow-lg shadow-black/40 hover:bg-black',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60',
         className,
